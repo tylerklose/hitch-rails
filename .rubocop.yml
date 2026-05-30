@@ -1,0 +1,15 @@
+# Omakase Ruby styling for Rails
+inherit_gem: { rubocop-rails-omakase: rubocop.yml }
+
+# Generated schema dumps can't satisfy house array-bracket style (the
+# dumper emits `["col"]`, omakase wants `[ "col" ]`) and are regenerated
+# on every migration — linting them is a treadmill.
+AllCops:
+  Exclude:
+    - "test/dummy/db/schema.rb"
+
+# Overwrite or add rules to create your own house style
+#
+# # Use `[a, [b, c]]` not `[ a, [ b, c ] ]`
+# Layout/SpaceInsideArrayLiteralBrackets:
+#   Enabled: false

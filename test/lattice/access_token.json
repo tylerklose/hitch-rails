@@ -1,0 +1,132 @@
+{
+  "model_name": "hitch_access_token",
+  "_intent_notes": [
+    "Substrate test: OAuth 2.1 + PKCE + RFC 8707 access token lifecycle.",
+    "Axes: code freshness, PKCE verifier match, token state at use, audience binding at issue, audience asked for at use.",
+    "Forced rows cover the happy path, PKCE mismatch (must reject), expired code (must reject), revoked token (must not be active), and the audience-mismatch case the spec MUST: same token, wrong resource_uri → reject."
+  ],
+  "parameters": [
+    {
+      "name": "code_state",
+      "values": ["fresh", "expired", "already_consumed"]
+    },
+    {
+      "name": "code_verifier_match",
+      "values": ["correct", "wrong"]
+    },
+    {
+      "name": "token_state_at_check",
+      "values": ["active", "revoked", "never_issued"]
+    },
+    {
+      "name": "resource_at_issue",
+      "values": ["set", "absent"]
+    },
+    {
+      "name": "resource_at_check",
+      "values": ["matches", "different", "absent"]
+    }
+  ],
+  "constraints": [
+    {
+      "type": "invalid_pair",
+      "_why": "If code is already_consumed, PKCE verifier is moot — the consume_code! step already happened.",
+      "if": { "parameter": "code_state", "value": "already_consumed" },
+      "then_not": { "parameter": "code_verifier_match", "value": "wrong" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "consume_code! creates the token — already_consumed implies a token now exists (active/revoked/expired), not never_issued.",
+      "if": { "parameter": "code_state", "value": "already_consumed" },
+      "then_not": { "parameter": "token_state_at_check", "value": "never_issued" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "Wrong PKCE verifier blocks consume_code! — token cannot exist downstream.",
+      "if": { "parameter": "code_verifier_match", "value": "wrong" },
+      "then_not": { "parameter": "token_state_at_check", "value": "active" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "code_verifier_match", "value": "wrong" },
+      "then_not": { "parameter": "token_state_at_check", "value": "revoked" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "Expired auth code blocks consume_code! — token cannot exist downstream.",
+      "if": { "parameter": "code_state", "value": "expired" },
+      "then_not": { "parameter": "token_state_at_check", "value": "active" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "code_state", "value": "expired" },
+      "then_not": { "parameter": "token_state_at_check", "value": "revoked" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "If the token was never issued, no resource check is possible.",
+      "if": { "parameter": "token_state_at_check", "value": "never_issued" },
+      "then_not": { "parameter": "resource_at_check", "value": "matches" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "token_state_at_check", "value": "never_issued" },
+      "then_not": { "parameter": "resource_at_check", "value": "different" }
+    },
+    {
+      "type": "forced",
+      "_why": "Happy path: fresh code, correct verifier, active token, audience binds + matches.",
+      "assignments": [
+        { "parameter": "code_state", "value": "fresh" },
+        { "parameter": "code_verifier_match", "value": "correct" },
+        { "parameter": "token_state_at_check", "value": "active" },
+        { "parameter": "resource_at_issue", "value": "set" },
+        { "parameter": "resource_at_check", "value": "matches" }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "PKCE mismatch must reject — token never issued, no downstream check.",
+      "assignments": [
+        { "parameter": "code_state", "value": "fresh" },
+        { "parameter": "code_verifier_match", "value": "wrong" },
+        { "parameter": "token_state_at_check", "value": "never_issued" },
+        { "parameter": "resource_at_issue", "value": "set" },
+        { "parameter": "resource_at_check", "value": "absent" }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Expired code must reject even with correct verifier.",
+      "assignments": [
+        { "parameter": "code_state", "value": "expired" },
+        { "parameter": "code_verifier_match", "value": "correct" },
+        { "parameter": "token_state_at_check", "value": "never_issued" },
+        { "parameter": "resource_at_issue", "value": "set" },
+        { "parameter": "resource_at_check", "value": "absent" }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "RFC 8707 audience mismatch: same active token, wrong resource_uri at check — MUST reject.",
+      "assignments": [
+        { "parameter": "code_state", "value": "fresh" },
+        { "parameter": "code_verifier_match", "value": "correct" },
+        { "parameter": "token_state_at_check", "value": "active" },
+        { "parameter": "resource_at_issue", "value": "set" },
+        { "parameter": "resource_at_check", "value": "different" }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Revoked token: even with correct audience, must not be accessible.",
+      "assignments": [
+        { "parameter": "code_state", "value": "fresh" },
+        { "parameter": "code_verifier_match", "value": "correct" },
+        { "parameter": "token_state_at_check", "value": "revoked" },
+        { "parameter": "resource_at_issue", "value": "set" },
+        { "parameter": "resource_at_check", "value": "matches" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,169 @@
+{
+  "meta": {
+    "model_name": "hitch_access_token",
+    "strength": 2,
+    "test_count": 11,
+    "exhaustive_count": 108,
+    "reduction": "9.8x",
+    "coverage": "100.0%",
+    "seed": 42
+  },
+  "coverage_curve": [
+    {
+      "scenario": 1,
+      "cumulative_pct": 18.2
+    },
+    {
+      "scenario": 2,
+      "cumulative_pct": 34.5
+    },
+    {
+      "scenario": 3,
+      "cumulative_pct": 45.5
+    },
+    {
+      "scenario": 4,
+      "cumulative_pct": 52.7
+    },
+    {
+      "scenario": 5,
+      "cumulative_pct": 60.0
+    },
+    {
+      "scenario": 6,
+      "cumulative_pct": 69.1
+    },
+    {
+      "scenario": 7,
+      "cumulative_pct": 76.4
+    },
+    {
+      "scenario": 8,
+      "cumulative_pct": 89.1
+    },
+    {
+      "scenario": 9,
+      "cumulative_pct": 94.5
+    },
+    {
+      "scenario": 10,
+      "cumulative_pct": 98.2
+    },
+    {
+      "scenario": 11,
+      "cumulative_pct": 100.0
+    }
+  ],
+  "scenarios": [
+    {
+      "id": 1,
+      "values": {
+        "code_state": "fresh",
+        "code_verifier_match": "correct",
+        "token_state_at_check": "active",
+        "resource_at_issue": "set",
+        "resource_at_check": "matches"
+      }
+    },
+    {
+      "id": 2,
+      "values": {
+        "code_state": "fresh",
+        "code_verifier_match": "wrong",
+        "token_state_at_check": "never_issued",
+        "resource_at_issue": "set",
+        "resource_at_check": "absent"
+      }
+    },
+    {
+      "id": 3,
+      "values": {
+        "code_state": "expired",
+        "code_verifier_match": "correct",
+        "token_state_at_check": "never_issued",
+        "resource_at_issue": "set",
+        "resource_at_check": "absent"
+      }
+    },
+    {
+      "id": 4,
+      "values": {
+        "code_state": "fresh",
+        "code_verifier_match": "correct",
+        "token_state_at_check": "active",
+        "resource_at_issue": "set",
+        "resource_at_check": "different"
+      }
+    },
+    {
+      "id": 5,
+      "values": {
+        "code_state": "fresh",
+        "code_verifier_match": "correct",
+        "token_state_at_check": "revoked",
+        "resource_at_issue": "set",
+        "resource_at_check": "matches"
+      }
+    },
+    {
+      "id": 6,
+      "values": {
+        "code_state": "fresh",
+        "code_verifier_match": "correct",
+        "token_state_at_check": "active",
+        "resource_at_issue": "absent",
+        "resource_at_check": "absent"
+      }
+    },
+    {
+      "id": 7,
+      "values": {
+        "code_state": "expired",
+        "code_verifier_match": "wrong",
+        "token_state_at_check": "never_issued",
+        "resource_at_issue": "absent",
+        "resource_at_check": "absent"
+      }
+    },
+    {
+      "id": 8,
+      "values": {
+        "code_state": "already_consumed",
+        "code_verifier_match": "correct",
+        "token_state_at_check": "revoked",
+        "resource_at_issue": "absent",
+        "resource_at_check": "different"
+      }
+    },
+    {
+      "id": 9,
+      "values": {
+        "code_state": "already_consumed",
+        "code_verifier_match": "correct",
+        "token_state_at_check": "active",
+        "resource_at_issue": "set",
+        "resource_at_check": "matches"
+      }
+    },
+    {
+      "id": 10,
+      "values": {
+        "code_state": "already_consumed",
+        "code_verifier_match": "correct",
+        "token_state_at_check": "revoked",
+        "resource_at_issue": "set",
+        "resource_at_check": "absent"
+      }
+    },
+    {
+      "id": 11,
+      "values": {
+        "code_state": "fresh",
+        "code_verifier_match": "correct",
+        "token_state_at_check": "active",
+        "resource_at_issue": "absent",
+        "resource_at_check": "matches"
+      }
+    }
+  ]
+}

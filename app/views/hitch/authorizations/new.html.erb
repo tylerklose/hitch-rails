@@ -1,0 +1,46 @@
+<%# Default consent screen. Host apps override by placing
+   app/views/hitch/oauth/authorizations/new.html.erb in their own
+   tree. The host's layout wraps this template automatically. %>
+
+<div class="hitch-rails-consent">
+  <h1>Authorize <%= @client_name %></h1>
+  <p>
+    <strong><%= @client_name %></strong>
+    (<%= @redirect_host %>)
+    is requesting access to your <%= @brand_name %> account.
+  </p>
+
+  <% if @scopes.present? %>
+    <div class="hitch-rails-consent__scopes">
+      <p>It will be granted the following access:</p>
+      <ul>
+        <% @scopes.split(/\s+/).each do |scope| %>
+          <li><code><%= scope %></code></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <% if @resource.present? %>
+    <p class="hitch-rails-consent__resource">
+      Resource: <code><%= @resource %></code>
+    </p>
+  <% end %>
+
+  <%# turbo: false forces a real browser navigation on Approve. The
+     controller redirects to the client's redirect_uri (a cross-origin
+     host, e.g. https://grok.com/...); Turbo Drive submits via fetch and
+     CANNOT follow a cross-origin 302, so the redirect is swallowed and
+     "Approve" appears to do nothing. A full-page submit lets the browser
+     follow the redirect and deliver the auth code to the client. %>
+  <%= form_with url: oauth_authorize_path, method: :post, data: { turbo: false } do |f| %>
+    <% @oauth_params.each do |key, value| %>
+      <% next if value.blank? %>
+      <%= hidden_field_tag key, value %>
+    <% end %>
+
+    <button type="submit" class="hitch-rails-consent__approve">
+      Approve
+    </button>
+  <% end %>
+</div>

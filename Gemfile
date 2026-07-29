@@ -14,7 +14,7 @@ gem "pg"
 # verified against actual SDK output, not a simulation. `require: false`
 # so it isn't auto-loaded on app boot (Bundler.require) — only the real
 # MCP test requires it explicitly.
-gem "mcp", "~> 0.18", group: :test, require: false
+gem "mcp", "~> 1.0", group: :test, require: false
 
 # Omakase Ruby styling [https://github.com/rails/rubocop-rails-omakase/]
 gem "rubocop-rails-omakase", require: false

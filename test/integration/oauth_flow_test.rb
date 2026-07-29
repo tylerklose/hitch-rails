@@ -356,6 +356,186 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     assert_includes response.location, "code="
   end
 
+  # --- Client ID Metadata Documents (MCP 2026-07-28) -------------------
+
+  CIMD_URL = "https://client.example/metadata.json"
+
+  def cimd_document(redirect_uris: [ CLIENT_REDIRECT ], client_name: "Doc Client")
+    Hitch::ClientIdMetadata::Document.new(
+      client_id: CIMD_URL, client_name: client_name, redirect_uris: redirect_uris
+    )
+  end
+
+  # The flag is what makes a conformant client stop falling back to DCR
+  # and send a document URL as its client_id. Advertising it while the
+  # server would reject every such client_id converts a working DCR flow
+  # into a broken one, so it tracks the config exactly.
+  test "the CIMD capability is advertised only when the host enables it" do
+    get "/.well-known/oauth-authorization-server"
+    assert_nil JSON.parse(response.body)["client_id_metadata_document_supported"]
+
+    Hitch.configure { |c| c.client_id_metadata_enabled = true }
+    get "/.well-known/oauth-authorization-server"
+    assert_equal true, JSON.parse(response.body)["client_id_metadata_document_supported"]
+  end
+
+  test "an https client_id is an opaque unknown client while CIMD is disabled" do
+    sign_in @user
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id) { flunk "must not resolve while disabled" }) do
+      post "/oauth/authorize", params: {
+        client_id: CIMD_URL, redirect_uri: CLIENT_REDIRECT,
+        code_challenge: @challenge, code_challenge_method: "S256"
+      }
+      assert_response :bad_request
+      assert_equal "invalid_client", JSON.parse(response.body)["error"]
+    end
+  end
+
+  test "a resolved metadata document authorizes like a registered client" do
+    Hitch.configure { |c| c.client_id_metadata_enabled = true }
+    sign_in @user
+
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id) { cimd_document }) do
+      post "/oauth/authorize", params: {
+        client_id: CIMD_URL, redirect_uri: CLIENT_REDIRECT,
+        code_challenge: @challenge, code_challenge_method: "S256",
+        state: "xyz", resource: RESOURCE_A
+      }
+      assert_response :redirect
+      assert response.location.start_with?(CLIENT_REDIRECT)
+    end
+
+    # No Hitch::Client row is created — a fetched document is not a
+    # registration. Audit continuity lives on the token instead.
+    assert_equal 0, Hitch::Client.count
+    token = Hitch::AccessToken.last
+    assert_equal CIMD_URL, token.client_id
+    assert_equal "Doc Client", token.client_name
+  end
+
+  test "a redirect_uri absent from the resolved document is refused" do
+    Hitch.configure { |c| c.client_id_metadata_enabled = true }
+    sign_in @user
+
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id) { cimd_document }) do
+      post "/oauth/authorize", params: {
+        client_id: CIMD_URL, redirect_uri: "https://attacker.test/cb",
+        code_challenge: @challenge, code_challenge_method: "S256"
+      }
+      assert_response :bad_request
+    end
+  end
+
+  test "an unresolvable metadata document is an invalid_client, not a 500" do
+    Hitch.configure { |c| c.client_id_metadata_enabled = true }
+    sign_in @user
+
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id) { nil }) do
+      post "/oauth/authorize", params: {
+        client_id: CIMD_URL, redirect_uri: CLIENT_REDIRECT,
+        code_challenge: @challenge, code_challenge_method: "S256"
+      }
+      assert_response :bad_request
+      assert_equal "invalid_client", JSON.parse(response.body)["error"]
+    end
+  end
+
+  # A metadata document never passes through /oauth/register, so the
+  # https-or-loopback policy DCR clients face has to be applied here
+  # instead — otherwise CIMD is a way to register a redirect_uri that
+  # DCR would have rejected outright.
+  test "document redirect_uris must still satisfy the gem's URI policy" do
+    Hitch.configure { |c| c.client_id_metadata_enabled = true }
+    sign_in @user
+
+    # The inbound redirect_uri is deliberately a VALID one, so it clears
+    # the request-level guard and execution actually reaches the filter
+    # under test. The document declares only URIs the gem's policy
+    # rejects, so filtering leaves nothing — and the error_description
+    # distinguishes "filtered to empty" from "did not match", which is
+    # what makes this test fail if the filter is removed rather than
+    # passing for an unrelated reason.
+    hostile = cimd_document(redirect_uris: [ "javascript:alert(1)", "http://attacker.test/cb" ])
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id) { hostile }) do
+      post "/oauth/authorize", params: {
+        client_id: CIMD_URL, redirect_uri: CLIENT_REDIRECT,
+        code_challenge: @challenge, code_challenge_method: "S256"
+      }
+      assert_response :bad_request
+      assert_equal "client has no usable redirect_uris",
+        JSON.parse(response.body)["error_description"],
+        "the document's URIs must be filtered by the gem's policy, not merely fail to match"
+    end
+  end
+
+  # The "client_name is attacker-controllable, never trust it for
+  # display" invariant is cited in three separate places in the source
+  # and had no coverage in either registration scheme. The consent screen
+  # must derive its display name from the VERIFIED redirect_uri host.
+  test "a client's declared name never reaches the consent screen (DCR)" do
+    client = register_client(name: "<script>alert(1)</script>Trusted Bank")
+    sign_in @user
+
+    get "/oauth/authorize", params: {
+      client_id: client["client_id"], redirect_uri: CLIENT_REDIRECT,
+      code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
+    }
+    assert_response :success
+    assert_not_includes response.body, "Trusted Bank"
+    assert_not_includes response.body, "alert(1)"
+    assert_includes response.body, "Claude" # derived from the redirect_uri host
+  end
+
+  # MCP 2026-07-28 security considerations: a metadata document "cannot
+  # prevent localhost URL impersonation by itself", so the server SHOULD
+  # warn when a client's redirect URIs are localhost-only. Anyone can
+  # host a document claiming any name and point it at a loopback port;
+  # nothing in the document proves which program is listening there.
+  test "a localhost-only CIMD client raises a warning on the consent screen" do
+    Hitch.configure { |c| c.client_id_metadata_enabled = true }
+    sign_in @user
+
+    local = cimd_document(redirect_uris: [ "http://localhost:9000/cb", "http://127.0.0.1:9000/cb" ])
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id) { local }) do
+      get "/oauth/authorize", params: {
+        client_id: CIMD_URL, redirect_uri: "http://localhost:9000/cb",
+        code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
+      }
+      assert_response :success
+      assert_includes response.body, "runs on your own computer"
+    end
+  end
+
+  test "a CIMD client with a remote redirect_uri raises no localhost warning" do
+    Hitch.configure { |c| c.client_id_metadata_enabled = true }
+    sign_in @user
+
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id) { cimd_document }) do
+      get "/oauth/authorize", params: {
+        client_id: CIMD_URL, redirect_uri: CLIENT_REDIRECT,
+        code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
+      }
+      assert_response :success
+      assert_not_includes response.body, "runs on your own computer"
+    end
+  end
+
+  test "a client's declared name never reaches the consent screen (CIMD)" do
+    Hitch.configure { |c| c.client_id_metadata_enabled = true }
+    sign_in @user
+
+    document = cimd_document(client_name: "<script>alert(1)</script>Trusted Bank")
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id) { document }) do
+      get "/oauth/authorize", params: {
+        client_id: CIMD_URL, redirect_uri: CLIENT_REDIRECT,
+        code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
+      }
+      assert_response :success
+      assert_not_includes response.body, "Trusted Bank"
+      assert_not_includes response.body, "alert(1)"
+    end
+  end
+
   test "happy path: register → authorize → token exchange → token usable" do
     client = register_client
     sign_in @user

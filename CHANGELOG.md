@@ -117,6 +117,102 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   discovery challenge off a cross-origin 401 — it saw an opaque failure
   and could never bootstrap the OAuth flow.
 
+- **Client ID Metadata Documents (CIMD)**, the successor to Dynamic
+  Client Registration in
+  [MCP 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/).
+  A client may use an `https` URL as its `client_id`; Hitch fetches the
+  client metadata from that URL and matches `redirect_uri` against the
+  `redirect_uris` it declares. DCR continues to work unchanged — an
+  opaque `client_id` and a URL `client_id` cannot collide, so the two
+  schemes run side by side for the spec's twelve-month deprecation
+  window and beyond.
+
+  **Off by default** (`config.client_id_metadata_enabled`), which is a
+  deliberate deviation from the spec: MCP 2026-07-28 makes CIMD a
+  **SHOULD** for authorization servers and demotes DCR to a deprecated
+  **MAY**. Clients choose their mechanism from
+  `client_id_metadata_document_supported` in the discovery document, so
+  leaving it off keeps every client on the legacy path. Adopters wanting
+  spec-conformant behaviour today should set it to `true`.
+
+  The reason to hold is that enabling it gives `/oauth/authorize` an
+  outbound-fetch surface with no rate or concurrency cap behind it yet.
+  Each fetch is tightly constrained, but bounding the *volume* of
+  fetches is separate work. The default flips once that lands, and no
+  later than 1.0.
+
+  The fetch is constrained accordingly: `https` on port 443 only; no
+  redirects followed; URLs carrying userinfo or a fragment refused; DNS
+  resolved once with **every** returned address checked, then the
+  connection pinned to the checked address so a second lookup cannot
+  substitute another (DNS rebinding); a wall-clock budget covering DNS,
+  connect and read together, since a read timeout only bounds the gap
+  between reads and a server trickling bytes forever never trips one;
+  the response streamed with the size cap enforced as it arrives rather
+  than trusting a `Content-Length` the sender writes; and a cap on how
+  many `redirect_uris` a document may declare.
+
+  IPv4 destinations are screened against a blocklist of special-purpose
+  ranges. IPv6 is an **allowlist** — global unicast minus the blocks
+  carved out of it — because a denylist cannot be made complete there:
+  RFC 8215 reserves NAT64 prefixes that are network-specific, and 6to4
+  and Teredo embed an arbitrary IPv4 destination a denylist would have
+  to decode to evaluate.
+
+  A document must name itself — its `client_id` field must equal the URL
+  it was fetched from. Without that binding one hosted document could
+  impersonate any other client by listing that client's `redirect_uris`.
+  `client_id`, `client_name` and `redirect_uris` are all required, per
+  the spec, and documents are parsed strictly rather than coerced into
+  shape. A `client_id` URL must carry a path component to be treated as
+  a document reference at all, so a bare origin never triggers a fetch.
+
+  Resolved documents are cached respecting their own HTTP cache headers
+  (`Cache-Control: max-age`, `Expires`, `no-store`/`no-cache`), with
+  `config.client_id_metadata_cache_ttl` acting as a **ceiling** rather
+  than the value — a document may ask to be cached for less, so a
+  client's `redirect_uris` rotation takes effect promptly, but never for
+  more, so a hostile document cannot pin itself in a shared cache.
+
+  The consent screen warns when a client's declared `redirect_uris` are
+  localhost-only. A metadata document cannot prevent `localhost`
+  impersonation by itself: anyone can host a document claiming any name
+  and point it at a loopback port, and nothing in the document proves
+  which program is listening there.
+
+  Both successful and failed resolutions are cached
+  (`config.client_id_metadata_cache_ttl`, default 1 hour; failures for
+  60 seconds). Negative caching is the load-bearing half: without it, a
+  `client_id` pointing at a slow or hostile host yields one outbound
+  request per inbound authorize request, making the authorization server
+  an amplifier.
+
+  A failure to *reach* a host — DNS, connect, TLS, timeout — is
+  remembered per host, so appending `?n=1`, `?n=2` cannot buy another
+  connection to something that never answered. A failure of a single
+  *document* on a host that did answer is remembered only for that URL:
+  one domain serving many client documents is the normal CIMD shape, and
+  blocking the whole host over one bad document would let anyone take
+  that domain offline for its other tenants.
+
+  That split is a deliberate trade, not a complete guard. It raises the
+  cost of amplification rather than eliminating it — an attacker with a
+  wildcard DNS record still gets distinct hosts, and a responsive host
+  serving unusable documents still gets one fetch per distinct URL. A
+  rate or concurrency cap on outbound fetches is the real backstop and
+  is not implemented here. All of it also depends on the host having a
+  real `Rails.cache`; under a `NullStore` nothing is retained between
+  requests.
+
+  Declared `redirect_uris` are still held to the gem's `https`-or-
+  loopback policy (RFC 8252). A metadata document never passes through
+  `/oauth/register`, so the check DCR clients face at registration is
+  applied at authorize time instead. A resolved document does **not**
+  create a `Hitch::Client` row — a fetched document is not a
+  registration — and the `client_name` it declares is treated exactly
+  like the DCR one: recorded on the token for audit, never trusted for
+  consent-screen display.
+
 ### Changed
 
 - **CORS `Access-Control-Allow-Headers`** now includes
@@ -136,7 +232,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   — a browser ignores it otherwise. The README example and the
   `ServerEndpoint` docs now show including `CorsSupport` alongside it,
   which is what makes the 401 challenge readable to a browser client.
-
 ## [0.1.0]
 
 Initial release. A mountable Rails engine that turns a Rails app into a

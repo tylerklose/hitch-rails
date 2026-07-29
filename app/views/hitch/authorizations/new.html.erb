@@ -10,6 +10,14 @@
     is requesting access to your <%= @brand_name %> account.
   </p>
 
+  <% if @localhost_only_client %>
+    <p class="hitch-rails-consent__warning">
+      <strong>This application runs on your own computer.</strong>
+      It will receive access at <code><%= @redirect_host %></code>, so
+      approve it only if you started it yourself and recognise it.
+    </p>
+  <% end %>
+
   <% if @scopes.present? %>
     <div class="hitch-rails-consent__scopes">
       <p>It will be granted the following access:</p>

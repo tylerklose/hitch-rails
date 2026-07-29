@@ -44,6 +44,7 @@ module Hitch
       @client_name = friendly_client_name(oauth[:redirect_uri]) || @redirect_host || "An application"
       @brand_name = Hitch.configuration.brand_name
       @resource = oauth[:resource]
+      @localhost_only_client = localhost_only_client?(oauth[:client_id])
       # Show the user exactly what they're approving (clamped to the
       # server allowlist — never echo an unsupported requested scope).
       @scopes = granted_scopes(oauth[:scope])
@@ -63,12 +64,10 @@ module Hitch
         return oauth_error(*err)
       end
 
-      mcp_client = Hitch::Client.find_by(client_id: oauth[:client_id])
-
       token = Hitch::AccessToken.create_authorization!(
         principal: current_principal,
         client_id: oauth[:client_id],
-        client_name: mcp_client&.client_name || friendly_client_name(oauth[:redirect_uri]) || "Unknown",
+        client_name: declared_client_name(oauth[:client_id]) || friendly_client_name(oauth[:redirect_uri]) || "Unknown",
         redirect_uri: oauth[:redirect_uri],
         code_challenge: oauth[:code_challenge],
         code_challenge_method: oauth[:code_challenge_method],
@@ -134,14 +133,80 @@ module Hitch
     def client_redirect_error(client_id, redirect_uri)
       return [ "invalid_request", "client_id is required" ] if client_id.blank?
 
-      mcp_client = Hitch::Client.find_by(client_id: client_id)
-      return [ "invalid_client", "Unknown client_id — register via /oauth/register first" ] if mcp_client.nil?
-      return [ "invalid_request", "client has no registered redirect_uris" ] if mcp_client.redirect_uris.blank?
+      registered = registered_redirect_uris(client_id)
+      return [ "invalid_client", unknown_client_message(client_id) ] if registered.nil?
+      return [ "invalid_request", "client has no usable redirect_uris" ] if registered.blank?
 
       # RFC 8252 port-agnostic match for loopback; exact otherwise.
-      return nil if mcp_client.redirect_uris.any? { |registered| redirect_uri_matches?(registered, redirect_uri) }
+      return nil if registered.any? { |candidate| redirect_uri_matches?(candidate, redirect_uri) }
 
       [ "invalid_request", "redirect_uri not registered for this client" ]
+    end
+
+    # The client's declared redirect_uris, from whichever registration
+    # scheme its client_id belongs to. nil means "no such client";
+    # an empty array means "a client, but nothing usable to redirect to".
+    #
+    # An https client_id is a Client ID Metadata Document reference
+    # (MCP 2026-07-28); anything else is an opaque DCR client_id. The two
+    # cannot collide, so both schemes run side by side and DCR keeps
+    # working unchanged.
+    def registered_redirect_uris(client_id)
+      return Hitch::Client.find_by(client_id: client_id)&.redirect_uris unless
+        Hitch::ClientIdMetadata.reference?(client_id)
+
+      # The gem's own https-or-loopback policy (RFC 8252) still applies.
+      # DCR enforces it at registration time; a metadata document never
+      # passes through registration, so it is enforced here instead —
+      # otherwise CIMD would be a way to bypass a check DCR clients face.
+      Hitch::ClientIdMetadata.resolve(client_id)
+        &.redirect_uris
+        &.select { |candidate| valid_redirect_uri?(candidate) }
+    end
+
+    # MCP 2026-07-28 security considerations: a Client ID Metadata
+    # Document "cannot prevent localhost URL impersonation by itself",
+    # and authorization servers SHOULD warn when a client's redirect
+    # URIs are localhost-only. Anyone can host a document claiming any
+    # name and point it at a loopback port — the user's own machine is
+    # then the destination, and nothing about the document proves which
+    # program is listening there.
+    def localhost_only_client?(client_id)
+      return false unless Hitch::ClientIdMetadata.reference?(client_id)
+
+      declared = registered_redirect_uris(client_id)
+      return false if declared.blank?
+
+      declared.all? { |candidate| loopback_redirect_uri?(candidate) }
+    end
+
+    def loopback_redirect_uri?(candidate)
+      parsed = URI.parse(candidate)
+      parsed.scheme == "http" && loopback_host?(parsed.host)
+    rescue URI::InvalidURIError
+      false
+    end
+
+    def unknown_client_message(client_id)
+      if Hitch::ClientIdMetadata.reference?(client_id)
+        "Could not resolve a client metadata document at that client_id"
+      else
+        "Unknown client_id — register via /oauth/register first"
+      end
+    end
+
+    # The name the client claims for itself, from either registration
+    # scheme. Attacker-controllable in both — anyone can POST any
+    # client_name to /oauth/register, and anyone can host a metadata
+    # document saying anything. Persisted on the token for audit
+    # fidelity; the consent screen derives its display name from the
+    # verified redirect_uri host instead (see friendly_client_name).
+    def declared_client_name(client_id)
+      if Hitch::ClientIdMetadata.reference?(client_id)
+        Hitch::ClientIdMetadata.resolve(client_id)&.client_name
+      else
+        Hitch::Client.find_by(client_id: client_id)&.client_name
+      end
     end
 
     def redirect_host(uri)

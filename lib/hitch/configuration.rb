@@ -57,6 +57,34 @@ module Hitch
     # @return [Integer]
     attr_accessor :authorization_code_lifetime_seconds
 
+    # Accept an https URL as a client_id and fetch client metadata from
+    # it (Client ID Metadata Documents, the successor to Dynamic Client
+    # Registration in MCP 2026-07-28).
+    #
+    # Off by default, which is a deliberate deviation from the spec:
+    # MCP 2026-07-28 makes CIMD a SHOULD for authorization servers and
+    # demotes Dynamic Client Registration to a deprecated MAY. Clients
+    # choose their mechanism from `client_id_metadata_document_supported`
+    # in the discovery document, so leaving this off keeps every client
+    # on the legacy path.
+    #
+    # The reason to hold is that enabling it gives /oauth/authorize an
+    # outbound-fetch surface with no rate or concurrency cap behind it
+    # yet. Hitch::ClientIdMetadata constrains each fetch heavily (public
+    # addresses only, connection pinned to a vetted IP, no redirects,
+    # capped size and time, negative caching), but bounding the VOLUME of
+    # fetches is separate work. This default flips once that lands, and
+    # no later than 1.0. DCR keeps working either way.
+    # @return [Boolean]
+    attr_accessor :client_id_metadata_enabled
+
+    # How long a successfully resolved client metadata document is
+    # cached. Default 3600 (1 hour). Longer means fewer outbound
+    # fetches; shorter means a client's redirect_uri changes take effect
+    # sooner.
+    # @return [Integer]
+    attr_accessor :client_id_metadata_cache_ttl
+
     def initialize
       @principal_model = "User"
       @resource_uri = nil
@@ -67,6 +95,8 @@ module Hitch
       @authorization_code_lifetime_seconds = 600
       @principal_method = :current_user
       @login_path = nil
+      @client_id_metadata_enabled = false
+      @client_id_metadata_cache_ttl = 3600
     end
 
     # Resolve principal_model to its class constant.

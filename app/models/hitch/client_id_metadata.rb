@@ -4,6 +4,8 @@ require "net/http"
 require "resolv"
 require "ipaddr"
 require "json"
+require "timeout"
+require "digest"
 
 module Hitch
   # Client ID Metadata Documents (CIMD).
@@ -49,13 +51,40 @@ module Hitch
       "203.0.113.0/24", "224.0.0.0/4", "240.0.0.0/4", "255.255.255.255/32"
     ].map { |r| IPAddr.new(r) }.freeze
 
-    BLOCKED_IPV6 = [
-      "::/128", "::1/128", "::ffff:0:0/96", "64:ff9b::/96", "100::/64",
-      "2001:db8::/32", "fc00::/7", "fe80::/10", "ff00::/8"
+    # IPv6 is an ALLOWLIST, not a denylist. A denylist cannot be made
+    # complete here: RFC 8215 reserves 64:ff9b:1::/48 for network-specific
+    # NAT64 prefixes, and 6to4 and Teredo embed an arbitrary IPv4
+    # destination that a denylist would have to decode to evaluate. So
+    # only global unicast is allowed through, minus the special-purpose
+    # blocks carved out of it. Everything else — loopback, link-local,
+    # unique-local, IPv4-mapped, IPv4-compatible, site-local, NAT64,
+    # multicast — falls outside 2000::/3 and is refused by default.
+    GLOBAL_UNICAST_IPV6 = IPAddr.new("2000::/3")
+
+    EXCLUDED_IPV6 = [
+      "2001::/32",     # Teredo — tunnels to an arbitrary IPv4 endpoint
+      "2001:10::/28",  # ORCHID (deprecated)
+      "2001:20::/28",  # ORCHIDv2
+      "2001:db8::/32", # documentation
+      "2002::/16",     # 6to4 — embeds an arbitrary IPv4 destination
+      "3fff::/20"      # documentation (RFC 9637)
     ].map { |r| IPAddr.new(r) }.freeze
+
+    # CIMD documents live on ordinary https endpoints. Allowing an
+    # arbitrary port would let a caller drive TLS connections to any
+    # host:port from the authorization server's egress address — the
+    # standard way around a third party's source-IP allowlist.
+    ALLOWED_PORT = 443
 
     OPEN_TIMEOUT = 2
     READ_TIMEOUT = 3
+
+    # A ceiling on the WHOLE resolution: DNS plus connect plus read.
+    # read_timeout only bounds the gap between reads, so a server
+    # trickling bytes forever never trips it, and Ruby's resolver has its
+    # own multi-second retry ladder outside both socket timeouts.
+    TOTAL_BUDGET = 5
+
     MAX_BYTES = 64 * 1024
     MAX_REDIRECT_URIS = 20
 
@@ -88,7 +117,7 @@ module Hitch
         return nil unless reference?(client_id)
 
         key = cache_key(client_id)
-        cached = Rails.cache.read(key)
+        cached = cache_read(key)
 
         unless cached.nil?
           return nil if cached == false
@@ -102,15 +131,26 @@ module Hitch
           # host configuring a coder that stringifies keys would
           # otherwise turn /oauth/authorize into a 500 for that
           # client_id until the TTL expired.
-          Rails.cache.delete(key)
+          cache_delete(key)
         end
 
+        host = uri_host(client_id)
+        return nil if host.nil?
+        # Failures are remembered per HOST, not per URL. Keyed by URL, the
+        # negative cache is defeated by appending ?n=1, ?n=2, … — each a
+        # distinct key and each a valid CIMD reference — which hands out
+        # unlimited uncached outbound fetches and makes "we cache
+        # failures" no guard at all. A host that just failed is not
+        # retried, whatever path or query is hung off it.
+        return nil if cache_read(failure_key(host)) == false
+
         document = fetch_and_validate(client_id)
-        Rails.cache.write(
-          key,
-          document ? document.to_h : false,
-          expires_in: document ? Hitch.configuration.client_id_metadata_cache_ttl : FAILURE_CACHE_TTL
-        )
+        if document
+          cache_write(key, document.to_h, Hitch.configuration.client_id_metadata_cache_ttl)
+        else
+          cache_write(key, false, FAILURE_CACHE_TTL)
+          cache_write(failure_key(host), false, FAILURE_CACHE_TTL)
+        end
         document
       end
 
@@ -128,18 +168,50 @@ module Hitch
         "hitch/cimd/v1/#{Digest::SHA256.hexdigest(client_id.to_s)}"
       end
 
+      def failure_key(host)
+        "hitch/cimd/v1/failed-host/#{Digest::SHA256.hexdigest(host.to_s.downcase)}"
+      end
+
+      def uri_host(client_id)
+        URI.parse(client_id.to_s).host.presence
+      rescue URI::InvalidURIError
+        nil
+      end
+
+      # A cache outage must not take the authorize endpoint with it.
+      def cache_read(key)
+        Rails.cache.read(key)
+      rescue StandardError
+        nil
+      end
+
+      def cache_write(key, value, ttl)
+        Rails.cache.write(key, value, expires_in: ttl)
+      rescue StandardError
+        nil
+      end
+
+      def cache_delete(key)
+        Rails.cache.delete(key)
+      rescue StandardError
+        nil
+      end
+
       def fetch_and_validate(client_id)
         uri = URI.parse(client_id)
         return nil if uri.userinfo.present? || uri.fragment.present?
+        return nil unless uri.port == ALLOWED_PORT
 
-        address = safe_address(uri.host)
-        return nil if address.nil?
+        Timeout.timeout(TOTAL_BUDGET) do
+          address = safe_address(uri.host)
+          return nil if address.nil?
 
-        body = fetch(uri, address)
-        return nil if body.nil?
+          body = fetch(uri, address)
+          return nil if body.nil?
 
-        build_document(client_id, body)
-      rescue URI::InvalidURIError, JSON::ParserError => e
+          build_document(client_id, body)
+        end
+      rescue Timeout::Error, URI::InvalidURIError, JSON::ParserError => e
         log_rejection(client_id, "#{e.class}: #{e.message}")
         nil
       end
@@ -168,11 +240,20 @@ module Hitch
       end
 
       def blocked?(addr)
-        ranges = addr.ipv4? ? BLOCKED_IPV4 : BLOCKED_IPV6
-        ranges.any? { |range| range.include?(addr) }
+        return BLOCKED_IPV4.any? { |range| range.include?(addr) } if addr.ipv4?
+        return true unless GLOBAL_UNICAST_IPV6.include?(addr)
+
+        EXCLUDED_IPV6.any? { |range| range.include?(addr) }
       end
 
       def fetch(uri, address)
+        build_connection(uri, address).start { |http| read_document(http, uri) }
+      rescue StandardError => e
+        log_rejection(uri.to_s, "#{e.class}: #{e.message}")
+        nil
+      end
+
+      def build_connection(uri, address)
         http = Net::HTTP.new(uri.host, uri.port)
         # Pin the socket to the address already vetted, while leaving the
         # hostname in place for SNI and certificate verification. Without
@@ -183,21 +264,32 @@ module Hitch
         http.verify_mode = OpenSSL::SSL::VERIFY_PEER
         http.open_timeout = OPEN_TIMEOUT
         http.read_timeout = READ_TIMEOUT
+        # A read timeout on a GET is otherwise retried by reconnecting and
+        # replaying the whole request, doubling every budget above.
+        http.max_retries = 0
+        http
+      end
 
-        http.start do |connection|
-          response = connection.request(Net::HTTP::Get.new(uri, "Accept" => "application/json"))
+      # The block form of #request is load-bearing, not stylistic.
+      # Without a block, Net::HTTPResponse#reading_body calls `self.body`
+      # and buffers the ENTIRE response before #request returns — so a cap
+      # applied afterwards caps nothing, and a later #read_body raises
+      # "called twice". Passing the block keeps the body unread until
+      # read_capped streams it.
+      def read_document(http, uri)
+        http.request(Net::HTTP::Get.new(uri, "Accept" => "application/json")) do |response|
           # Redirects are not followed at all. A followed redirect would
           # need the whole address-vetting dance again for each hop, and a
           # client metadata document has no legitimate reason to move
           # during a resolution.
           return nil unless response.is_a?(Net::HTTPOK)
+          # An advisory check only — Content-Length is written by the same
+          # party as the body, and can simply be omitted under chunked
+          # framing. read_capped is what actually enforces the limit.
           return nil if response["Content-Length"].to_i > MAX_BYTES
 
-          read_capped(response)
+          return read_capped(response)
         end
-      rescue StandardError => e
-        log_rejection(uri.to_s, "#{e.class}: #{e.message}")
-        nil
       end
 
       # Content-Length is a claim, not a guarantee — read defensively and

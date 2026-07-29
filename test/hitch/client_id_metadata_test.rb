@@ -55,8 +55,44 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   end
 
   test "public addresses are accepted" do
-    %w[8.8.8.8 1.1.1.1 93.184.216.34 2606:2800:220:1:248:1893:25c8:1946].each do |address|
+    %w[8.8.8.8 1.1.1.1 93.184.216.34 2606:2800:220:1:248:1893:25c8:1946 2a00:1450:4009:81f::200e].each do |address|
       assert_equal address, CIMD.send(:safe_address, address)
+    end
+  end
+
+  # IPv6 is an allowlist precisely because these exist. A denylist has to
+  # anticipate every way an address can name somewhere it shouldn't —
+  # tunnelling formats that embed an arbitrary IPv4 destination, NAT64
+  # prefixes that are network-specific by RFC, deprecated site-local
+  # space — and cannot be complete. Only global unicast gets through.
+  test "IPv6 addresses outside global unicast are refused" do
+    {
+      "::127.0.0.1" => "IPv4-compatible (RFC 4291 §2.5.5.1)",
+      "::ffff:127.0.0.1" => "IPv4-mapped — IPAddr reports this as ipv6?, so it must be caught by the v6 path",
+      "2002:7f00:1::" => "6to4, embedding 127.0.0.1",
+      "2001:0:1234::" => "Teredo",
+      "fec0::1" => "deprecated site-local",
+      "64:ff9b::7f00:1" => "well-known NAT64",
+      "64:ff9b:1::7f00:1" => "local-use NAT64 (RFC 8215) — network-specific, unknowable to a denylist",
+      "::1" => "loopback",
+      "::" => "unspecified",
+      "fe80::1" => "link-local",
+      "fc00::1" => "unique-local",
+      "ff02::1" => "multicast",
+      "5f00::1" => "SRv6 (RFC 9602)"
+    }.each do |address, why|
+      assert_nil CIMD.send(:safe_address, address), "#{address} (#{why}) must be refused"
+    end
+  end
+
+  test "special-purpose blocks carved out of global unicast are refused" do
+    {
+      "2001:db8::1" => "documentation",
+      "2001:10::1" => "ORCHID",
+      "2001:20::1" => "ORCHIDv2",
+      "3fff::1" => "documentation (RFC 9637)"
+    }.each do |address, why|
+      assert_nil CIMD.send(:safe_address, address), "#{address} (#{why}) is inside 2000::/3 but must still be refused"
     end
   end
 
@@ -132,6 +168,108 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     assert_nil doc.client_name
   end
 
+  # --- the wire itself -------------------------------------------------
+  #
+  # Everything above stubs the network. These drive read_document over a
+  # real socket, because the interesting failures live in how Net::HTTP is
+  # called, not in the logic around it: calling #request WITHOUT a block
+  # buffers the whole body before returning, which both defeats the size
+  # cap and makes a later #read_body raise "called twice" — leaving the
+  # feature permanently inert behind a blanket rescue. Plain HTTP here;
+  # TLS and address pinning are configured in build_connection, which
+  # these deliberately bypass to isolate the request/stream contract.
+
+  def serve(handler)
+    server = TCPServer.new("127.0.0.1", 0)
+    thread = Thread.new do
+      loop do
+        socket = server.accept
+        begin
+          # Drain the request head: read lines until the blank one that
+          # terminates the headers, then respond.
+          while (line = socket.gets)
+            break if line.strip.empty?
+          end
+          handler.call(socket)
+        rescue StandardError
+          nil
+        ensure
+          socket.close rescue nil
+        end
+      end
+    rescue StandardError
+      nil
+    end
+    yield server.addr[1]
+  ensure
+    server&.close rescue nil
+    thread&.kill
+  end
+
+  def read_over_socket(port, path = "/doc.json")
+    uri = URI.parse("http://127.0.0.1:#{port}#{path}")
+    http = Net::HTTP.new(uri.host, uri.port)
+    http.open_timeout = 2
+    http.read_timeout = 3
+    http.max_retries = 0
+    http.start { |connection| CIMD.send(:read_document, connection, uri) }
+  end
+
+  test "a valid document is actually read off the wire" do
+    body = { client_id: DOC_URL, redirect_uris: [ "https://client.example/cb" ] }.to_json
+    handler = lambda do |socket|
+      socket.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n" \
+                   "Content-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n#{body}")
+    end
+
+    serve(handler) do |port|
+      assert_equal body, read_over_socket(port),
+        "the document must come back intact — if this returns nil the feature is inert no matter how correct the surrounding logic is"
+    end
+  end
+
+  # The cap has to hold when the sender omits Content-Length, because the
+  # sender is the attacker. Asserts both that the read is refused AND that
+  # the stream was abandoned early, since buffering gigabytes and then
+  # rejecting them is the failure mode being guarded against.
+  test "an oversized body is abandoned mid-stream rather than buffered" do
+    chunk = "x" * 64_000
+    intended = 200 * chunk.bytesize
+    counter = [ 0 ]
+    mutex = Mutex.new
+
+    handler = lambda do |socket|
+      socket.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n")
+      200.times do
+        socket.write("#{chunk.bytesize.to_s(16)}\r\n#{chunk}\r\n")
+        mutex.synchronize { counter[0] += chunk.bytesize }
+      end
+      socket.write("0\r\n\r\n")
+    end
+
+    serve(handler) do |port|
+      assert_nil read_over_socket(port), "a body past MAX_BYTES must be refused"
+      sent = mutex.synchronize { counter[0] }
+      assert_operator sent, :<, intended / 4,
+        "the connection must be dropped once the cap is passed — #{sent} of #{intended} bytes were accepted"
+    end
+  end
+
+  test "a non-200 response is refused" do
+    [ "404 Not Found", "302 Found", "500 Internal Server Error" ].each do |status|
+      handler = ->(socket) { socket.write("HTTP/1.1 #{status}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}") }
+      serve(handler) { |port| assert_nil read_over_socket(port), "#{status} must not be treated as a document" }
+    end
+  end
+
+  test "a declared Content-Length over the cap is refused before reading" do
+    handler = lambda do |socket|
+      socket.write("HTTP/1.1 200 OK\r\nContent-Length: #{CIMD::MAX_BYTES + 1}\r\nConnection: close\r\n\r\n")
+      socket.write("x" * (CIMD::MAX_BYTES + 1))
+    end
+    serve(handler) { |port| assert_nil read_over_socket(port) }
+  end
+
   # --- caching ---------------------------------------------------------
 
   test "a resolved document is cached rather than refetched" do
@@ -159,6 +297,41 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     Hitch.configure { |c| c.client_id_metadata_enabled = false }
     stub_class_method(CIMD, :fetch_and_validate, ->(_id) { flunk "must not fetch while disabled" }) do
       assert_nil CIMD.resolve(DOC_URL)
+    end
+  end
+
+  # Keyed by URL, the negative cache is defeated by a trailing ?n=1,
+  # ?n=2 — each a distinct key and each a valid CIMD reference — so
+  # "failures are cached" would stop being a guard at all and hand out
+  # unlimited uncached outbound fetches. Keyed by host, it holds.
+  test "a failing host is not refetched under a different path or query" do
+    calls = 0
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id) { calls += 1; nil }) do
+      assert_nil CIMD.resolve("https://evil.example/doc.json")
+      assert_nil CIMD.resolve("https://evil.example/doc.json?n=1")
+      assert_nil CIMD.resolve("https://evil.example/doc.json?n=2")
+      assert_nil CIMD.resolve("https://evil.example/other/path.json")
+    end
+    assert_equal 1, calls,
+      "appending a query string must not buy another outbound fetch — that is the whole amplification bypass"
+  end
+
+  test "a failing host does not poison an unrelated host" do
+    hosts = []
+    stub_class_method(CIMD, :fetch_and_validate, ->(id) { hosts << URI.parse(id).host; nil }) do
+      CIMD.resolve("https://evil.example/doc.json")
+      CIMD.resolve("https://good.example/doc.json")
+    end
+    assert_equal [ "evil.example", "good.example" ], hosts
+  end
+
+  # An arbitrary port would let a caller drive TLS connections to any
+  # host:port from the authorization server's egress address — the usual
+  # way around a third party's source-IP allowlist.
+  test "resolve refuses a non-443 port" do
+    stub_class_method(CIMD, :safe_address, ->(_host) { flunk "must reject on port before any DNS lookup" }) do
+      assert_nil CIMD.resolve("https://client.example:8443/doc.json")
+      assert_nil CIMD.resolve("https://client.example:22/doc.json")
     end
   end
 

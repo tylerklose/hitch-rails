@@ -136,14 +136,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   enabled, since that flag is what makes a conformant client stop
   falling back to DCR.
 
-  The fetch is constrained accordingly: `https` only; no redirects
-  followed; URLs carrying userinfo or a fragment refused; DNS resolved
-  once with **every** returned address checked against a blocklist of
-  non-public ranges, then the connection pinned to the checked address
-  so a second lookup cannot substitute another (DNS rebinding); hard
-  caps on connect time, read time, and response size, with the size cap
-  enforced while streaming rather than trusting `Content-Length`; and a
-  cap on how many `redirect_uris` a document may declare.
+  The fetch is constrained accordingly: `https` on port 443 only; no
+  redirects followed; URLs carrying userinfo or a fragment refused; DNS
+  resolved once with **every** returned address checked, then the
+  connection pinned to the checked address so a second lookup cannot
+  substitute another (DNS rebinding); a wall-clock budget covering DNS,
+  connect and read together, since a read timeout only bounds the gap
+  between reads and a server trickling bytes forever never trips one;
+  the response streamed with the size cap enforced as it arrives rather
+  than trusting a `Content-Length` the sender writes; and a cap on how
+  many `redirect_uris` a document may declare.
+
+  IPv4 destinations are screened against a blocklist of special-purpose
+  ranges. IPv6 is an **allowlist** — global unicast minus the blocks
+  carved out of it — because a denylist cannot be made complete there:
+  RFC 8215 reserves NAT64 prefixes that are network-specific, and 6to4
+  and Teredo embed an arbitrary IPv4 destination a denylist would have
+  to decode to evaluate.
 
   A document must name itself — its `client_id` field must equal the URL
   it was fetched from. Without that binding one hosted document could
@@ -155,7 +164,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   60 seconds). Negative caching is the load-bearing half: without it, a
   `client_id` pointing at a slow or hostile host yields one outbound
   request per inbound authorize request, making the authorization server
-  an amplifier.
+  an amplifier. Failures are remembered **per host**, not per URL —
+  keyed by URL, a trailing `?n=1`, `?n=2` would produce unlimited
+  distinct keys and defeat the cache entirely. This protection depends
+  on the host having a real `Rails.cache`; under a `NullStore` nothing
+  is retained between requests.
 
   Declared `redirect_uris` are still held to the gem's `https`-or-
   loopback policy (RFC 8252). A metadata document never passes through

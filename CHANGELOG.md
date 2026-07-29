@@ -164,11 +164,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   60 seconds). Negative caching is the load-bearing half: without it, a
   `client_id` pointing at a slow or hostile host yields one outbound
   request per inbound authorize request, making the authorization server
-  an amplifier. Failures are remembered **per host**, not per URL —
-  keyed by URL, a trailing `?n=1`, `?n=2` would produce unlimited
-  distinct keys and defeat the cache entirely. This protection depends
-  on the host having a real `Rails.cache`; under a `NullStore` nothing
-  is retained between requests.
+  an amplifier.
+
+  A failure to *reach* a host — DNS, connect, TLS, timeout — is
+  remembered per host, so appending `?n=1`, `?n=2` cannot buy another
+  connection to something that never answered. A failure of a single
+  *document* on a host that did answer is remembered only for that URL:
+  one domain serving many client documents is the normal CIMD shape, and
+  blocking the whole host over one bad document would let anyone take
+  that domain offline for its other tenants.
+
+  That split is a deliberate trade, not a complete guard. It raises the
+  cost of amplification rather than eliminating it — an attacker with a
+  wildcard DNS record still gets distinct hosts, and a responsive host
+  serving unusable documents still gets one fetch per distinct URL. A
+  rate or concurrency cap on outbound fetches is the real backstop and
+  is not implemented here. All of it also depends on the host having a
+  real `Rails.cache`; under a `NullStore` nothing is retained between
+  requests.
 
   Declared `redirect_uris` are still held to the gem's `https`-or-
   loopback policy (RFC 8252). A metadata document never passes through

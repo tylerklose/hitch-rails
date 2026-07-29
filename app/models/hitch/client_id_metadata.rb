@@ -17,8 +17,12 @@ module Hitch
   #
   # That inverts the trust model. DCR data arrives on a request the
   # server is already handling; CIMD makes the AUTHORIZATION SERVER issue
-  # an outbound request to a URL an unauthenticated caller chose. Every
-  # guard in this class exists because of that inversion:
+  # an outbound request to a URL the caller chose. /oauth/authorize
+  # requires a signed-in principal, so the caller is authenticated rather
+  # than anonymous — a low bar on any host with open sign-up, and note
+  # the GET consent path carries no CSRF token, so a fetch can be driven
+  # from a logged-in victim's browser. Every guard here exists because of
+  # that inversion:
   #
   #   - https only, no redirects followed, no userinfo, no fragment
   #   - DNS resolved once, every address checked against a blocklist of
@@ -65,6 +69,7 @@ module Hitch
       "2001::/32",     # Teredo — tunnels to an arbitrary IPv4 endpoint
       "2001:10::/28",  # ORCHID (deprecated)
       "2001:20::/28",  # ORCHIDv2
+      "2001:2::/48",   # benchmarking — the v6 counterpart of 198.18.0.0/15
       "2001:db8::/32", # documentation
       "2002::/16",     # 6to4 — embeds an arbitrary IPv4 destination
       "3fff::/20"      # documentation (RFC 9637)
@@ -95,6 +100,14 @@ module Hitch
     FAILURE_CACHE_TTL = 60
 
     Document = Struct.new(:client_id, :client_name, :redirect_uris, keyword_init: true)
+
+    # Failure sentinels. Only HOST_FAILURE — nothing at that host
+    # answered — may block the host's other documents; a document-level
+    # failure (plain nil) must not, or one bogus URL would take an entire
+    # CIMD-hosting domain down for everyone on it.
+    HOST_FAILURE = :host_failure
+    # Rejected on the URL's shape alone, before any network work.
+    SHAPE_REJECT = :shape_reject
 
     class << self
       # A client_id is a CIMD reference when it is an https URL. Opaque
@@ -136,28 +149,52 @@ module Hitch
 
         host = uri_host(client_id)
         return nil if host.nil?
-        # Failures are remembered per HOST, not per URL. Keyed by URL, the
-        # negative cache is defeated by appending ?n=1, ?n=2, … — each a
-        # distinct key and each a valid CIMD reference — which hands out
-        # unlimited uncached outbound fetches and makes "we cache
-        # failures" no guard at all. A host that just failed is not
-        # retried, whatever path or query is hung off it.
+        # A host that just failed to answer at all is not retried,
+        # whatever path or query is hung off it. Keyed by URL alone the
+        # negative cache is defeated by appending ?n=1, ?n=2 — each a
+        # distinct key and each a valid CIMD reference.
         return nil if cache_read(failure_key(host)) == false
 
-        document = fetch_and_validate(client_id)
-        if document
-          cache_write(key, document.to_h, Hitch.configuration.client_id_metadata_cache_ttl)
-        else
+        case (outcome = fetch_and_validate(client_id))
+        when Document
+          cache_write(key, outcome.to_h, Hitch.configuration.client_id_metadata_cache_ttl)
+          outcome
+        when SHAPE_REJECT
+          # Rejected on the URL alone, before any network work happened.
+          # Caching that costs more than it saves: repeating the check is
+          # free, while writing an entry per malformed client_id lets a
+          # caller fill a shared cache — evicting the host app's own
+          # entries — without sending a single packet.
+          nil
+        when HOST_FAILURE
           cache_write(key, false, FAILURE_CACHE_TTL)
           cache_write(failure_key(host), false, FAILURE_CACHE_TTL)
+          nil
+        else
+          # A document-level failure — 404, malformed JSON, a document
+          # naming the wrong client_id. It says nothing about its
+          # neighbours, so it must NOT block them: one domain hosting
+          # many client documents is the normal CIMD deployment shape,
+          # and poisoning the host on a per-document failure would let
+          # anyone hold that whole domain offline by requesting a single
+          # bogus URL on it once a minute.
+          cache_write(key, false, FAILURE_CACHE_TTL)
+          nil
         end
-        document
       end
 
       private
 
+      # Validates the rebuilt struct rather than relying on Document.new
+      # to object. A keyword_init Struct accepts string keys without
+      # raising and yields a half-built Document with nil members — so
+      # the stringifying-coder case this guard exists for would sail
+      # straight through an ArgumentError rescue.
       def rehydrate(cached)
-        Document.new(**cached)
+        document = Document.new(**cached)
+        return nil unless document.client_id.is_a?(String) && document.redirect_uris.is_a?(Array)
+
+        document
       rescue ArgumentError, TypeError
         nil
       end
@@ -169,7 +206,14 @@ module Hitch
       end
 
       def failure_key(host)
-        "hitch/cimd/v1/failed-host/#{Digest::SHA256.hexdigest(host.to_s.downcase)}"
+        "hitch/cimd/v1/failed-host/#{Digest::SHA256.hexdigest(normalized_host(host))}"
+      end
+
+      # "evil.example" and "evil.example." are the same DNS name and the
+      # same destination; without stripping the root label they would be
+      # two cache keys, which is one more outbound fetch than intended.
+      def normalized_host(host)
+        host.to_s.downcase.chomp(".")
       end
 
       def uri_host(client_id)
@@ -197,21 +241,33 @@ module Hitch
         nil
       end
 
+      # Returns a Document, or one of the failure sentinels. The
+      # distinction exists so resolve can tell a failure that is the
+      # HOST's (nothing there answers) from one that is this DOCUMENT's
+      # (the host answered, the document was unusable) — only the former
+      # may block that host's other documents.
       def fetch_and_validate(client_id)
         uri = URI.parse(client_id)
-        return nil if uri.userinfo.present? || uri.fragment.present?
-        return nil unless uri.port == ALLOWED_PORT
+        return SHAPE_REJECT if uri.userinfo.present? || uri.fragment.present?
+        return SHAPE_REJECT unless uri.port == ALLOWED_PORT
 
         Timeout.timeout(TOTAL_BUDGET) do
           address = safe_address(uri.host)
-          return nil if address.nil?
+          return HOST_FAILURE if address.nil?
 
           body = fetch(uri, address)
+          return HOST_FAILURE if body == HOST_FAILURE
           return nil if body.nil?
 
           build_document(client_id, body)
         end
-      rescue Timeout::Error, URI::InvalidURIError, JSON::ParserError => e
+      rescue Timeout::Error => e
+        log_rejection(client_id, "#{e.class}: #{e.message}")
+        HOST_FAILURE
+      rescue URI::InvalidURIError => e
+        log_rejection(client_id, "#{e.class}: #{e.message}")
+        SHAPE_REJECT
+      rescue JSON::ParserError => e
         log_rejection(client_id, "#{e.class}: #{e.message}")
         nil
       end
@@ -249,12 +305,19 @@ module Hitch
       def fetch(uri, address)
         build_connection(uri, address).start { |http| read_document(http, uri) }
       rescue StandardError => e
+        # Connect refused, TLS failure, socket reset: the host did not
+        # answer, which says nothing about any individual document on it.
         log_rejection(uri.to_s, "#{e.class}: #{e.message}")
-        nil
+        HOST_FAILURE
       end
 
       def build_connection(uri, address)
-        http = Net::HTTP.new(uri.host, uri.port)
+        # p_addr explicitly nil. Net::HTTP.new defaults it to :ENV, which
+        # silently routes through http_proxy — reaching the destination
+        # from the proxy's egress address rather than this app's, which is
+        # exactly the property ALLOWED_PORT exists to control. If a host
+        # wants proxying it should be a decision, not a leftover env var.
+        http = Net::HTTP.new(uri.host, uri.port, nil)
         # Pin the socket to the address already vetted, while leaving the
         # hostname in place for SNI and certificate verification. Without
         # this, Net::HTTP resolves the name a second time and the answer
@@ -334,8 +397,12 @@ module Hitch
         )
       end
 
+      # This class's contract is that it never raises into the authorize
+      # flow, and that has to hold for the logging too.
       def log_rejection(client_id, reason)
         Rails.logger.info("[hitch] rejected client id metadata document #{client_id.inspect}: #{reason}")
+        nil
+      rescue StandardError
         nil
       end
     end

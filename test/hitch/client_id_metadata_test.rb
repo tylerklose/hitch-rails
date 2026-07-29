@@ -215,6 +215,29 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     http.start { |connection| CIMD.send(:read_document, connection, uri) }
   end
 
+  # build_connection is where the address pin, TLS verification and
+  # retry suppression live, and the socket tests below deliberately
+  # bypass it — so without this every one of those settings could be
+  # deleted with the suite still green. That is the same coverage gap
+  # that let the streaming bug ship, so it gets pinned explicitly.
+  test "the connection is pinned to the vetted address with TLS verified" do
+    uri = URI.parse(DOC_URL)
+    http = CIMD.send(:build_connection, uri, "93.184.216.34")
+
+    assert_equal "93.184.216.34", http.ipaddr,
+      "the socket must go to the address that was actually vetted, not to a fresh lookup"
+    assert_equal "client.example", http.address,
+      "the hostname must survive for SNI and certificate verification"
+    assert http.use_ssl?
+    assert_equal OpenSSL::SSL::VERIFY_PEER, http.verify_mode
+    assert_equal 0, http.max_retries,
+      "a retry would replay the request and double every time budget"
+    assert_equal CIMD::OPEN_TIMEOUT, http.open_timeout
+    assert_equal CIMD::READ_TIMEOUT, http.read_timeout
+    assert_not http.proxy?,
+      "an ambient http_proxy would reach the destination from the proxy's egress instead of this app's"
+  end
+
   test "a valid document is actually read off the wire" do
     body = { client_id: DOC_URL, redirect_uris: [ "https://client.example/cb" ] }.to_json
     handler = lambda do |socket|
@@ -300,20 +323,70 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     end
   end
 
-  # Keyed by URL, the negative cache is defeated by a trailing ?n=1,
-  # ?n=2 — each a distinct key and each a valid CIMD reference — so
-  # "failures are cached" would stop being a guard at all and hand out
-  # unlimited uncached outbound fetches. Keyed by host, it holds.
-  test "a failing host is not refetched under a different path or query" do
+  # Keyed by URL alone, the negative cache is defeated by a trailing
+  # ?n=1, ?n=2 — each a distinct key and each a valid CIMD reference.
+  # Keying the unreachable-host case by host closes that: a host nothing
+  # can connect to is not retried however the URL is dressed up.
+  #
+  # This is deliberately narrower than "cache every failure by host".
+  # See the co-tenant test above: a host that ANSWERS and merely serves
+  # an unusable document must not have its other documents blocked, so
+  # the query-string bypass does survive for that case. Negative caching
+  # raises the cost of amplification here; it is not a complete guard,
+  # and a rate or concurrency cap on outbound fetches is the real
+  # backstop.
+  test "an unreachable host is not refetched under a different path or query" do
     calls = 0
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id) { calls += 1; nil }) do
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id) { calls += 1; CIMD::HOST_FAILURE }) do
       assert_nil CIMD.resolve("https://evil.example/doc.json")
       assert_nil CIMD.resolve("https://evil.example/doc.json?n=1")
       assert_nil CIMD.resolve("https://evil.example/doc.json?n=2")
       assert_nil CIMD.resolve("https://evil.example/other/path.json")
     end
-    assert_equal 1, calls,
-      "appending a query string must not buy another outbound fetch — that is the whole amplification bypass"
+    assert_equal 1, calls, "appending a query string must not buy another connection to a host that never answered"
+  end
+
+  # One domain hosting many client documents is the normal CIMD shape.
+  # A 404 or a malformed document on one of them says nothing about its
+  # neighbours — blocking them would let any signed-in user hold an
+  # entire CIMD-hosting domain offline by requesting one bogus URL on it
+  # once a minute.
+  test "a document-level failure does not block other documents on the same host" do
+    good = CIMD::Document.new(client_id: "https://shared.example/b.json", redirect_uris: [ "https://a.test/cb" ])
+    stub_class_method(CIMD, :fetch_and_validate, ->(id) { id.end_with?("a.json") ? nil : good }) do
+      assert_nil CIMD.resolve("https://shared.example/a.json")
+      assert_not_nil CIMD.resolve("https://shared.example/b.json"),
+        "a co-tenant document must still resolve after a sibling failed"
+    end
+  end
+
+  test "a host that does not answer at all does block its other documents" do
+    calls = 0
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id) { calls += 1; CIMD::HOST_FAILURE }) do
+      assert_nil CIMD.resolve("https://dead.example/a.json")
+      assert_nil CIMD.resolve("https://dead.example/b.json")
+    end
+    assert_equal 1, calls, "nothing answered at that host — its other documents are not worth a second connection"
+  end
+
+  test "a trailing dot is the same host for negative-caching purposes" do
+    calls = 0
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id) { calls += 1; CIMD::HOST_FAILURE }) do
+      assert_nil CIMD.resolve("https://dead.example/a.json")
+      assert_nil CIMD.resolve("https://dead.example./a.json")
+      assert_nil CIMD.resolve("https://DEAD.example/a.json")
+    end
+    assert_equal 1, calls, "evil.example and evil.example. are one DNS name and must share one key"
+  end
+
+  # A URL rejected on shape never touches the network, so caching the
+  # rejection buys nothing and lets a caller fill a shared cache — and
+  # evict the host app's own entries — without sending a packet.
+  test "a shape rejection writes no cache entry" do
+    before = Rails.cache.instance_variable_get(:@data)&.size.to_i
+    5.times { |i| assert_nil CIMD.resolve("https://client.example:8443/doc#{i}.json") }
+    after = Rails.cache.instance_variable_get(:@data)&.size.to_i
+    assert_equal before, after, "rejecting on port alone must not populate the cache"
   end
 
   test "a failing host does not poison an unrelated host" do

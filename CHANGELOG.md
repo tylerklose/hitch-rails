@@ -23,6 +23,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mandatory S256 PKCE blunts those today, but the injection primitive
   was identical.
 
+- **Injected `error` parameters can no longer suppress a legitimate
+  authorization.** The error parameters of RFC 6749 §4.1.2.1 are
+  stripped from the inbound query too, and they did not need the
+  query-matching gap to reach a victim: registration is unauthenticated,
+  so an attacker could register their own `client_id` with a
+  `redirect_uri` pointing at a *legitimate* client's callback carrying
+  `?error=…`. Since §4.1.2 makes `error` and `code` mutually exclusive,
+  client libraries branch on `error` first — the victim consents, a code
+  is minted, and the client discards it. `error_description` and
+  `error_uri` are attacker-written and get rendered as UI copy and a
+  "more information" link inside the real client's trusted error
+  surface.
+
+- **`redirect_uri` values carrying a URL fragment are now rejected** at
+  registration and at authorize (RFC 6749 §3.1.2: the redirection
+  endpoint URI MUST NOT include a fragment). Fragments were not compared
+  during redirect matching, so one would ride through unvalidated to a
+  client that reads response parameters from `location.hash`.
+
 ### Added
 
 - **RFC 9207 authorization response issuer.** `/oauth/authorize` now

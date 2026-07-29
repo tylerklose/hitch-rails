@@ -196,7 +196,19 @@ module Hitch
     # it must not be switchable off by a query parameter. `code` and
     # `state` are stripped for the same reason: mandatory S256 PKCE
     # blunts those today, but the injection primitive is identical.
-    RESPONSE_PARAMS = %w[code state iss].freeze
+    #
+    # The error parameters (RFC 6749 §4.1.2.1) are stripped too, and they
+    # do not even need the query-matching gap to reach a victim:
+    # registration is unauthenticated, so an attacker registers their own
+    # client_id with a redirect_uri pointing at a LEGITIMATE client's
+    # callback carrying `?error=…`. §4.1.2 makes `error` and `code`
+    # mutually exclusive, so client libraries branch on `error` first —
+    # the victim consents, a code is minted, and the client throws it
+    # away. Worse, `error_description` is rendered as UI copy and
+    # `error_uri` as a "more information" link, both attacker-written,
+    # inside the real client's trusted error surface. That is a phishing
+    # primitive on a flow the user actually approved.
+    RESPONSE_PARAMS = %w[code state iss error error_description error_uri].freeze
 
     def build_redirect_uri(base_uri, code:, state:)
       uri = URI.parse(base_uri)

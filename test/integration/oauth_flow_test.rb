@@ -309,6 +309,50 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     assert_not_includes response.location, "attacker-as.example"
   end
 
+  # RFC 6749 §4.1.2 makes `error` and `code` mutually exclusive, so client
+  # libraries branch on `error` first: an injected one makes the client
+  # discard a code the victim genuinely approved. And `error_description`
+  # / `error_uri` get rendered as UI copy and a "more information" link
+  # inside the real client's trusted error surface, both written by the
+  # attacker. Reachable without the query-matching gap at all —
+  # registration is unauthenticated, so an attacker registers their own
+  # client pointing at someone else's callback.
+  test "injected error parameters in the redirect_uri query are stripped" do
+    poisoned = "#{CLIENT_REDIRECT}?error=access_denied" \
+               "&error_description=Session+expired.+Re-authenticate+at+evil.example" \
+               "&error_uri=https%3A%2F%2Fevil.example%2Ffix"
+    client = register_client(redirect_uris: [ poisoned ])
+    sign_in @user
+
+    post "/oauth/authorize", params: {
+      client_id: client["client_id"],
+      redirect_uri: poisoned,
+      code_challenge: @challenge,
+      code_challenge_method: "S256",
+      state: "xyz",
+      resource: RESOURCE_A
+    }
+    assert_response :redirect
+
+    returned = URI.decode_www_form(URI.parse(response.location).query).to_h
+    assert_nil returned["error"], "an injected error would make the client discard a code the user approved"
+    assert_nil returned["error_description"]
+    assert_nil returned["error_uri"]
+    assert_not_includes response.location, "evil.example"
+    assert returned["code"].present?
+  end
+
+  # RFC 6749 §3.1.2: the redirection endpoint MUST NOT include a fragment.
+  # redirect_uri_matches? ignores fragments, so one would ride through
+  # unvalidated to a client that reads response params from location.hash.
+  test "DCR rejects a redirect_uri carrying a fragment" do
+    post "/oauth/register", params: {
+      client_name: "Fragment", redirect_uris: [ "#{CLIENT_REDIRECT}#iss=https://attacker.example" ]
+    }
+    assert_response :bad_request
+    assert_equal "invalid_redirect_uri", JSON.parse(response.body)["error"]
+  end
+
   # Same primitive applied to code/state. Mandatory S256 PKCE blunts the
   # code case today (an injected code is bound to the attacker's
   # challenge), but the injection itself is what closes here.

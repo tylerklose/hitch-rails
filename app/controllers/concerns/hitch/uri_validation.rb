@@ -19,6 +19,13 @@ module Hitch
     def valid_redirect_uri?(uri)
       parsed = URI.parse(uri)
       return false if parsed.host.blank?
+      # RFC 6749 §3.1.2: the redirection endpoint URI MUST NOT include a
+      # fragment component. Enforced because redirect_uri_matches? does
+      # not compare fragments either, so one would otherwise ride through
+      # unvalidated — and a client that scans location.hash for response
+      # parameters (a real pattern in libraries supporting both query and
+      # fragment response modes) would read whatever was smuggled there.
+      return false if parsed.fragment.present?
 
       case parsed.scheme
       when "https" then true

@@ -545,7 +545,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     fetches = 0
 
     begin
-      stub_class_method(Hitch::ClientIdMetadata, :fetch_and_validate, ->(_id) { fetches += 1; nil }) do
+      stub_class_method(Hitch::ClientIdMetadata, :fetch_and_validate, ->(_id, *) { fetches += 1; nil }) do
         5.times do |i|
           post "/oauth/authorize", params: {
             client_id: "https://client.example/doc#{i}.json", redirect_uri: CLIENT_REDIRECT,

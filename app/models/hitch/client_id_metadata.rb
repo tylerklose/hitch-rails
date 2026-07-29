@@ -107,12 +107,37 @@ module Hitch
     @fetch_mutex = Mutex.new
     @fetches_in_flight = 0
 
+    # Per-actor fetch counts for the current minute, and the mutex that
+    # makes check-and-increment atomic.
+    #
+    # Deliberately in-process rather than in Rails.cache. A cache-backed
+    # counter needs read, compare and write as one operation; done as
+    # three, N callers admitted by the concurrency cap each read the same
+    # value and each write value+1, so the counter advances by one while
+    # N fetches proceed — measured at 4x the configured limit with a cap
+    # of 4, not "the limit plus a few". Getting that right needs an
+    # atomic increment, which is store-specific and absent on some stores
+    # entirely.
+    #
+    # Keeping it in-process makes it atomic by construction, and drops
+    # the two failure modes the cache-backed version had to warn about:
+    # a cache outage and a store whose writes silently fail both left the
+    # limit not applying at all. The cost is that the bound is per
+    # process, so a fleet ceiling is the configured value times the
+    # worker count — the same property the concurrency cap already has,
+    # and now stated rather than implied.
+    @rate_mutex = Mutex.new
+    @rate_counts = {}
+
     # Failure sentinels. Only HOST_FAILURE — nothing at that host
     # answered — may block the host's other documents; a document-level
     # failure (plain nil) must not, or one bogus URL would take an entire
     # CIMD-hosting domain down for everyone on it.
     HOST_FAILURE = :host_failure
-    # Rejected on the URL's shape alone, before any network work.
+    # Rejected on the URL's shape alone. Handled before either cap is
+    # consulted, so it never reaches the case below — kept because the
+    # distinction (no fetch attempted, nothing knowable, nothing to
+    # cache) is the same one CAPACITY_EXCEEDED and RATE_LIMITED encode.
     SHAPE_REJECT = :shape_reject
     # Refused because a cap was already spent — no fetch was attempted.
     # Distinct from the two above because it says NOTHING about the URL
@@ -177,6 +202,14 @@ module Hitch
         # distinct key and each a valid CIMD reference.
         return nil if cache_read(failure_key(host)) == false
 
+        # Shape is judged BEFORE either cap is touched. Rejecting a URL on
+        # its scheme, port, userinfo or fragment costs nothing outbound,
+        # so charging it would let a caller spend their own minute budget
+        # on requests that never sent a packet — and then be refused a
+        # legitimate fetch.
+        target = fetch_target(client_id)
+        return nil if target.nil?
+
         # Both caps are consulted only on a genuine miss. A cached
         # resolution costs nothing outbound, so charging it against
         # either budget would penalise the common case and make a busy,
@@ -188,7 +221,7 @@ module Hitch
         # slots into a way to drain every victim's own budget while they
         # retry, locking them out past the point where the slots free up.
         outcome = with_fetch_capacity do
-          charge_rate_limit(actor) ? fetch_and_validate(client_id) : RATE_LIMITED
+          charge_rate_limit(actor) ? fetch_and_validate(client_id, target) : RATE_LIMITED
         end
 
         case outcome
@@ -249,6 +282,16 @@ module Hitch
         # Thread#raise, and one landing between the two would leak the
         # slot permanently — after `limit` of those, CIMD is dead for the
         # life of the process, silently and with nothing to alert on.
+        #
+        # Not covered by a test, deliberately. Review measured the
+        # unmasked window at up to 30% leakage in an isolated harness,
+        # but in situ Ruby already defers async interrupts across much of
+        # Mutex#synchronize, so the window is far narrower: a test driving
+        # Thread#raise at it stayed green against a no-op stand-in for
+        # this mask across repeated runs, while hanging the suite and
+        # emitting thread-death noise. A test that cannot fail for the
+        # reason it exists is worse than none, so the mask rests on that
+        # measurement and on this comment.
         Thread.handle_interrupt(Object => :never) do
           acquired = @fetch_mutex.synchronize do
             next false if @fetches_in_flight >= limit
@@ -273,6 +316,11 @@ module Hitch
       # a read-modify-write per request for precision that does not
       # change what this bounds — the order of magnitude of traffic one
       # principal can aim at a third party.
+      # Fixed 60-second window. Coarse on purpose: a sliding window buys
+      # precision that does not change what this bounds — the order of
+      # magnitude of traffic one principal can aim at a third party. Note
+      # a caller aligned to the boundary can spend two windows back to
+      # back and briefly reach twice the nominal rate.
       def charge_rate_limit(actor)
         limit = integer_setting(:client_id_metadata_fetches_per_minute)
         # nil disables. 0 and below block, matching the concurrency knob —
@@ -293,36 +341,31 @@ module Hitch
           return true
         end
 
-        key = "hitch/cimd/v1/rate/#{Digest::SHA256.hexdigest(actor.to_s)}/#{(Time.now.to_i / 60)}"
-        spent = cache_read(key)
-        if spent.nil? && cache_unavailable?
-          # Fail open — a cache blip must not break /oauth/authorize —
-          # but say so. This limiter is the argument for CIMD being safe
-          # to enable, and it evaporates exactly when infrastructure is
-          # degraded. Silence there is the worst property it could have.
-          warn_once(:cimd_rate_limit_cache_down,
-                    "Rails.cache is unavailable; CIMD per-principal rate limiting is not being applied")
-          return true
-        end
+        window = Time.now.to_i / 60
 
-        spent = spent.to_i
-        return false if spent >= limit
+        # Check and increment under one lock. Split into read-then-write,
+        # every caller the concurrency cap admits reads the same value and
+        # writes value+1, so the count rises by one while N fetches go
+        # out — the limit multiplied by the concurrency cap rather than
+        # approached.
+        @rate_mutex.synchronize do
+          # Windows older than the current one can never be consulted
+          # again, so memory stays bounded by the number of distinct
+          # principals seen within a single minute.
+          @rate_counts.reject! { |(_, seen), _| seen < window }
 
-        # Not atomic. A racing pair of requests can both read the same
-        # value and each write spent+1, so a determined caller overshoots
-        # the limit by roughly the concurrency cap — which the cap above
-        # already bounds. An atomic increment would need a store-specific
-        # API, and this is a volume bound, not an accounting ledger.
-        #
-        # A store whose reads succeed but whose writes fail is the nastier
-        # outage: the counter never advances, so every request looks like
-        # the first and the limit is gone entirely. Reads alone cannot
-        # detect that, so the write result is checked.
-        unless cache_write(key, spent + 1, 120)
-          warn_once(:cimd_rate_limit_write_failed,
-                    "Rails.cache writes are failing; CIMD per-principal rate limiting is not being applied")
+          entry = [ actor.to_s, window ]
+          spent = @rate_counts[entry].to_i
+          next false if spent >= limit
+
+          @rate_counts[entry] = spent + 1
+          true
         end
-        true
+      end
+
+      # Test seam: current count for an actor in this minute.
+      def fetches_charged_to(actor)
+        @rate_mutex.synchronize { @rate_counts[[ actor.to_s, Time.now.to_i / 60 ]].to_i }
       end
 
       # Validates the rebuilt struct rather than relying on Document.new
@@ -378,19 +421,10 @@ module Hitch
         end
       end
 
-      # Distinguishes "cache is down" from "key genuinely absent", so the
-      # rate limiter can say which one it is failing open on.
-      def cache_unavailable?
-        @cache_unavailable
-      end
-
       # A cache outage must not take the authorize endpoint with it.
       def cache_read(key)
-        value = Rails.cache.read(key)
-        @cache_unavailable = false
-        value
+        Rails.cache.read(key)
       rescue StandardError
-        @cache_unavailable = true
         nil
       end
 
@@ -427,11 +461,22 @@ module Hitch
       # HOST's (nothing there answers) from one that is this DOCUMENT's
       # (the host answered, the document was unusable) — only the former
       # may block that host's other documents.
-      def fetch_and_validate(client_id)
+      # Parses a client_id into the URI to fetch, or nil when its shape
+      # rules it out. Deliberately separate from fetch_and_validate and
+      # called before the caps: none of these checks costs a packet, so
+      # none of them should cost a token.
+      def fetch_target(client_id)
         uri = URI.parse(client_id)
-        return SHAPE_REJECT if uri.userinfo.present? || uri.fragment.present?
-        return SHAPE_REJECT unless uri.port == ALLOWED_PORT
+        return nil if uri.userinfo.present? || uri.fragment.present?
+        return nil unless uri.port == ALLOWED_PORT
 
+        uri
+      rescue URI::InvalidURIError => e
+        log_rejection(client_id, "#{e.class}: #{e.message}")
+        nil
+      end
+
+      def fetch_and_validate(client_id, uri)
         Timeout.timeout(TOTAL_BUDGET) do
           address = safe_address(uri.host)
           return HOST_FAILURE if address.nil?
@@ -447,9 +492,6 @@ module Hitch
       rescue Timeout::Error => e
         log_rejection(client_id, "#{e.class}: #{e.message}")
         HOST_FAILURE
-      rescue URI::InvalidURIError => e
-        log_rejection(client_id, "#{e.class}: #{e.message}")
-        SHAPE_REJECT
       rescue JSON::ParserError => e
         log_rejection(client_id, "#{e.class}: #{e.message}")
         nil

@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **New installations enable Client ID Metadata Documents by default.**
+  The generated initializer now sets
+  `config.client_id_metadata_enabled = true`, so a fresh install is
+  conformant with MCP 2026-07-28 — which makes supporting CIMD a SHOULD
+  and demotes Dynamic Client Registration to a deprecated MAY — through
+  configuration the adopter owns and can see.
+
+  The library fallback stays `false`, so **upgrading an existing
+  application changes nothing** until it opts in. CIMD needs the app to
+  reach arbitrary https hosts on 443 directly; Hitch ignores
+  `http_proxy` deliberately, so a host whose only egress is a proxy
+  would begin advertising support it cannot deliver, steering conformant
+  clients off DCR onto a path that fails every time. That is not a
+  change to make during a `bundle update`.
+
+  Runtime-conditional advertisement was considered and rejected.
+  Operational readiness is not reliably observable — a probe tests one
+  destination at one moment, discovery is cached for an hour, and egress
+  is transient and destination-specific, unlike the https-issuer check
+  that gates `authorization_response_iss_parameter_supported` on a
+  deterministic property of the very response being generated. More to
+  the point, the field declares whether the server *supports* CIMD; it
+  is not an availability guarantee for any given fetch. It stays tied to
+  one setting and never varies at runtime.
+
+- **`bin/rails 'hitch:cimd:check[URL]'`**, an operator diagnostic that
+  runs the real fetch path against a document you trust — same SSRF
+  constraints, same concurrency cap — and reports whether this host can
+  reach it. Egress is the one prerequisite that cannot be inferred, so
+  it is checked deliberately rather than guessed at. It reports only,
+  and never alters what discovery advertises.
+
 - **Caps on outbound Client ID Metadata Document fetches.** Each fetch
   was already tightly constrained; nothing bounded how *many* of them a
   caller could provoke, and negative caching only bounds repeats of the

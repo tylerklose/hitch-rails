@@ -27,6 +27,33 @@ Hitch.configure do |config|
   # app uses a differently-named method (e.g. :current_account).
   # config.principal_method = :current_user
 
+  # Accept an https URL as a client_id and fetch the client's metadata
+  # from it — Client ID Metadata Documents, which MCP 2026-07-28 makes a
+  # SHOULD for authorization servers, having deprecated Dynamic Client
+  # Registration. Clients read `client_id_metadata_document_supported`
+  # from your discovery document to decide which to use, so leaving this
+  # off keeps every client on the deprecated path. DCR keeps working
+  # either way.
+  #
+  # This needs your app to reach arbitrary https hosts on port 443
+  # DIRECTLY. Hitch deliberately ignores http_proxy — honouring it would
+  # reach the destination from the proxy's egress rather than your app's,
+  # which is part of what keeps this from being an SSRF hole. If your
+  # only outbound path is a proxy, or this tier has no outbound internet,
+  # set this to false; otherwise the server advertises support it cannot
+  # deliver, and conformant clients will stop falling back to DCR.
+  #
+  #   bin/rails 'hitch:cimd:check[https://some-client.example/client.json]'
+  #
+  # exercises the real fetch path against a document you trust, to
+  # confirm egress before you rely on it.
+  config.client_id_metadata_enabled = true
+
+  # Bounds on outbound metadata fetches. Both are per process, so a fleet
+  # ceiling is the value times your worker count.
+  # config.client_id_metadata_max_concurrent_fetches = 4   # nil disables; 0 blocks
+  # config.client_id_metadata_fetches_per_minute = 20      # per signed-in principal
+
   # Token lifetimes. Defaults: 1 hour access tokens, 10 minute auth codes.
   # config.access_token_lifetime_seconds = 3600
   # config.authorization_code_lifetime_seconds = 600

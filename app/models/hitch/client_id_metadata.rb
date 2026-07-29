@@ -150,6 +150,12 @@ module Hitch
     # no fetch happened, so nothing is known and nothing is cached.
     RATE_LIMITED = :rate_limited
 
+    # Result of a diagnostic fetch. Separate from Document deliberately:
+    # this is operator-facing and describes an attempt, not a client.
+    Diagnosis = Struct.new(:outcome, :detail, keyword_init: true) do
+      def ok? = outcome == :ok
+    end
+
     class << self
       # A client_id is a CIMD reference when it is an https URL. Opaque
       # DCR client_ids (UUIDs) never match, so the two schemes coexist
@@ -262,6 +268,52 @@ module Hitch
       # Number of fetches in flight right now. Test seam.
       def fetches_in_flight
         @fetch_mutex.synchronize { @fetches_in_flight.to_i }
+      end
+
+      # Operator-facing check that this host can actually reach and parse a
+      # client metadata document, for confirming egress before enabling
+      # CIMD. Takes a URL the operator already trusts.
+      #
+      # Reports only. Whether one document is reachable right now is a
+      # different question from whether this server supports CIMD, and
+      # only the second belongs in the discovery document: a capability
+      # that moved with network conditions would be stale for up to the
+      # discovery cache lifetime, and would tell clients nothing they
+      # could act on.
+      #
+      # Skips the caches and the per-principal limit (there is no
+      # principal) but not the SSRF constraints or the concurrency cap —
+      # exercising the real fetch path is the entire point.
+      def diagnose(client_id)
+        unless Hitch.configuration.client_id_metadata_enabled
+          return Diagnosis.new(outcome: :disabled,
+                               detail: "config.client_id_metadata_enabled is false, so nothing was fetched")
+        end
+
+        unless reference?(client_id)
+          return Diagnosis.new(outcome: :not_a_reference,
+                               detail: "not an https URL with a path component, so it would be treated as an opaque client_id")
+        end
+
+        target = fetch_target(client_id)
+        if target.nil?
+          return Diagnosis.new(outcome: :rejected_shape,
+                               detail: "must be https on port #{ALLOWED_PORT}, with no userinfo and no fragment")
+        end
+
+        case (outcome = with_fetch_capacity { fetch_and_validate(client_id, target) })
+        when Array
+          Diagnosis.new(outcome: :ok, detail: "resolved #{outcome.first.redirect_uris.length} redirect_uri(s)")
+        when CAPACITY_EXCEEDED
+          Diagnosis.new(outcome: :no_capacity, detail: "every fetch slot is currently busy")
+        when HOST_FAILURE
+          Diagnosis.new(outcome: :unreachable,
+                        detail: "DNS, connect, TLS or timeout failed — check direct egress on port #{ALLOWED_PORT}; " \
+                                "an ambient http_proxy is deliberately ignored")
+        else
+          Diagnosis.new(outcome: :invalid_document,
+                        detail: "the host answered but the document was unusable; the log carries the reason")
+        end
       end
 
       private

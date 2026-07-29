@@ -437,6 +437,67 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     assert_equal 2, calls, "the legitimate fetches must not have been crowded out by rejected shapes"
   end
 
+  # --- operator diagnostic ---------------------------------------------
+  #
+  # Egress is the one prerequisite that cannot be inferred, so operators
+  # get a way to test it against a document they trust. It reports; it
+  # never changes what discovery advertises.
+
+  test "diagnose reports each way a resolution can fail, without touching discovery" do
+    document = CIMD::Document.new(client_id: DOC_URL, client_name: "X", redirect_uris: [ "https://a.test/cb" ])
+
+    Hitch.configure { |c| c.client_id_metadata_enabled = false }
+    assert_equal :disabled, CIMD.diagnose(DOC_URL).outcome
+
+    Hitch.configure { |c| c.client_id_metadata_enabled = true }
+    assert_equal :not_a_reference, CIMD.diagnose("some-opaque-uuid").outcome
+    assert_equal :not_a_reference, CIMD.diagnose("https://client.example").outcome
+    assert_equal :rejected_shape, CIMD.diagnose("https://client.example:8443/d.json").outcome
+
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { CIMD::HOST_FAILURE }) do
+      result = CIMD.diagnose(DOC_URL)
+      assert_equal :unreachable, result.outcome
+      assert_match(/egress/, result.detail,
+                   "the failure an operator most needs to recognise should name itself")
+      assert_not result.ok?
+    end
+
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { nil }) do
+      assert_equal :invalid_document, CIMD.diagnose(DOC_URL).outcome
+    end
+
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { [ document, 3600 ] }) do
+      result = CIMD.diagnose(DOC_URL)
+      assert_equal :ok, result.outcome
+      assert result.ok?
+    end
+  end
+
+  # A diagnostic that populated the cache would make the next real
+  # resolution look healthy on the strength of an operator's probe.
+  test "diagnose neither reads nor writes the resolution cache" do
+    document = CIMD::Document.new(client_id: DOC_URL, client_name: "X", redirect_uris: [ "https://a.test/cb" ])
+    calls = 0
+
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { calls += 1; [ document, 3600 ] }) do
+      3.times { assert_equal :ok, CIMD.diagnose(DOC_URL).outcome }
+      assert_equal 3, calls, "a probe must actually probe, not answer from cache"
+
+      CIMD.resolve(DOC_URL, actor: "User:1")
+      assert_equal 4, calls, "and it must not have primed the cache for real traffic"
+    end
+  end
+
+  # Whether one document is reachable now is a different question from
+  # whether this server supports CIMD. Only the second is advertised.
+  test "diagnose does not spend a principal's fetch budget" do
+    Hitch.configure { |c| c.client_id_metadata_fetches_per_minute = 2 }
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { CIMD::HOST_FAILURE }) do
+      5.times { CIMD.diagnose(DOC_URL) }
+    end
+    assert_equal 0, CIMD.send(:fetches_charged_to, "User:1")
+  end
+
   # --- the wire itself -------------------------------------------------
   #
   # Everything above stubs the network. These drive read_document over a

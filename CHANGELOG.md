@@ -5,6 +5,113 @@ All notable changes to hitch-rails will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **`redirect_uri` is now matched exactly.** Matching compared scheme,
+  host, path and port but ignored the query string entirely, so anyone
+  able to craft an authorize URL could append parameters to a
+  *legitimate* registered client's callback — `?iss=…` to shadow the
+  issuer, or a `next`/`returnTo`/tenant selector the client's callback
+  reads. RFC 9700 §4.1.3 and MCP 2026-07-28 ("Authorization servers MUST
+  validate exact redirect URIs against pre-registered values") both
+  require exact comparison; RFC 8252 §7.3 grants one carve-out, the
+  *port* of a loopback redirect, and that is now the only difference
+  tolerated. Fragments and userinfo are refused on both sides.
+
+- **Response parameters are stripped from the inbound query** before
+  being set, as defense in depth behind exact matching — it covers the
+  case matching cannot, where a client legitimately *registered* a query
+  containing one. A duplicated `iss` is resolved differently by
+  different client parsers: first-wins parsers (`URLSearchParams`, Go's
+  `Query().Get`, Python's `parse_qs`) would read the injected issuer and
+  send the code exchange to an attacker's token endpoint, which is the
+  precise mix-up RFC 9207 exists to prevent. `code` and `state` are
+  stripped for the same reason; mandatory S256 PKCE blunts those today,
+  but the injection primitive is identical.
+
+- **Injected `error` parameters can no longer suppress a legitimate
+  authorization.** The error parameters of RFC 6749 §4.1.2.1 are
+  stripped from the inbound query too, and they did not need the
+  query-matching gap to reach a victim: registration is unauthenticated,
+  so an attacker could register their own `client_id` with a
+  `redirect_uri` pointing at a *legitimate* client's callback carrying
+  `?error=…`. Since §4.1.2 makes `error` and `code` mutually exclusive,
+  client libraries branch on `error` first — the victim consents, a code
+  is minted, and the client discards it. `error_description` and
+  `error_uri` are attacker-written and get rendered as UI copy and a
+  "more information" link inside the real client's trusted error
+  surface.
+
+- **`redirect_uri` values carrying a URL fragment are now rejected** at
+  registration and at authorize (RFC 6749 §3.1.2: the redirection
+  endpoint URI MUST NOT include a fragment). Fragments were not compared
+  during redirect matching, so one would ride through unvalidated to a
+  client that reads response parameters from `location.hash`.
+
+### Added
+
+- **RFC 9207 authorization response issuer.** `/oauth/authorize` now
+  appends `iss` to the redirect, and the discovery document advertises
+  `authorization_response_iss_parameter_supported` when the issuer is an
+  `https` URL. This lets a
+  client registered with more than one authorization server detect a
+  mix-up before redeeming the code. MCP 2026-07-28 makes sending `iss` a
+  SHOULD and advertising the capability a MUST once you do (a future
+  revision is expected to upgrade sending it to MUST). Additive for
+  older clients, which ignore an unrecognized redirect parameter.
+
+  The two halves ship together deliberately. A conformant client — the
+  Ruby MCP SDK does this as of 0.24.0 — treats an advertised-but-absent
+  `iss` as a hard failure and refuses the exchange, so advertising the
+  capability without sending the parameter is worse than doing neither.
+  Both values now come from a shared `Hitch::IssuerUrl` helper because
+  clients compare them with an exact string comparison.
+
+  **Over plain `http` this is not conformant, deliberately.** RFC 9207
+  §2 requires the `iss` value use the `https` scheme, and withholding
+  the advertisement does not make an `http` value valid. `iss` is
+  emitted anyway so a local development flow exercises the same path as
+  production, rather than the parameter appearing for the first time on
+  deploy in a security control that is unpleasant to debug remotely.
+  A client that already accepted the non-conformant `http` issuer from
+  the same discovery document can compare the two and pass; a stricter
+  client may reject that issuer during discovery and never reach the
+  comparison, which is correct behaviour and not something emitting
+  `iss` either causes or cures. An `http` deployment is already outside
+  the spec regardless, since MCP 2026-07-28 requires every authorization
+  server endpoint be served over HTTPS. Withholding
+  the advertisement is what keeps it safe rather than conformant: a
+  present-but-unadvertised `iss` is simply compared, whereas an
+  advertised-but-unusable one makes a conformant client hard-fail.
+
+- **`Access-Control-Expose-Headers: WWW-Authenticate`** on the 401 from
+  `Hitch::ServerEndpoint`. `WWW-Authenticate` is not a CORS-safelisted
+  response header, so a browser-based MCP client could not read the
+  discovery challenge off a cross-origin 401 — it saw an opaque failure
+  and could never bootstrap the OAuth flow.
+
+### Changed
+
+- **CORS `Access-Control-Allow-Headers`** now includes
+  `MCP-Protocol-Version`, `Mcp-Method`, and `Mcp-Name`, which MCP
+  2026-07-28 makes required request headers on Streamable HTTP.
+
+  Scope note: `Hitch::CorsSupport` is mixed into the gem's OAuth and
+  discovery endpoints, which never receive those headers. This matters
+  for host MCP controllers that include `CorsSupport` themselves — the
+  `/mcp` endpoint is host-owned by design, and the gem does not put CORS
+  on it. Making `ServerEndpoint` carry CORS (including the `Mcp-Param-*`
+  headers, whose names are dynamic and cannot be enumerated in an
+  allow-list) is tracked separately.
+
+  For the same reason, the `Access-Control-Expose-Headers` above only
+  functions when the response also carries `Access-Control-Allow-Origin`
+  — a browser ignores it otherwise. The README example and the
+  `ServerEndpoint` docs now show including `CorsSupport` alongside it,
+  which is what makes the 401 challenge readable to a browser client.
+
 ## [0.1.0]
 
 Initial release. A mountable Rails engine that turns a Rails app into a

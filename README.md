@@ -119,9 +119,17 @@ post "mcp", to: "mcp_server#create"
 match "mcp", to: "mcp_server#preflight", via: :options
 ```
 
+If browser-based MCP clients (claude.ai, chatgpt.com) will reach this
+endpoint, include `Hitch::CorsSupport` as well. `ServerEndpoint` does
+not set `Access-Control-Allow-Origin` — the `/mcp` route is yours, so
+CORS on it is your decision — and without that header a browser cannot
+read the `401` challenge that starts the OAuth flow, even though
+`ServerEndpoint` exposes it. Non-browser clients are unaffected.
+
 ```ruby
 class MCPServerController < ApplicationController
   include Hitch::ServerEndpoint
+  include Hitch::CorsSupport   # browser-based MCP clients only
   before_action :require_mcp_token!
 
   def create

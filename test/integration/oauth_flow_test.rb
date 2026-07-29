@@ -448,13 +448,57 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     Hitch.configure { |c| c.client_id_metadata_enabled = true }
     sign_in @user
 
-    hostile = cimd_document(redirect_uris: [ "http://attacker.test/cb", "javascript:alert(1)" ])
+    # The inbound redirect_uri is deliberately a VALID one, so it clears
+    # the request-level guard and execution actually reaches the filter
+    # under test. The document declares only URIs the gem's policy
+    # rejects, so filtering leaves nothing — and the error_description
+    # distinguishes "filtered to empty" from "did not match", which is
+    # what makes this test fail if the filter is removed rather than
+    # passing for an unrelated reason.
+    hostile = cimd_document(redirect_uris: [ "javascript:alert(1)", "http://attacker.test/cb" ])
     stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id) { hostile }) do
       post "/oauth/authorize", params: {
-        client_id: CIMD_URL, redirect_uri: "http://attacker.test/cb",
+        client_id: CIMD_URL, redirect_uri: CLIENT_REDIRECT,
         code_challenge: @challenge, code_challenge_method: "S256"
       }
       assert_response :bad_request
+      assert_equal "client has no usable redirect_uris",
+        JSON.parse(response.body)["error_description"],
+        "the document's URIs must be filtered by the gem's policy, not merely fail to match"
+    end
+  end
+
+  # The "client_name is attacker-controllable, never trust it for
+  # display" invariant is cited in three separate places in the source
+  # and had no coverage in either registration scheme. The consent screen
+  # must derive its display name from the VERIFIED redirect_uri host.
+  test "a client's declared name never reaches the consent screen (DCR)" do
+    client = register_client(name: "<script>alert(1)</script>Trusted Bank")
+    sign_in @user
+
+    get "/oauth/authorize", params: {
+      client_id: client["client_id"], redirect_uri: CLIENT_REDIRECT,
+      code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
+    }
+    assert_response :success
+    assert_not_includes response.body, "Trusted Bank"
+    assert_not_includes response.body, "alert(1)"
+    assert_includes response.body, "Claude" # derived from the redirect_uri host
+  end
+
+  test "a client's declared name never reaches the consent screen (CIMD)" do
+    Hitch.configure { |c| c.client_id_metadata_enabled = true }
+    sign_in @user
+
+    document = cimd_document(client_name: "<script>alert(1)</script>Trusted Bank")
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id) { document }) do
+      get "/oauth/authorize", params: {
+        client_id: CIMD_URL, redirect_uri: CLIENT_REDIRECT,
+        code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
+      }
+      assert_response :success
+      assert_not_includes response.body, "Trusted Bank"
+      assert_not_includes response.body, "alert(1)"
     end
   end
 

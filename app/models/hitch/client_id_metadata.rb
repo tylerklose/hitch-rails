@@ -28,7 +28,10 @@ module Hitch
   #     so a document cannot claim to be a different client
   #   - successes and failures are both cached, so a hostile or dead URL
   #     cannot be used to make the authorize endpoint issue an outbound
-  #     request per inbound request
+  #     request per inbound request. Note this one depends on the host
+  #     having a real Rails.cache: under a NullStore (Rails' default in
+  #     test, and in development without tmp/caching-dev.txt) nothing is
+  #     retained between requests and the amplification guard is absent.
   #
   # Disabled unless the host opts in (`config.client_id_metadata_enabled`).
   # The feature adds an outbound-fetch surface to an endpoint that had
@@ -84,12 +87,27 @@ module Hitch
       def resolve(client_id)
         return nil unless reference?(client_id)
 
-        cached = Rails.cache.read(cache_key(client_id))
-        return cached.presence && rehydrate(cached) unless cached.nil?
+        key = cache_key(client_id)
+        cached = Rails.cache.read(key)
+
+        unless cached.nil?
+          return nil if cached == false
+
+          document = rehydrate(cached)
+          return document if document
+
+          # An entry we can't read is treated as a miss rather than
+          # propagating. A Document member added in a later release, a
+          # rolling deploy sharing a cache between two versions, or a
+          # host configuring a coder that stringifies keys would
+          # otherwise turn /oauth/authorize into a 500 for that
+          # client_id until the TTL expired.
+          Rails.cache.delete(key)
+        end
 
         document = fetch_and_validate(client_id)
         Rails.cache.write(
-          cache_key(client_id),
+          key,
           document ? document.to_h : false,
           expires_in: document ? Hitch.configuration.client_id_metadata_cache_ttl : FAILURE_CACHE_TTL
         )
@@ -98,10 +116,16 @@ module Hitch
 
       private
 
-      def rehydrate(cached) = Document.new(**cached)
+      def rehydrate(cached)
+        Document.new(**cached)
+      rescue ArgumentError, TypeError
+        nil
+      end
 
+      # Versioned so a change to Document's shape invalidates old entries
+      # instead of colliding with them.
       def cache_key(client_id)
-        "hitch/cimd/#{Digest::SHA256.hexdigest(client_id.to_s)}"
+        "hitch/cimd/v1/#{Digest::SHA256.hexdigest(client_id.to_s)}"
       end
 
       def fetch_and_validate(client_id)

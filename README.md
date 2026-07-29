@@ -104,6 +104,12 @@ response size, and both successes and failures cached so a hostile URL
 can't drive one outbound request per inbound one. Even so, it is a
 surface an adopter should choose knowingly.
 
+That last protection depends on the host having a real `Rails.cache`.
+Under a `NullStore` — Rails' default in test, and in development without
+`tmp/caching-dev.txt` — nothing is retained between requests, and a
+`client_id` pointing at a dead or hostile host will be fetched once per
+authorize request.
+
 DCR is unaffected — an opaque `client_id` and a URL `client_id` cannot
 collide, so both schemes work side by side. The discovery document only
 advertises `client_id_metadata_document_supported` when this is enabled,

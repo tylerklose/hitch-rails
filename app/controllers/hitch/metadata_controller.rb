@@ -52,16 +52,29 @@ module Hitch
     private
 
     # RFC 9207 §2: the `iss` value "MUST be a URL that uses the 'https'
-    # scheme". Over plain http — development, or a deployment that never
-    # terminated TLS — the value this server would emit is not a valid
-    # issuer identifier, so promising conformance with it would be
-    # promising something it cannot deliver.
+    # scheme". Over plain http the value this server emits is therefore
+    # not a valid issuer identifier, and withholding the advertisement
+    # does not make it one.
     #
-    # `iss` is still SENT in that case. The spec's validation table has
-    # clients compare a present `iss` against the recorded issuer whether
-    # or not support is advertised, so emitting it stays useful; only the
-    # promise is withheld, which is what keeps a client from hard-failing
-    # on a value it should never have been given.
+    # Be clear about what this is: over http the server is NOT conformant
+    # here, and that is deliberate development compatibility, not a
+    # design. It is also not the first deviation on that path — MCP
+    # 2026-07-28 requires every authorization server endpoint be served
+    # over HTTPS, so an http deployment is already outside the spec and
+    # the issuer scheme is the smaller of its problems.
+    #
+    # `iss` is still emitted over http rather than suppressed, so that a
+    # local development flow exercises the same path as production. The
+    # alternative — omit it below https — means the parameter silently
+    # appears for the first time on deploy, in a security control that is
+    # unpleasant to debug remotely. Nothing breaks: the client compares
+    # it against the issuer from the same discovery document, which is
+    # equally http, so the comparison passes.
+    #
+    # Withholding the advertisement is what keeps this safe rather than
+    # conformant. Per the spec's validation table, an advertised-but-
+    # unusable value is what makes a conformant client hard-fail; a
+    # present-but-unadvertised one it simply compares.
     def issuer_is_https?
       issuer_url.to_s.start_with?("https://")
     end

@@ -86,10 +86,16 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     https!(false)
   end
 
-  # `iss` is still SENT over http. The spec's table has clients compare a
-  # present `iss` against the recorded issuer whether or not support is
-  # advertised, so emitting it stays useful; only the promise is withheld.
-  test "iss is emitted even when the capability is not advertised" do
+  # An http `iss` is NOT conformant — RFC 9207 §2 requires the value use
+  # the https scheme, and withholding the advertisement does not change
+  # that. It is emitted anyway as deliberate development compatibility,
+  # so a local flow exercises the same path as production instead of the
+  # parameter appearing for the first time on deploy. An http deployment
+  # is already outside the spec regardless (MCP 2026-07-28 requires every
+  # authorization server endpoint be served over HTTPS), and the client
+  # compares this against an equally-http issuer from the same discovery
+  # document, so the comparison passes.
+  test "iss is emitted over http as development compatibility, unadvertised" do
     client = register_client
     sign_in @user
 
@@ -374,14 +380,15 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     end
   end
 
-  # redirect_uri matching ignores the query string, so an attacker who can
-  # craft an authorize URL may append ?iss=… to a LEGITIMATE client's
-  # registered callback. If that copy survives, the response carries `iss`
-  # twice and a first-wins client parser (URLSearchParams, Go's
-  # Query().Get, Python's parse_qs) reads the attacker's issuer and sends
-  # its code exchange to the attacker's token endpoint — the exact mix-up
-  # RFC 9207 exists to stop, with the discovery document now promising
-  # clients that this defense is in place.
+  # Exact matching (see redirect_uri_matches?) rejects an unregistered
+  # query outright, so this covers the case it cannot: a client whose
+  # REGISTERED redirect_uri already carries a response parameter. The
+  # match succeeds there, and without stripping the response would carry
+  # `iss` twice — which copy wins is a property of the client's query
+  # parser, and a first-wins parser (URLSearchParams, Go's Query().Get,
+  # Python's parse_qs) would read the registered value and send its code
+  # exchange to whatever token endpoint that names. Exactly the mix-up
+  # RFC 9207 exists to stop, on a defense the discovery document promises.
   test "an injected iss in the redirect_uri query is refused outright" do
     client = register_client(redirect_uris: [ CLIENT_REDIRECT ])
     sign_in @user

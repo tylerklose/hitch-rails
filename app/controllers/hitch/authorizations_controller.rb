@@ -183,17 +183,18 @@ module Hitch
     # 9207 §2 covers error responses too.
     #
     # Response parameters are stripped from the inbound query before
-    # being set. redirect_uri matching deliberately ignores the query
-    # string (see Hitch::UriValidation#redirect_uri_matches?), so anyone
-    # able to craft an authorize URL can append `?iss=…` to a legitimate
-    # client's registered callback and have it survive into the
-    # response. The client then sees the parameter twice, and which copy
-    # wins is a property of its query parser — first-wins parsers
-    # (URLSearchParams, Go's Query().Get, Python's parse_qs) read the
-    # injected value and route the code exchange at an attacker's token
-    # endpoint. That is exactly the mix-up RFC 9207 exists to prevent,
-    # and the discovery document now promises clients that defense, so
-    # it must not be switchable off by a query parameter. `code` and
+    # being set. This is defense in depth, not the primary control —
+    # Hitch::UriValidation#redirect_uri_matches? compares the query, so
+    # an unregistered `?iss=…` is rejected before reaching this method.
+    # What it covers is the case exact matching cannot: a client that
+    # legitimately REGISTERED a query string containing a response
+    # parameter. There the match succeeds, and without this the response
+    # would carry the parameter twice — which copy wins is a property of
+    # the client's query parser, and first-wins parsers (URLSearchParams,
+    # Go's Query().Get, Python's parse_qs) would read the registered
+    # value and route the code exchange at whatever token endpoint it
+    # names. That is the mix-up RFC 9207 exists to prevent, and the
+    # discovery document promises clients that defense. `code` and
     # `state` are stripped for the same reason: mandatory S256 PKCE
     # blunts those today, but the injection primitive is identical.
     #

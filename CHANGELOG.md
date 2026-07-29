@@ -54,11 +54,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **RFC 9207 authorization response issuer.** `/oauth/authorize` now
   appends `iss` to the redirect, and the discovery document advertises
-  `authorization_response_iss_parameter_supported` when the issuer is
-  an `https` URL — RFC 9207 §2 requires the `iss` value use the https
-  scheme, so over plain http (development, or a deployment that never
-  terminated TLS) the capability is not advertised, though `iss` is
-  still emitted because clients compare a present value either way. This lets a
+  `authorization_response_iss_parameter_supported` when the issuer is an
+  `https` URL. This lets a
   client registered with more than one authorization server detect a
   mix-up before redeeming the code. MCP 2026-07-28 makes sending `iss` a
   SHOULD and advertising the capability a MUST once you do (a future
@@ -71,6 +68,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   capability without sending the parameter is worse than doing neither.
   Both values now come from a shared `Hitch::IssuerUrl` helper because
   clients compare them with an exact string comparison.
+
+  **Over plain `http` this is not conformant, deliberately.** RFC 9207
+  §2 requires the `iss` value use the `https` scheme, and withholding
+  the advertisement does not make an `http` value valid. `iss` is
+  emitted anyway so a local development flow exercises the same path as
+  production, rather than the parameter appearing for the first time on
+  deploy in a security control that is unpleasant to debug remotely.
+  Nothing breaks — the client compares it against an equally-`http`
+  issuer from the same discovery document — and an `http` deployment is
+  already outside the spec regardless, since MCP 2026-07-28 requires
+  every authorization server endpoint be served over HTTPS. Withholding
+  the advertisement is what keeps it safe rather than conformant: a
+  present-but-unadvertised `iss` is simply compared, whereas an
+  advertised-but-unusable one makes a conformant client hard-fail.
 
 - **`Access-Control-Expose-Headers: WWW-Authenticate`** on the 401 from
   `Hitch::ServerEndpoint`. `WWW-Authenticate` is not a CORS-safelisted

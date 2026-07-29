@@ -44,13 +44,22 @@ module Hitch
         grant_types: [ "authorization_code" ],
         response_types: [ "code" ],
         scope: Hitch.configuration.supported_scopes.join(" "),
-        token_endpoint_auth_method: "none",
-        # Echo what was actually stored, not what was sent. RFC 7591 §3.2.1
-        # makes the response the authoritative record of registered
-        # metadata, so a client that sent an unrecognized value learns it
-        # was dropped rather than assuming it took effect.
-        application_type: client.application_type
-      }.compact, status: :created
+        token_endpoint_auth_method: "none"
+      }.merge(
+        # Echo what was actually STORED, not what was sent — RFC 7591
+        # §3.2.1 makes the response the authoritative record of registered
+        # metadata, so a client that sent an unrecognized value can tell
+        # it was dropped by diffing its request against this response.
+        # (Not that it reads as an explicit rejection: §2 defaults an
+        # absent application_type to "web", so silence means the default,
+        # not "you declared nothing".)
+        #
+        # Omitted rather than sent as null when undeclared. Scoped to this
+        # one key deliberately: a blanket `.compact` would silently drop
+        # any future nullable field, and §3.2.1 makes some of them —
+        # `client_secret_expires_at` when a secret is issued — REQUIRED.
+        client.application_type ? { application_type: client.application_type } : {}
+      ), status: :created
     end
   end
 end

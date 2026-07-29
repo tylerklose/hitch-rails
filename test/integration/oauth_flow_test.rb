@@ -219,6 +219,12 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
       resource: RESOURCE_A
     }
     assert_response :redirect
+    # Assert the destination, not just that SOME redirect happened. If
+    # enforcement is ever added the RFC 6749 §4.1.2.1-conformant way — an
+    # error redirect back to the client — a bare `assert_response
+    # :redirect` would still pass while the flow was actually refused.
+    assert response.location.start_with?("http://localhost:54321/cb")
+    assert_includes response.location, "code="
   end
 
   test "happy path: register → authorize → token exchange → token usable" do

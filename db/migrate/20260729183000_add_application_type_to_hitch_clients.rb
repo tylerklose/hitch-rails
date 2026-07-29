@@ -5,8 +5,10 @@
 # native/CLI client (which needs a loopback redirect on an ephemeral
 # port) from a web one.
 #
-# Nullable, and deliberately NOT defaulted to "web". RFC 7591 §2 says the
-# field defaults to "web" when omitted, but adopting that default here
+# Nullable, and deliberately NOT defaulted to "web". OpenID Connect
+# Dynamic Client Registration 1.0 §2 — which defines the field; RFC 7591
+# does not — says it defaults to "web" when omitted, but adopting that
+# default here
 # would erase the distinction that makes the column useful: a client that
 # genuinely declared "web" and a client from before the field existed
 # would be indistinguishable. Claude Code omits it today and depends on

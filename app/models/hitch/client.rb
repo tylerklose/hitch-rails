@@ -12,7 +12,10 @@ module Hitch
   class Client < ApplicationRecord
     self.table_name = "hitch_clients"
 
-    # RFC 7591 §2 defines exactly these two. A client sending anything
+    # OpenID Connect Dynamic Client Registration 1.0 §2 defines exactly
+    # these two. (Not RFC 7591 — that spec has no application_type; the
+    # field is IANA-registered, which is how it rides along in an
+    # otherwise RFC 7591 registration request.) A client sending anything
     # else is recorded as having declared nothing, rather than having its
     # registration rejected — see #normalize_application_type.
     APPLICATION_TYPES = %w[native web].freeze

@@ -21,7 +21,8 @@ class Hitch::ClientTest < ActiveSupport::TestCase
     assert_equal "MCP Client", c.client_name
   end
 
-  # MCP 2026-07-28 / RFC 7591 §2. Recorded, never enforced — the value is
+  # MCP 2026-07-28 / OpenID Connect Dynamic Client Registration 1.0 §2.
+  # Recorded, never enforced — the value is
   # what makes a later decision about loopback redirects evidence-based.
   test "register! persists a declared application_type" do
     Hitch::Client::APPLICATION_TYPES.each do |type|
@@ -33,7 +34,8 @@ class Hitch::ClientTest < ActiveSupport::TestCase
   end
 
   # Absent and unrecognized are both "did not declare". Deliberately NOT
-  # defaulted to "web" per RFC 7591 §2: that default would make a client
+  # defaulted to "web" per OpenID Connect Dynamic Client Registration
+  # 1.0 §2: that default would make a client
   # that genuinely said "web" indistinguishable from one that predates
   # the field, erasing exactly the signal the column exists to capture.
   test "register! records nil when application_type is absent or unrecognized" do

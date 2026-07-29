@@ -10,12 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`application_type` is recorded at Dynamic Client Registration.** MCP
-  2026-07-28 has clients declare it (RFC 7591 §2: `native` or `web`) so a
+  2026-07-28 has clients declare it (OpenID Connect Dynamic Client
+  Registration 1.0 §2: `native` or `web` — the field is defined there,
+  not in RFC 7591) so a
   server can tell a native/CLI client from a web one. Hitch persists and
   echoes it, and **does not act on it**.
 
-  Deliberately not defaulted to `web` when omitted, though RFC 7591 §2
-  says the field defaults that way: adopting the default would make a
+  Deliberately not defaulted to `web` when omitted, though OpenID
+  Connect Dynamic Client Registration 1.0 §2 says it defaults that way: adopting the default would make a
   client that genuinely declared `web` indistinguishable from one that
   predates the field, erasing the signal the column exists to capture.
   `NULL` means "did not declare".

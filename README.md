@@ -16,6 +16,9 @@ pieces an MCP server needs:
   Claude.ai, Cursor, ChatGPT, etc.) use
 - **Dynamic Client Registration** (RFC 7591) — clients self-register, no
   manual key minting
+- **Client ID Metadata Documents** — DCR's successor in MCP 2026-07-28;
+  an `https` URL as `client_id`, with the metadata fetched from it.
+  Opt-in (see below); DCR keeps working alongside it
 - **Resource Indicators with audience binding** (RFC 8707) — tokens
   carry the audience they were issued for; the MCP server validates
   them per the [2025-11-25 MCP authorization spec](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization)'s MUST
@@ -79,6 +82,33 @@ Hitch.configure do |config|
   config.login_path = "/sign_in"           # where to redirect when unauth'd
 end
 ```
+
+### Client ID Metadata Documents (opt-in)
+
+MCP 2026-07-28 deprecates Dynamic Client Registration in favour of CIMD:
+a client uses an `https` URL as its `client_id`, and the authorization
+server fetches the client metadata from that URL.
+
+```ruby
+config.client_id_metadata_enabled = true   # default: false
+config.client_id_metadata_cache_ttl = 3600 # seconds a resolved document is cached
+```
+
+It is off by default because it changes the shape of the endpoint:
+`/oauth/authorize` begins making outbound HTTPS requests to URLs chosen
+by unauthenticated callers. `Hitch::ClientIdMetadata` constrains that
+tightly — public addresses only (every address a name resolves to is
+checked, and the connection is pinned to the checked one so a second
+lookup can't substitute another), no redirects followed, capped time and
+response size, and both successes and failures cached so a hostile URL
+can't drive one outbound request per inbound one. Even so, it is a
+surface an adopter should choose knowingly.
+
+DCR is unaffected — an opaque `client_id` and a URL `client_id` cannot
+collide, so both schemes work side by side. The discovery document only
+advertises `client_id_metadata_document_supported` when this is enabled,
+because that flag is what makes a conformant client stop falling back to
+DCR.
 
 ### Rails 8 built-in authentication
 

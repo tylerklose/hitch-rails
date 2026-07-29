@@ -32,7 +32,7 @@ module Hitch
         # AuthorizationsController#build_redirect_uri appends it
         # unconditionally; the two must never be separated.
         authorization_response_iss_parameter_supported: issuer_is_https?
-      }
+      }.merge(client_id_metadata_advertisement)
     end
 
     def resource
@@ -80,6 +80,18 @@ module Hitch
     # present-but-unadvertised one it simply compares.
     def issuer_is_https?
       issuer_url.to_s.start_with?("https://")
+    end
+
+    # Advertised only when the host has actually enabled CIMD. The flag
+    # is what makes a conformant client stop falling back to Dynamic
+    # Client Registration and send a document URL as its client_id (the
+    # Ruby MCP SDK branches on exactly this), so advertising it while the
+    # server would reject every such client_id turns a working DCR flow
+    # into a broken one.
+    def client_id_metadata_advertisement
+      return {} unless Hitch.configuration.client_id_metadata_enabled
+
+      { client_id_metadata_document_supported: true }
     end
 
     # The metadata body is derived from the request Host (issuer +

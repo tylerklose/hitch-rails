@@ -117,6 +117,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   discovery challenge off a cross-origin 401 — it saw an opaque failure
   and could never bootstrap the OAuth flow.
 
+- **Client ID Metadata Documents (CIMD)**, the successor to Dynamic
+  Client Registration in
+  [MCP 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/).
+  A client may use an `https` URL as its `client_id`; Hitch fetches the
+  client metadata from that URL and matches `redirect_uri` against the
+  `redirect_uris` it declares. DCR continues to work unchanged — an
+  opaque `client_id` and a URL `client_id` cannot collide, so the two
+  schemes run side by side for the spec's twelve-month deprecation
+  window and beyond.
+
+  **Off by default** (`config.client_id_metadata_enabled`). Enabling it
+  means `/oauth/authorize` makes an outbound HTTPS request to a URL
+  chosen by an unauthenticated caller — a surface the endpoint otherwise
+  does not have. That warrants a deliberate decision rather than
+  arriving with an upgrade. The capability is advertised in the
+  discovery document (`client_id_metadata_document_supported`) only when
+  enabled, since that flag is what makes a conformant client stop
+  falling back to DCR.
+
+  The fetch is constrained accordingly: `https` only; no redirects
+  followed; URLs carrying userinfo or a fragment refused; DNS resolved
+  once with **every** returned address checked against a blocklist of
+  non-public ranges, then the connection pinned to the checked address
+  so a second lookup cannot substitute another (DNS rebinding); hard
+  caps on connect time, read time, and response size, with the size cap
+  enforced while streaming rather than trusting `Content-Length`; and a
+  cap on how many `redirect_uris` a document may declare.
+
+  A document must name itself — its `client_id` field must equal the URL
+  it was fetched from. Without that binding one hosted document could
+  impersonate any other client by listing that client's `redirect_uris`.
+  Documents are parsed strictly, never coerced into shape.
+
+  Both successful and failed resolutions are cached
+  (`config.client_id_metadata_cache_ttl`, default 1 hour; failures for
+  60 seconds). Negative caching is the load-bearing half: without it, a
+  `client_id` pointing at a slow or hostile host yields one outbound
+  request per inbound authorize request, making the authorization server
+  an amplifier.
+
+  Declared `redirect_uris` are still held to the gem's `https`-or-
+  loopback policy (RFC 8252). A metadata document never passes through
+  `/oauth/register`, so the check DCR clients face at registration is
+  applied at authorize time instead. A resolved document does **not**
+  create a `Hitch::Client` row — a fetched document is not a
+  registration — and the `client_name` it declares is treated exactly
+  like the DCR one: recorded on the token for audit, never trusted for
+  consent-screen display.
+
 ### Changed
 
 - **CORS `Access-Control-Allow-Headers`** now includes
@@ -136,7 +185,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   — a browser ignores it otherwise. The README example and the
   `ServerEndpoint` docs now show including `CorsSupport` alongside it,
   which is what makes the 401 challenge readable to a browser client.
-
 ## [0.1.0]
 
 Initial release. A mountable Rails engine that turns a Rails app into a

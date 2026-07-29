@@ -24,7 +24,14 @@ module Hitch
         # verification at /oauth/token. Advertising
         # client_secret_post would be a lie since the controller
         # never authenticates the secret.
-        token_endpoint_auth_methods_supported: [ "none" ]
+        token_endpoint_auth_methods_supported: [ "none" ],
+        # RFC 9207 §3. Advertising this is a promise the authorization
+        # response WILL carry `iss` — a conformant client treats an
+        # advertised-but-absent `iss` as a hard failure and refuses the
+        # code exchange. It is only ever true because
+        # AuthorizationsController#build_redirect_uri appends it
+        # unconditionally; the two must never be separated.
+        authorization_response_iss_parameter_supported: issuer_is_https?
       }
     end
 
@@ -44,6 +51,37 @@ module Hitch
 
     private
 
+    # RFC 9207 §2: the `iss` value "MUST be a URL that uses the 'https'
+    # scheme". Over plain http the value this server emits is therefore
+    # not a valid issuer identifier, and withholding the advertisement
+    # does not make it one.
+    #
+    # Be clear about what this is: over http the server is NOT conformant
+    # here, and that is deliberate development compatibility, not a
+    # design. It is also not the first deviation on that path — MCP
+    # 2026-07-28 requires every authorization server endpoint be served
+    # over HTTPS, so an http deployment is already outside the spec and
+    # the issuer scheme is the smaller of its problems.
+    #
+    # `iss` is still emitted over http rather than suppressed, so that a
+    # local development flow exercises the same path as production. The
+    # alternative — omit it below https — means the parameter silently
+    # appears for the first time on deploy, in a security control that is
+    # unpleasant to debug remotely. A client that already accepted the
+    # non-conformant http issuer from this same discovery document can
+    # compare the two and pass. A stricter one may well reject the http
+    # issuer during discovery and never reach the comparison — which is
+    # the correct behaviour, and not something emitting `iss` either
+    # causes or cures.
+    #
+    # Withholding the advertisement is what keeps this safe rather than
+    # conformant. Per the spec's validation table, an advertised-but-
+    # unusable value is what makes a conformant client hard-fail; a
+    # present-but-unadvertised one it simply compares.
+    def issuer_is_https?
+      issuer_url.to_s.start_with?("https://")
+    end
+
     # The metadata body is derived from the request Host (issuer +
     # every endpoint URL come from request.base_url), so it must not be
     # stored in a shared cache that keys on path alone — a forged-Host
@@ -57,15 +95,6 @@ module Hitch
       existing = response.headers["Vary"]
       response.headers["Vary"] =
         existing.present? ? "#{existing}, Host" : "Host"
-    end
-
-    # request.base_url honors X-Forwarded-* when the host has set
-    # `config.action_dispatch.trusted_proxies` correctly — important
-    # behind reverse proxies (Kamal, fly, Heroku, etc.) where
-    # request.host_with_port would otherwise return the internal
-    # container address.
-    def issuer_url
-      request.base_url
     end
   end
 end

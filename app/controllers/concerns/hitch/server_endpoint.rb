@@ -11,8 +11,18 @@ module Hitch
   # Use a DEDICATED controller for /mcp: `skip_forgery_protection` is
   # controller-wide, so don't mix MCP and browser actions in one class.
   #
+  # Include Hitch::CorsSupport too if browser-based MCP clients
+  # (claude.ai, chatgpt.com) will reach this endpoint. This concern does
+  # NOT set Access-Control-Allow-Origin — the /mcp route is host-owned,
+  # so CORS on it is the host's decision — and without that header the
+  # Access-Control-Expose-Headers below has nothing to attach to, leaving
+  # a browser client unable to read the 401 challenge it needs to start
+  # the OAuth flow. Non-browser clients (CLI, desktop, server-to-server)
+  # are unaffected either way.
+  #
   #   class MCPServerController < ApplicationController
   #     include Hitch::ServerEndpoint
+  #     include Hitch::CorsSupport   # browser clients only
   #     before_action :require_mcp_token!
   #
   #     def create
@@ -30,6 +40,7 @@ module Hitch
   # mismatched tokens are rejected with 401.
   module ServerEndpoint
     extend ActiveSupport::Concern
+    include Hitch::IssuerUrl
 
     included do
       # MCP clients are non-browser, sessionless, and send no CSRF token —
@@ -90,6 +101,22 @@ module Hitch
     # server migration.
     def mcp_unauthorized!
       response.headers["WWW-Authenticate"] = bearer_challenge
+      # WWW-Authenticate is not a CORS-safelisted response header, so a
+      # browser-based MCP client can't read it off a cross-origin 401
+      # unless it's explicitly exposed — it would see an opaque failure
+      # instead. Since that header is the ONLY discovery signal pointing
+      # at the Protected Resource Metadata document, without this the
+      # client cannot bootstrap the OAuth flow at all. Set alongside the
+      # challenge rather than in Hitch::CorsSupport because the MCP
+      # endpoint is host-owned and does not necessarily include that
+      # concern.
+      #
+      # On its own this header does nothing: a browser only honors
+      # Access-Control-Expose-Headers on a response that also carries
+      # Access-Control-Allow-Origin. Include Hitch::CorsSupport in the
+      # same controller to get that (see the module docs above); this
+      # line is what makes the challenge readable once you do.
+      response.headers["Access-Control-Expose-Headers"] = "WWW-Authenticate"
       head :unauthorized
     end
 
@@ -98,7 +125,10 @@ module Hitch
     end
 
     def bearer_challenge
-      metadata_url = "#{request.base_url}/.well-known/oauth-protected-resource"
+      # issuer_url, not a second request.base_url — the discovery
+      # document and everything pointing at it derive from one helper so
+      # they can't drift (see Hitch::IssuerUrl).
+      metadata_url = "#{issuer_url}/.well-known/oauth-protected-resource"
       scope = Array.wrap(Hitch.configuration.supported_scopes).join(" ")
       %(Bearer resource_metadata="#{metadata_url}", scope="#{scope}")
     end

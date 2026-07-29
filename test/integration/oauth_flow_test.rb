@@ -39,20 +39,74 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
   test "discovery metadata exposes authorization + protected resource endpoints" do
     get "/.well-known/oauth-authorization-server"
     body = JSON.parse(response.body)
+    # Pin the issuer VALUE, not just its presence. RFC 8414 §2 requires it
+    # be the URL the metadata is served from, and clients validate that;
+    # asserting only presence would let any wrong-but-self-consistent
+    # issuer through, including one carrying a stray path suffix.
+    assert_equal "http://www.example.com", body["issuer"]
     assert_equal "http://www.example.com/oauth/authorize", body["authorization_endpoint"]
     assert_equal [ "S256" ], body["code_challenge_methods_supported"]
     assert_equal [ "mcp" ], body["scopes_supported"]
     # Only "none" — gem doesn't authenticate client secrets so it
     # must not advertise client_secret_post.
     assert_equal [ "none" ], body["token_endpoint_auth_methods_supported"]
+    # Not advertised over plain http — RFC 9207 §2 requires the `iss`
+    # VALUE be an https URL, so over http the promise could not be kept.
+    # See the dedicated pair of tests below.
+    assert_equal false, body["authorization_response_iss_parameter_supported"]
 
     get "/.well-known/oauth-protected-resource"
     body = JSON.parse(response.body)
     assert_equal RESOURCE_A, body["resource"]
+    # Also derived from Hitch::IssuerUrl — pinned so the helper can't
+    # drift here unnoticed either.
+    assert_equal [ "http://www.example.com" ], body["authorization_servers"]
     assert_equal [ "header" ], body["bearer_methods_supported"]
     # PRM SHOULD include scopes_supported (2025-11-25 spec) so RSes
     # can echo per-tool required scopes in 403 challenges.
     assert_equal [ "mcp" ], body["scopes_supported"]
+  end
+
+  # RFC 9207 §2: the `iss` value "MUST be a URL that uses the 'https'
+  # scheme". Advertising support while emitting an http issuer would be
+  # promising conformance the server cannot deliver — and per the spec's
+  # validation table, an advertised-but-unusable value is exactly what
+  # makes a conformant client hard-fail.
+  test "the RFC 9207 capability is advertised only when the issuer is https" do
+    get "/.well-known/oauth-authorization-server"
+    assert_equal "http://www.example.com", JSON.parse(response.body)["issuer"]
+    assert_equal false, JSON.parse(response.body)["authorization_response_iss_parameter_supported"]
+
+    https!
+    get "/.well-known/oauth-authorization-server"
+    body = JSON.parse(response.body)
+    assert_equal "https://www.example.com", body["issuer"]
+    assert_equal true, body["authorization_response_iss_parameter_supported"]
+  ensure
+    https!(false)
+  end
+
+  # An http `iss` is NOT conformant — RFC 9207 §2 requires the value use
+  # the https scheme, and withholding the advertisement does not change
+  # that. It is emitted anyway as deliberate development compatibility,
+  # so a local flow exercises the same path as production instead of the
+  # parameter appearing for the first time on deploy. An http deployment
+  # is already outside the spec regardless (MCP 2026-07-28 requires every
+  # authorization server endpoint be served over HTTPS). A client that
+  # already accepted the http issuer from the same discovery document can
+  # compare the two and pass; a stricter one may reject the http issuer
+  # during discovery and never get here at all.
+  test "iss is emitted over http as development compatibility, unadvertised" do
+    client = register_client
+    sign_in @user
+
+    post "/oauth/authorize", params: {
+      client_id: client["client_id"], redirect_uri: CLIENT_REDIRECT,
+      code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
+    }
+    assert_response :redirect
+    returned = URI.decode_www_form(URI.parse(response.location).query).to_h
+    assert_equal "http://www.example.com", returned["iss"]
   end
 
   # The metadata body is derived from the request Host (issuer + all
@@ -82,6 +136,20 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     process :options, "/.well-known/oauth-protected-resource", headers: { "Origin" => "https://claude.ai" }
     assert_response :no_content
     assert_equal "https://claude.ai", response.headers["Access-Control-Allow-Origin"]
+  end
+
+  # MCP 2026-07-28 makes these required request headers on Streamable
+  # HTTP. A browser-based client that sends them fails preflight unless
+  # they're allowed, so the allow-list has to name them explicitly —
+  # there is no wildcard fallback once Authorization is in play.
+  test "CORS preflight allows the MCP 2026-07-28 request headers" do
+    process :options, "/oauth/token", headers: { "Origin" => "https://claude.ai" }
+    allowed = response.headers["Access-Control-Allow-Headers"].to_s
+
+    %w[Content-Type Authorization MCP-Protocol-Version Mcp-Method Mcp-Name].each do |header|
+      assert_includes allowed, header,
+        "#{header} must be in Access-Control-Allow-Headers or browser MCP clients fail preflight"
+    end
   end
 
   test "DCR rejects javascript: redirect_uri" do
@@ -135,6 +203,67 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
       code_challenge_method: "S256"
     }
     assert_response :bad_request
+  end
+
+  # RFC 9700 §4.1.3 and MCP 2026-07-28 both require exact matching, with
+  # RFC 8252 §7.3 granting one carve-out: the PORT of a loopback
+  # redirect. Anything else that differs from the registration is a
+  # different URI, and a caller who can craft an authorize URL must not
+  # be able to add parameters a client's callback will read.
+  test "authorize rejects a redirect_uri whose query differs from the registration" do
+    client = register_client(redirect_uris: [ "https://app.test/cb?tenant=acme" ])
+    sign_in @user
+
+    [
+      "https://app.test/cb",                    # query dropped
+      "https://app.test/cb?tenant=evil",        # value changed
+      "https://app.test/cb?tenant=acme&next=x", # parameter added
+      "https://app.test/cb?TENANT=acme"         # key case changed
+    ].each do |inbound|
+      post "/oauth/authorize", params: {
+        client_id: client["client_id"], redirect_uri: inbound,
+        code_challenge: @challenge, code_challenge_method: "S256"
+      }
+      assert_response :bad_request, "#{inbound} is not an exact match for the registration"
+    end
+  end
+
+  test "authorize accepts the exact registered redirect_uri including its query" do
+    client = register_client(redirect_uris: [ "https://app.test/cb?tenant=acme" ])
+    sign_in @user
+
+    post "/oauth/authorize", params: {
+      client_id: client["client_id"], redirect_uri: "https://app.test/cb?tenant=acme",
+      code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
+    }
+    assert_response :redirect
+    assert_includes response.location, "tenant=acme"
+  end
+
+  # A userinfo component would let https://evil%40x:pw@app.test/cb match
+  # a registration of https://app.test/cb — same host to URI.parse, very
+  # different string to a user reading the address bar.
+  test "authorize rejects a redirect_uri carrying userinfo" do
+    client = register_client(redirect_uris: [ "https://app.test/cb" ])
+    sign_in @user
+
+    post "/oauth/authorize", params: {
+      client_id: client["client_id"], redirect_uri: "https://evil%40x:pw@app.test/cb",
+      code_challenge: @challenge, code_challenge_method: "S256"
+    }
+    assert_response :bad_request
+  end
+
+  # The loopback carve-out is the port and nothing else.
+  test "loopback matching stays port-agnostic but not query-agnostic" do
+    client = register_client(redirect_uris: [ "http://localhost:9000/cb" ])
+    sign_in @user
+
+    post "/oauth/authorize", params: {
+      client_id: client["client_id"], redirect_uri: "http://localhost:54321/cb?extra=1",
+      code_challenge: @challenge, code_challenge_method: "S256"
+    }
+    assert_response :bad_request, "an ephemeral port is permitted; an added query parameter is not"
   end
 
   test "authorize still rejects non-loopback host even if port matches" do
@@ -279,6 +408,196 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     assert record.present?
     assert record.valid_for_resource?(RESOURCE_A)
     refute record.valid_for_resource?(RESOURCE_B)
+  end
+
+  # RFC 9207 §2.4: the client compares the authorization response's `iss`
+  # against the issuer it discovered, with an exact string comparison,
+  # and refuses to exchange the code on any mismatch. Asserting mere
+  # presence would pass while the flow still dead-ends at a real client,
+  # so both values are read in one test and compared directly.
+  test "authorization response carries iss byte-identical to the advertised issuer (RFC 9207)" do
+    # Both with and without `state`: it is RECOMMENDED, not required, in
+    # OAuth 2.1, and PKCE-only clients routinely omit it. `iss` must not
+    # ride along on the state branch — the metadata advertises it
+    # unconditionally, so an omission is a hard failure at the client.
+    #
+    # Run on a non-default host:port. On the default test host a second,
+    # subtly different derivation (scheme://host, dropping the port)
+    # coincides with request.base_url, so the drift this shares a helper
+    # to prevent would go unnoticed.
+    [ nil, "xyz" ].each do |state|
+      host! "mcp.example.com:8443"
+
+      get "/.well-known/oauth-authorization-server"
+      advertised_issuer = JSON.parse(response.body)["issuer"]
+      assert_equal "http://mcp.example.com:8443", advertised_issuer
+
+      client = register_client
+      sign_in @user
+
+      post "/oauth/authorize", params: {
+        client_id: client["client_id"],
+        redirect_uri: CLIENT_REDIRECT,
+        code_challenge: @challenge,
+        code_challenge_method: "S256",
+        resource: RESOURCE_A
+      }.merge(state ? { state: state } : {})
+      assert_response :redirect
+
+      returned = URI.decode_www_form(URI.parse(response.location).query).to_h
+      assert_equal advertised_issuer, returned["iss"],
+        "iss must equal the advertised issuer exactly (state=#{state.inspect}) — a conformant client refuses the exchange otherwise"
+    end
+  end
+
+  # Exact matching (see redirect_uri_matches?) rejects an unregistered
+  # query outright, so this covers the case it cannot: a client whose
+  # REGISTERED redirect_uri already carries a response parameter. The
+  # match succeeds there, and without stripping the response would carry
+  # `iss` twice — which copy wins is a property of the client's query
+  # parser, and a first-wins parser (URLSearchParams, Go's Query().Get,
+  # Python's parse_qs) would read the registered value and send its code
+  # exchange to whatever token endpoint that names. Exactly the mix-up
+  # RFC 9207 exists to stop, on a defense the discovery document promises.
+  test "an injected iss in the redirect_uri query is refused outright" do
+    client = register_client(redirect_uris: [ CLIENT_REDIRECT ])
+    sign_in @user
+
+    post "/oauth/authorize", params: {
+      client_id: client["client_id"],
+      redirect_uri: "#{CLIENT_REDIRECT}?iss=https%3A%2F%2Fattacker-as.example",
+      code_challenge: @challenge,
+      code_challenge_method: "S256",
+      state: "xyz",
+      resource: RESOURCE_A
+    }
+    # The registration carried no query, so this is not an exact match
+    # and never reaches the redirect builder at all (RFC 9700 §4.1.3).
+    assert_response :bad_request
+    assert_equal "invalid_request", JSON.parse(response.body)["error"]
+  end
+
+  # Defense in depth for the case exact matching cannot catch: a client
+  # that legitimately REGISTERED a query string containing a response
+  # parameter. The match succeeds, so the stripping in build_redirect_uri
+  # is the only thing standing between that and a duplicated `iss` — and
+  # which copy a client honors is a property of its query parser.
+  test "a registered iss in the redirect_uri query is stripped from the response" do
+    poisoned = "#{CLIENT_REDIRECT}?iss=https%3A%2F%2Fattacker-as.example"
+    client = register_client(redirect_uris: [ poisoned ])
+    sign_in @user
+
+    post "/oauth/authorize", params: {
+      client_id: client["client_id"],
+      redirect_uri: poisoned,
+      code_challenge: @challenge,
+      code_challenge_method: "S256",
+      state: "xyz",
+      resource: RESOURCE_A
+    }
+    assert_response :redirect
+
+    pairs = URI.decode_www_form(URI.parse(response.location).query)
+    issuers = pairs.select { |k, _| k == "iss" }.map(&:last)
+    assert_equal 1, issuers.length,
+      "the authorization response must carry exactly one iss — a duplicate is shadowable by a first-wins client parser"
+    assert_equal "http://www.example.com", issuers.first
+    assert_not_includes response.location, "attacker-as.example"
+  end
+
+  # RFC 6749 §4.1.2 makes `error` and `code` mutually exclusive, so client
+  # libraries branch on `error` first: an injected one makes the client
+  # discard a code the victim genuinely approved. And `error_description`
+  # / `error_uri` get rendered as UI copy and a "more information" link
+  # inside the real client's trusted error surface, both written by the
+  # attacker. Reachable without the query-matching gap at all —
+  # registration is unauthenticated, so an attacker registers their own
+  # client pointing at someone else's callback.
+  test "injected error parameters in the redirect_uri query are stripped" do
+    poisoned = "#{CLIENT_REDIRECT}?error=access_denied" \
+               "&error_description=Session+expired.+Re-authenticate+at+evil.example" \
+               "&error_uri=https%3A%2F%2Fevil.example%2Ffix"
+    client = register_client(redirect_uris: [ poisoned ])
+    sign_in @user
+
+    post "/oauth/authorize", params: {
+      client_id: client["client_id"],
+      redirect_uri: poisoned,
+      code_challenge: @challenge,
+      code_challenge_method: "S256",
+      state: "xyz",
+      resource: RESOURCE_A
+    }
+    assert_response :redirect
+
+    returned = URI.decode_www_form(URI.parse(response.location).query).to_h
+    assert_nil returned["error"], "an injected error would make the client discard a code the user approved"
+    assert_nil returned["error_description"]
+    assert_nil returned["error_uri"]
+    assert_not_includes response.location, "evil.example"
+    assert returned["code"].present?
+  end
+
+  # RFC 6749 §3.1.2: the redirection endpoint MUST NOT include a fragment.
+  # redirect_uri_matches? ignores fragments, so one would ride through
+  # unvalidated to a client that reads response params from location.hash.
+  test "DCR rejects a redirect_uri carrying a fragment" do
+    post "/oauth/register", params: {
+      client_name: "Fragment", redirect_uris: [ "#{CLIENT_REDIRECT}#iss=https://attacker.example" ]
+    }
+    assert_response :bad_request
+    assert_equal "invalid_redirect_uri", JSON.parse(response.body)["error"]
+  end
+
+  # Same primitive applied to code/state. Mandatory S256 PKCE blunts the
+  # code case today (an injected code is bound to the attacker's
+  # challenge), but the injection itself is what closes here.
+  test "registered code and state in the redirect_uri query cannot shadow the real ones" do
+    poisoned = "#{CLIENT_REDIRECT}?code=ATTACKER_CODE&state=ATTACKER_STATE"
+    client = register_client(redirect_uris: [ poisoned ])
+    sign_in @user
+
+    post "/oauth/authorize", params: {
+      client_id: client["client_id"],
+      redirect_uri: poisoned,
+      code_challenge: @challenge,
+      code_challenge_method: "S256",
+      state: "xyz",
+      resource: RESOURCE_A
+    }
+    assert_response :redirect
+
+    pairs = URI.decode_www_form(URI.parse(response.location).query)
+    assert_equal 1, pairs.count { |k, _| k == "code" }
+    assert_equal 1, pairs.count { |k, _| k == "state" }
+    assert_not_includes response.location, "ATTACKER_CODE"
+    assert_not_includes response.location, "ATTACKER_STATE"
+    assert_equal "xyz", pairs.to_h["state"]
+  end
+
+  # build_redirect_uri merges into whatever query the registered
+  # redirect_uri already carries. Appending iss must not drop the
+  # client's own parameters, and must not drop code/state either.
+  test "authorization response preserves the client's own query params alongside iss" do
+    redirect_with_query = "https://claude.ai/callback?tenant=acme"
+    client = register_client(redirect_uris: [ redirect_with_query ])
+    sign_in @user
+
+    post "/oauth/authorize", params: {
+      client_id: client["client_id"],
+      redirect_uri: redirect_with_query,
+      code_challenge: @challenge,
+      code_challenge_method: "S256",
+      state: "xyz",
+      resource: RESOURCE_A
+    }
+    assert_response :redirect
+
+    returned = URI.decode_www_form(URI.parse(response.location).query).to_h
+    assert_equal "acme", returned["tenant"], "client's own redirect_uri query param was dropped"
+    assert_equal "xyz", returned["state"]
+    assert returned["code"].present?
+    assert returned["iss"].present?
   end
 
   test "authorize without sign-in returns 401 when login_path unset" do

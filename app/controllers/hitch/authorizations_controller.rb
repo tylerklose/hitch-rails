@@ -167,11 +167,57 @@ module Hitch
       nil
     end
 
+    # RFC 9207: the authorization response MUST identify the issuer that
+    # produced it, so a client registered with more than one
+    # authorization server can detect a mix-up before redeeming the code.
+    #
+    # The value MUST be byte-identical to the `issuer` advertised at
+    # /.well-known/oauth-authorization-server — clients compare them with
+    # an exact string comparison — which is why both come from the shared
+    # Hitch::IssuerUrl helper rather than two independent derivations.
+    # Appended unconditionally: the metadata document promises it via
+    # `authorization_response_iss_parameter_supported`, and a client that
+    # sees that promise unfulfilled refuses the exchange. Any future
+    # error path that redirects to the client (rather than rendering
+    # JSON, as oauth_error does today) MUST carry `iss` as well — RFC
+    # 9207 §2 covers error responses too.
+    #
+    # Response parameters are stripped from the inbound query before
+    # being set. This is defense in depth, not the primary control —
+    # Hitch::UriValidation#redirect_uri_matches? compares the query, so
+    # an unregistered `?iss=…` is rejected before reaching this method.
+    # What it covers is the case exact matching cannot: a client that
+    # legitimately REGISTERED a query string containing a response
+    # parameter. There the match succeeds, and without this the response
+    # would carry the parameter twice — which copy wins is a property of
+    # the client's query parser, and first-wins parsers (URLSearchParams,
+    # Go's Query().Get, Python's parse_qs) would read the registered
+    # value and route the code exchange at whatever token endpoint it
+    # names. That is the mix-up RFC 9207 exists to prevent, and the
+    # discovery document promises clients that defense. `code` and
+    # `state` are stripped for the same reason: mandatory S256 PKCE
+    # blunts those today, but the injection primitive is identical.
+    #
+    # The error parameters (RFC 6749 §4.1.2.1) are stripped too, and they
+    # do not even need the query-matching gap to reach a victim:
+    # registration is unauthenticated, so an attacker registers their own
+    # client_id with a redirect_uri pointing at a LEGITIMATE client's
+    # callback carrying `?error=…`. §4.1.2 makes `error` and `code`
+    # mutually exclusive, so client libraries branch on `error` first —
+    # the victim consents, a code is minted, and the client throws it
+    # away. Worse, `error_description` is rendered as UI copy and
+    # `error_uri` as a "more information" link, both attacker-written,
+    # inside the real client's trusted error surface. That is a phishing
+    # primitive on a flow the user actually approved.
+    RESPONSE_PARAMS = %w[code state iss error error_description error_uri].freeze
+
     def build_redirect_uri(base_uri, code:, state:)
       uri = URI.parse(base_uri)
       query_params = URI.decode_www_form(uri.query || "")
+                        .reject { |key, _| RESPONSE_PARAMS.include?(key) }
       query_params << [ "code", code ]
       query_params << [ "state", state ] if state.present?
+      query_params << [ "iss", issuer_url ]
       uri.query = URI.encode_www_form(query_params)
       uri.to_s
     end

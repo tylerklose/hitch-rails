@@ -60,6 +60,18 @@ class MCPServerEndpointTest < ActionDispatch::IntegrationTest
     assert_equal 1, JSON.parse(response.body)["id"]
   end
 
+  # WWW-Authenticate is not CORS-safelisted, so a browser-based MCP
+  # client cannot read it off a cross-origin 401 unless it is explicitly
+  # exposed. It is the only pointer to the Protected Resource Metadata
+  # document, so without this the client sees an opaque failure and can
+  # never start the OAuth flow.
+  test "the 401 challenge is readable cross-origin (Access-Control-Expose-Headers)" do
+    post "/mcp_test", params: { jsonrpc: "2.0", id: 1, method: "tools/list" }.to_json,
+                      headers: { "CONTENT_TYPE" => "application/json" }
+    assert_response :unauthorized
+    assert_includes response.headers["Access-Control-Expose-Headers"].to_s, "WWW-Authenticate"
+  end
+
   test "a request without a bearer token is 401 with a WWW-Authenticate challenge" do
     post_mcp({ jsonrpc: "2.0", id: 1, method: "tools/list" }, headers: {})
     assert_response :unauthorized

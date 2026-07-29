@@ -14,6 +14,26 @@ module Hitch
       end
     end
 
+    # CIMD leans on Rails.cache for two things that are not conveniences:
+    # negative caching, which stops a dead or hostile client_id buying an
+    # outbound request per inbound one, and the per-principal fetch rate
+    # limit. A NullStore retains neither, so both simply do not apply —
+    # silently, and precisely on the deployment that thinks it is
+    # protected. The in-process concurrency cap still holds, so this is a
+    # warning rather than a refusal, but it is worth saying out loud.
+    initializer "hitch.warn_on_uncacheable_cimd", after: :initialize_cache do
+      next unless Hitch.configuration.client_id_metadata_enabled
+      next unless defined?(ActiveSupport::Cache::NullStore)
+      next unless Rails.cache.is_a?(ActiveSupport::Cache::NullStore)
+
+      Rails.logger&.warn(
+        "[hitch] client_id_metadata_enabled is on but Rails.cache is a NullStore. " \
+        "Client metadata documents will be refetched on every authorize request, " \
+        "negative caching will not limit a dead or hostile client_id, and the " \
+        "per-principal fetch rate limit will not apply. Configure a real cache store."
+      )
+    end
+
     # Filter OAuth secrets out of Rails request logs. Without this, a
     # crash on /oauth/token would log the raw code + code_verifier
     # (both lookup credentials), and a successful response would log

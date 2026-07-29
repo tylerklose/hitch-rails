@@ -232,6 +232,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   — a browser ignores it otherwise. The README example and the
   `ServerEndpoint` docs now show including `CorsSupport` alongside it,
   which is what makes the 401 challenge readable to a browser client.
+## [Unreleased]
+
+### Added
+
+- **Caps on outbound Client ID Metadata Document fetches**, and with
+  them, **CIMD is now enabled by default**
+  (`config.client_id_metadata_enabled`). MCP 2026-07-28 makes supporting
+  CIMD a SHOULD for authorization servers and demotes Dynamic Client
+  Registration to a deprecated MAY; clients pick their mechanism from
+  `client_id_metadata_document_supported`, so a server with it off keeps
+  every client on the legacy path. It shipped off only because nothing
+  bounded fetch *volume* — that objection is now answered.
+
+  `config.client_id_metadata_max_concurrent_fetches` (default 4, per
+  process; `nil` disables, `0` blocks) bounds fetches in flight at once.
+  A fetch can occupy a request thread for the whole resolution budget,
+  so without a cap enough slow ones saturate the pool and the app stops
+  serving anything.
+
+  `config.client_id_metadata_fetches_per_minute` (default 20, per
+  signed-in principal; `nil` disables) bounds volume aimed at third
+  parties. Negative caching cannot: an attacker with a wildcard DNS
+  record gets unlimited distinct hosts, and a host answering `404` gets
+  one fetch per distinct URL. Neither trick changes who is asking.
+
+  A refusal on either cap is never cached, in either direction. Caching
+  it as a host failure would turn cap exhaustion into a way to poison a
+  legitimate host's entry for every other caller. Cache hits are not
+  charged against either cap, since a cached resolution costs nothing
+  outbound and charging it would make a busy, correctly-configured
+  server throttle itself.
+
+- **A boot warning when CIMD is enabled and `Rails.cache` is a
+  `NullStore`.** Negative caching and the rate limit both live there, so
+  under a null store neither applies — silently, and precisely on the
+  deployment that believes itself protected. The in-process concurrency
+  cap still holds, so this warns rather than refuses.
+
 ## [0.1.0]
 
 Initial release. A mountable Rails engine that turns a Rails app into a

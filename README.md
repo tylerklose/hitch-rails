@@ -83,71 +83,50 @@ Hitch.configure do |config|
 end
 ```
 
-### Client ID Metadata Documents (opt-in)
+### Client ID Metadata Documents
 
 MCP 2026-07-28 deprecates Dynamic Client Registration in favour of CIMD:
 a client uses an `https` URL as its `client_id`, and the authorization
 server fetches the client metadata from that URL.
 
-```ruby
-config.client_id_metadata_enabled = true   # default: false
-config.client_id_metadata_cache_ttl = 3600 # seconds a resolved document is cached
-```
-
-**This default is a deliberate deviation from the spec.** MCP 2026-07-28
-says authorization servers **SHOULD** support Client ID Metadata
-Documents, and that Dynamic Client Registration — which Hitch implements
-fully — is a **MAY** that is deprecated and retained for backwards
-compatibility. Clients pick their registration mechanism by looking for
-`client_id_metadata_document_supported` in the discovery document, so
-leaving this off means every client falls back to the legacy path.
-Adopters who want spec-conformant behaviour today should set it to
-`true`.
-
-The reason to hold is that the amplification backstop does not exist
-yet: there is no rate or concurrency cap on outbound fetches
-([#12](https://github.com/tylerklose/hitch-rails/issues/12)), so
-enabling this by default would hand every adopter an uncapped egress
-surface on a `bundle update`. The default flips to `true` once that
-lands, and no later than 1.0.
-
-It is off by default because it changes the shape of the endpoint:
-`/oauth/authorize` begins making outbound HTTPS requests to URLs chosen
-by unauthenticated callers. `Hitch::ClientIdMetadata` constrains that
-tightly — public addresses only (every address a name resolves to is
-checked, and the connection is pinned to the checked one so a second
-lookup can't substitute another), no redirects followed, capped time and
-response size, and both successes and failures cached so a hostile URL
-can't drive one outbound request per inbound one. Even so, it is a
-surface an adopter should choose knowingly.
-
-That last protection depends on the host having a real `Rails.cache`.
-Under a `NullStore` — Rails' default in test, and in development without
-`tmp/caching-dev.txt` — nothing is retained between requests, and a
-`client_id` pointing at a dead or hostile host will be fetched once per
-authorize request.
-
-DCR is unaffected — an opaque `client_id` and a URL `client_id` cannot
-collide, so both schemes work side by side. The discovery document only
-advertises `client_id_metadata_document_supported` when this is enabled,
-because that flag is what makes a conformant client stop falling back to
-DCR.
-
-### Rails 8 built-in authentication
-
-If you use Rails 8's `bin/rails generate authentication`, the signed-in
-user is exposed as `Current.user` and there is **no** `current_user`
-controller method. Hitch handles this automatically: when the configured
-`principal_method` (default `:current_user`) isn't defined, it falls back
-to `Current.user`. No extra configuration needed — the consent screen
-identifies the signed-in user out of the box. (Devise and
-`has_secure_password` apps that expose `current_user` keep working
-unchanged.)
+**On by default.** The spec makes supporting CIMD a **SHOULD** for
+authorization servers and demotes DCR to a deprecated **MAY**, and
+clients choose their mechanism from
+`client_id_metadata_document_supported` in the discovery document — so a
+server with this off keeps every client on the legacy path. DCR keeps
+working either way; an opaque `client_id` and a URL `client_id` cannot
+collide.
 
 ```ruby
-# config/routes.rb
-mount Hitch::Engine => "/"  # exposes /oauth/* + /.well-known/*
+config.client_id_metadata_enabled = false        # close the surface entirely
+config.client_id_metadata_cache_ttl = 3600       # ceiling on how long a document is cached
+config.client_id_metadata_max_concurrent_fetches = 4   # nil disables; 0 blocks every fetch
+config.client_id_metadata_fetches_per_minute = 20      # per signed-in principal; nil disables
 ```
+
+Enabling CIMD means `/oauth/authorize` makes outbound HTTPS requests to
+URLs chosen by callers. Two separate things bound that.
+
+**Each fetch** is constrained by `Hitch::ClientIdMetadata`: `https` on
+port 443 only, no redirects followed, DNS resolved once with every
+returned address checked against non-public ranges and the connection
+then pinned to the checked address, a wall-clock budget covering DNS and
+connect and read together, and the response streamed with a size cap
+enforced as it arrives.
+
+**How many fetches** is bounded by the two caps above, because
+constraining each one says nothing about how many a caller can provoke.
+The concurrency cap protects this server — a fetch can occupy a request
+thread for the whole budget, so without it enough slow ones saturate the
+pool. The per-principal rate limit protects everyone else: negative
+caching cannot close amplification on its own, since a wildcard DNS
+record yields unlimited distinct hosts and a host answering `404` yields
+unlimited distinct URLs, but neither trick changes who is asking.
+
+Both the rate limit and negative caching live in `Rails.cache`. Under a
+`NullStore` neither applies, and the engine logs a warning at boot when
+CIMD is enabled without a real cache store. The in-process concurrency
+cap still holds.
 
 ## Using a token from the host's MCP endpoint
 

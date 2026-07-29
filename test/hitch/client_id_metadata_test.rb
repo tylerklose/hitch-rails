@@ -186,6 +186,128 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     end
   end
 
+  # --- fetch volume caps -----------------------------------------------
+  #
+  # Negative caching bounds repeat fetches of the SAME thing. Neither of
+  # the tricks that defeat it changes who is asking or how many threads
+  # are in use, which is what these two bound instead.
+
+  test "concurrent fetches are capped, and the cap is released afterwards" do
+    Hitch.configure { |c| c.client_id_metadata_max_concurrent_fetches = 2 }
+
+    gate = Queue.new
+    running = Queue.new
+    outcomes = Queue.new
+
+    stub_class_method(CIMD, :fetch_and_validate, lambda { |_id|
+      running << :in
+      gate.pop # hold the slot until the test lets go
+      nil
+    }) do
+      holders = 2.times.map do |i|
+        Thread.new { outcomes << [ :held, CIMD.resolve("https://client.example/hold#{i}.json") ] }
+      end
+      2.times { running.pop } # both slots genuinely occupied
+
+      assert_equal 2, CIMD.fetches_in_flight
+      # A third caller must be refused rather than queued — queueing is
+      # what consumes the request thread this cap protects.
+      assert_nil CIMD.resolve("https://client.example/third.json")
+
+      2.times { gate << :go }
+      holders.each(&:join)
+    end
+
+    assert_equal 0, CIMD.fetches_in_flight, "the cap must be released even though those fetches failed"
+  end
+
+  # A refusal on capacity says nothing about the URL or the host. Caching
+  # it as a host failure would turn cap exhaustion into a way to poison a
+  # legitimate host's entry for every other caller.
+  test "a capacity refusal is never cached" do
+    document = CIMD::Document.new(client_id: DOC_URL, client_name: "X", redirect_uris: [ "https://a.test/cb" ])
+
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id) { [ document, 3600 ] }) do
+      Hitch.configure { |c| c.client_id_metadata_max_concurrent_fetches = 0 }
+      assert_nil CIMD.resolve(DOC_URL), "no capacity, so no fetch"
+
+      Hitch.configure { |c| c.client_id_metadata_max_concurrent_fetches = 4 }
+      assert_not_nil CIMD.resolve(DOC_URL),
+        "the earlier refusal must not have poisoned this URL or its host — a capacity refusal says nothing about either"
+    end
+  end
+
+  # nil disables; 0 is honoured literally. Treating 0 as "disabled" would
+  # make the most restrictive-looking setting the least restrictive one —
+  # which is exactly the bug this test was written against.
+  test "a nil concurrency cap disables the cap, and zero blocks every fetch" do
+    document = CIMD::Document.new(client_id: DOC_URL, client_name: "X", redirect_uris: [ "https://a.test/cb" ])
+
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id) { [ document, 3600 ] }) do
+      Hitch.configure { |c| c.client_id_metadata_max_concurrent_fetches = nil }
+      assert_not_nil CIMD.resolve(DOC_URL)
+
+      Rails.cache.clear
+      Hitch.configure { |c| c.client_id_metadata_max_concurrent_fetches = 0 }
+      assert_nil CIMD.resolve(DOC_URL)
+    end
+  end
+
+  # The bypasses negative caching cannot close: a wildcard DNS record
+  # gives unlimited distinct hosts, and a host answering 404 gives
+  # unlimited distinct URLs. Neither changes the principal asking.
+  test "fetches are rate limited per principal across distinct hosts and URLs" do
+    Hitch.configure { |c| c.client_id_metadata_fetches_per_minute = 3 }
+    calls = 0
+
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id) { calls += 1; nil }) do
+      10.times { |i| CIMD.resolve("https://n#{i}.evil.example/doc.json", actor: "User:1") }
+    end
+    assert_equal 3, calls, "a wildcard DNS record must not buy unlimited outbound fetches"
+
+    calls = 0
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id) { calls += 1; nil }) do
+      10.times { |i| CIMD.resolve("https://responsive.example/doc.json?n=#{i}", actor: "User:2") }
+    end
+    assert_equal 3, calls, "distinct URLs on one responsive host must not either"
+  end
+
+  test "the rate limit is per principal, not global" do
+    Hitch.configure { |c| c.client_id_metadata_fetches_per_minute = 2 }
+    actors = []
+
+    stub_class_method(CIMD, :fetch_and_validate, ->(id) { actors << id; nil }) do
+      3.times { |i| CIMD.resolve("https://a.example/#{i}.json", actor: "User:1") }
+      3.times { |i| CIMD.resolve("https://b.example/#{i}.json", actor: "User:2") }
+    end
+    assert_equal 4, actors.length, "one principal exhausting its budget must not throttle another"
+  end
+
+  # Cached resolutions cost nothing outbound, so charging them would make
+  # a busy, correctly-configured server throttle itself.
+  test "cache hits are not charged against the rate limit" do
+    Hitch.configure { |c| c.client_id_metadata_fetches_per_minute = 2 }
+    document = CIMD::Document.new(client_id: DOC_URL, client_name: "X", redirect_uris: [ "https://a.test/cb" ])
+    calls = 0
+
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id) { calls += 1; [ document, 3600 ] }) do
+      10.times { assert_not_nil CIMD.resolve(DOC_URL, actor: "User:1") }
+    end
+    assert_equal 1, calls
+  end
+
+  test "rate limiting is skipped without an actor or when disabled" do
+    calls = 0
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id) { calls += 1; nil }) do
+      Hitch.configure { |c| c.client_id_metadata_fetches_per_minute = 1 }
+      3.times { |i| CIMD.resolve("https://x#{i}.example/d.json") } # no actor
+
+      Hitch.configure { |c| c.client_id_metadata_fetches_per_minute = nil }
+      3.times { |i| CIMD.resolve("https://y#{i}.example/d.json", actor: "User:9") }
+    end
+    assert_equal 6, calls
+  end
+
   # --- the wire itself -------------------------------------------------
   #
   # Everything above stubs the network. These drive read_document over a

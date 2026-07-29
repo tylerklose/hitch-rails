@@ -159,7 +159,7 @@ module Hitch
       # DCR enforces it at registration time; a metadata document never
       # passes through registration, so it is enforced here instead —
       # otherwise CIMD would be a way to bypass a check DCR clients face.
-      Hitch::ClientIdMetadata.resolve(client_id)
+      Hitch::ClientIdMetadata.resolve(client_id, actor: rate_limit_actor)
         &.redirect_uris
         &.select { |candidate| valid_redirect_uri?(candidate) }
     end
@@ -187,6 +187,22 @@ module Hitch
       false
     end
 
+    # Identifies the principal driving a metadata fetch, for per-actor
+    # rate limiting. Counting per actor is what bounds amplification:
+    # neither of the tricks that defeat negative caching — a wildcard DNS
+    # record giving unlimited distinct hosts, or a responsive host
+    # answering 404 for unlimited distinct URLs — changes who is asking.
+    #
+    # Class name included so two principal models cannot collide on an
+    # integer id. nil when unauthenticated, which cannot happen on this
+    # path (both actions bail to require_principal! first) but keeps the
+    # limiter honest if that ever changes.
+    def rate_limit_actor
+      return nil unless current_principal.respond_to?(:id)
+
+      "#{current_principal.class.name}:#{current_principal.id}"
+    end
+
     def unknown_client_message(client_id)
       if Hitch::ClientIdMetadata.reference?(client_id)
         "Could not resolve a client metadata document at that client_id"
@@ -203,7 +219,7 @@ module Hitch
     # verified redirect_uri host instead (see friendly_client_name).
     def declared_client_name(client_id)
       if Hitch::ClientIdMetadata.reference?(client_id)
-        Hitch::ClientIdMetadata.resolve(client_id)&.client_name
+        Hitch::ClientIdMetadata.resolve(client_id, actor: rate_limit_actor)&.client_name
       else
         Hitch::Client.find_by(client_id: client_id)&.client_name
       end

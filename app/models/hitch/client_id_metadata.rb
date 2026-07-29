@@ -101,6 +101,12 @@ module Hitch
 
     Document = Struct.new(:client_id, :client_name, :redirect_uris, keyword_init: true)
 
+    # Guards the in-flight counter below. Process-wide: the cap bounds
+    # this process's share of outbound work, so a fleet ceiling is the
+    # configured value times the worker count.
+    @fetch_mutex = Mutex.new
+    @fetches_in_flight = 0
+
     # Failure sentinels. Only HOST_FAILURE — nothing at that host
     # answered — may block the host's other documents; a document-level
     # failure (plain nil) must not, or one bogus URL would take an entire
@@ -108,6 +114,12 @@ module Hitch
     HOST_FAILURE = :host_failure
     # Rejected on the URL's shape alone, before any network work.
     SHAPE_REJECT = :shape_reject
+    # Refused because a cap was already spent — no fetch was attempted.
+    # Distinct from the two above because it says NOTHING about the URL
+    # or the host, and so must never be cached: writing a host failure
+    # here would turn cap exhaustion into a way to poison a legitimate
+    # host's entry for everyone.
+    CAPACITY_EXCEEDED = :capacity_exceeded
 
     class << self
       # A client_id is a CIMD reference when it is an https URL. Opaque
@@ -130,7 +142,10 @@ module Hitch
       # Returns a Document, or nil for anything that isn't a usable
       # client metadata document. Never raises into the authorize flow:
       # a fetch failure is an untrusted client's problem, not a 500.
-      def resolve(client_id)
+      # `actor` identifies the signed-in principal driving this
+      # resolution, for per-actor rate limiting. Optional: omitted, only
+      # the concurrency cap applies.
+      def resolve(client_id, actor: nil)
         return nil unless reference?(client_id)
 
         key = cache_key(client_id)
@@ -159,7 +174,16 @@ module Hitch
         # distinct key and each a valid CIMD reference.
         return nil if cache_read(failure_key(host)) == false
 
-        case (outcome = fetch_and_validate(client_id))
+        # Both caps are consulted only on a genuine miss. A cached
+        # resolution costs nothing outbound, so charging it against
+        # either budget would penalise the common case and make a busy,
+        # correctly-configured server throttle itself.
+        return nil unless charge_rate_limit(actor)
+
+        case (outcome = with_fetch_capacity { fetch_and_validate(client_id) })
+        when CAPACITY_EXCEEDED
+          # Deliberately no cache write of any kind — see the constant.
+          nil
         when Array
           # [document, ttl] — the TTL is derived from the document's own
           # HTTP cache headers, clamped by config.
@@ -190,7 +214,65 @@ module Hitch
         end
       end
 
+      # Number of fetches in flight right now. Test seam.
+      def fetches_in_flight
+        @fetch_mutex.synchronize { @fetches_in_flight.to_i }
+      end
+
       private
+
+      # A plain counter under a mutex rather than a Semaphore, so the
+      # limit is read from config at acquisition time — a host may change
+      # it, and tests do.
+      def with_fetch_capacity
+        limit = Hitch.configuration.client_id_metadata_max_concurrent_fetches
+        # nil disables, matching the rate-limit knob. Integers are honored
+        # literally — including 0, which blocks every fetch. Treating 0 as
+        # "disabled" would make the most restrictive-looking setting the
+        # least restrictive one.
+        return yield if limit.nil?
+
+        limit = limit.to_i
+        acquired = @fetch_mutex.synchronize do
+          next false if @fetches_in_flight.to_i >= limit
+
+          @fetches_in_flight = @fetches_in_flight.to_i + 1
+          true
+        end
+
+        # Fails closed, and fails SILENTLY to the caller: an authorize
+        # request under load is refused rather than queued, because
+        # queueing is what consumes the thread this cap exists to
+        # protect.
+        return CAPACITY_EXCEEDED unless acquired
+
+        begin
+          yield
+        ensure
+          @fetch_mutex.synchronize { @fetches_in_flight = @fetches_in_flight.to_i - 1 }
+        end
+      end
+
+      # Fixed 60-second window. Coarse on purpose: a sliding window costs
+      # a read-modify-write per request for precision that does not
+      # change what this bounds — the order of magnitude of traffic one
+      # principal can aim at a third party.
+      def charge_rate_limit(actor)
+        limit = Hitch.configuration.client_id_metadata_fetches_per_minute
+        return true if actor.blank? || limit.nil? || limit.to_i <= 0
+
+        key = "hitch/cimd/v1/rate/#{Digest::SHA256.hexdigest(actor.to_s)}/#{(Time.now.to_i / 60)}"
+        spent = cache_read(key).to_i
+        return false if spent >= limit.to_i
+
+        # Not atomic. A racing pair of requests can both read the same
+        # value and each write spent+1, so a determined caller overshoots
+        # the limit by roughly the concurrency cap — which the cap above
+        # already bounds. An atomic increment would need a store-specific
+        # API, and this is a volume bound, not an accounting ledger.
+        cache_write(key, spent + 1, 120)
+        true
+      end
 
       # Validates the rebuilt struct rather than relying on Document.new
       # to object. A keyword_init Struct accepts string keys without

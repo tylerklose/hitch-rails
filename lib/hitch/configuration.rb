@@ -61,20 +61,21 @@ module Hitch
     # it (Client ID Metadata Documents, the successor to Dynamic Client
     # Registration in MCP 2026-07-28).
     #
-    # Off by default, which is a deliberate deviation from the spec:
-    # MCP 2026-07-28 makes CIMD a SHOULD for authorization servers and
-    # demotes Dynamic Client Registration to a deprecated MAY. Clients
-    # choose their mechanism from `client_id_metadata_document_supported`
-    # in the discovery document, so leaving this off keeps every client
-    # on the legacy path.
+    # On by default. MCP 2026-07-28 makes CIMD a SHOULD for authorization
+    # servers and demotes Dynamic Client Registration to a deprecated
+    # MAY; clients choose their mechanism from
+    # `client_id_metadata_document_supported` in the discovery document,
+    # so a server that leaves this off keeps every client on the legacy
+    # path. DCR continues to work either way.
     #
-    # The reason to hold is that enabling it gives /oauth/authorize an
-    # outbound-fetch surface with no rate or concurrency cap behind it
-    # yet. Hitch::ClientIdMetadata constrains each fetch heavily (public
-    # addresses only, connection pinned to a vetted IP, no redirects,
-    # capped size and time, negative caching), but bounding the VOLUME of
-    # fetches is separate work. This default flips once that lands, and
-    # no later than 1.0. DCR keeps working either way.
+    # This shipped off by default until the fetch caps below existed,
+    # because enabling it gives /oauth/authorize an outbound-fetch
+    # surface and each fetch being tightly constrained says nothing about
+    # how MANY of them a caller can provoke. With the concurrency and
+    # per-principal limits in place that objection is answered, and the
+    # spec's SHOULD wins.
+    #
+    # Set to false to close the surface entirely.
     # @return [Boolean]
     attr_accessor :client_id_metadata_enabled
 
@@ -84,6 +85,34 @@ module Hitch
     # sooner.
     # @return [Integer]
     attr_accessor :client_id_metadata_cache_ttl
+
+    # Ceiling on client metadata fetches in flight AT ONCE, per process.
+    # Default 4. Set to nil to disable; 0 blocks every fetch.
+    #
+    # Each fetch can occupy a request thread for the whole resolution
+    # budget, so without a cap enough slow ones saturate the pool and the
+    # app stops serving anything. This bounds CIMD to a slice of the
+    # thread pool no matter what callers do: a Puma worker running the
+    # default 5 threads keeps one free. It is per process, so a fleet
+    # ceiling is this times the worker count.
+    # @return [Integer]
+    attr_accessor :client_id_metadata_max_concurrent_fetches
+
+    # Ceiling on client metadata fetches per signed-in principal per
+    # minute. Default 20. Set to nil to disable.
+    #
+    # The concurrency cap above protects THIS server; this one protects
+    # everyone else. Negative caching cannot: an attacker with a wildcard
+    # DNS record gets unlimited distinct hosts, and a host that answers
+    # with 404s gets one fetch per distinct URL. Neither trick changes
+    # who is asking, so counting per principal is what actually bounds
+    # the volume of traffic this server can be aimed at a third party.
+    #
+    # Counters live in Rails.cache. Under a NullStore nothing is
+    # retained and this limit does not apply — see the boot warning in
+    # Hitch::Engine.
+    # @return [Integer, nil]
+    attr_accessor :client_id_metadata_fetches_per_minute
 
     def initialize
       @principal_model = "User"
@@ -95,8 +124,10 @@ module Hitch
       @authorization_code_lifetime_seconds = 600
       @principal_method = :current_user
       @login_path = nil
-      @client_id_metadata_enabled = false
+      @client_id_metadata_enabled = true
       @client_id_metadata_cache_ttl = 3600
+      @client_id_metadata_max_concurrent_fetches = 4
+      @client_id_metadata_fetches_per_minute = 20
     end
 
     # Resolve principal_model to its class constant.

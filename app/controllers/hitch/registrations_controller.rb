@@ -27,7 +27,13 @@ module Hitch
       client = Hitch::Client.register!(
         client_id: SecureRandom.uuid,
         client_name: params[:client_name],
-        redirect_uris: candidate_uris
+        redirect_uris: candidate_uris,
+        # MCP 2026-07-28 has clients declare this so the server can tell a
+        # native/CLI client from a web one. Recorded, never enforced:
+        # gating loopback redirects on "native" would break every client
+        # that omits the field, Claude Code among them. Persisting it is
+        # what makes a later decision evidence-based instead of a guess.
+        application_type: scalar_param(:application_type)
       )
 
       render json: {
@@ -38,8 +44,13 @@ module Hitch
         grant_types: [ "authorization_code" ],
         response_types: [ "code" ],
         scope: Hitch.configuration.supported_scopes.join(" "),
-        token_endpoint_auth_method: "none"
-      }, status: :created
+        token_endpoint_auth_method: "none",
+        # Echo what was actually stored, not what was sent. RFC 7591 §3.2.1
+        # makes the response the authoritative record of registered
+        # metadata, so a client that sent an unrecognized value learns it
+        # was dropped rather than assuming it took effect.
+        application_type: client.application_type
+      }.compact, status: :created
     end
   end
 end

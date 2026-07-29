@@ -5,6 +5,33 @@ All notable changes to hitch-rails will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`application_type` is recorded at Dynamic Client Registration.** MCP
+  2026-07-28 has clients declare it (RFC 7591 §2: `native` or `web`) so a
+  server can tell a native/CLI client from a web one. Hitch persists and
+  echoes it, and **does not act on it**.
+
+  Deliberately not defaulted to `web` when omitted, though RFC 7591 §2
+  says the field defaults that way: adopting the default would make a
+  client that genuinely declared `web` indistinguishable from one that
+  predates the field, erasing the signal the column exists to capture.
+  `NULL` means "did not declare".
+
+  Unrecognized values are recorded as no declaration rather than
+  rejecting the registration — the server does not act on the field, so
+  failing a client over it would cost them their registration for
+  nothing. The registration response echoes what was *stored*, so a
+  client learns its value was dropped instead of assuming it took effect.
+
+  Enforcement — gating loopback redirects on `native` — is deliberately
+  out of scope. It would break every client that omits the field, Claude
+  Code included, whose ephemeral-port loopback redirects are why
+  `redirect_uri_matches?` has port-agnostic matching at all. Recording
+  the field first is what makes a later decision evidence-based.
+
 ## [0.1.0]
 
 Initial release. A mountable Rails engine that turns a Rails app into a

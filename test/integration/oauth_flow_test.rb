@@ -158,6 +158,69 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     assert Hitch::Client.exists?(client_id: body["client_id"])
   end
 
+  # RFC 7591 §3.2.1 makes the registration response the authoritative
+  # record of what was registered, so the server echoes what it STORED,
+  # not what was sent — a client sending an unrecognized value learns it
+  # was dropped instead of assuming it took effect.
+  test "DCR records and echoes a declared application_type" do
+    post "/oauth/register", params: {
+      client_name: "Claude Code", redirect_uris: [ "http://localhost:8080/cb" ], application_type: "native"
+    }
+    assert_response :created
+    assert_equal "native", JSON.parse(response.body)["application_type"]
+    assert_equal "native", Hitch::Client.last.application_type
+  end
+
+  test "DCR drops an unrecognized application_type without failing the registration" do
+    post "/oauth/register", params: {
+      client_name: "Odd", redirect_uris: [ CLIENT_REDIRECT ], application_type: "desktop"
+    }
+    assert_response :created
+    assert_nil JSON.parse(response.body)["application_type"]
+    assert_nil Hitch::Client.last.application_type
+  end
+
+  # The field is recorded, never enforced. A client that omits it must
+  # keep working exactly as before — including the loopback redirect that
+  # a future `application_type == "native"` gate would otherwise break.
+  # Claude Code omits it today, so this is the regression that matters.
+  test "a client that declares no application_type still gets loopback redirects" do
+    client = register_client(redirect_uris: [ "http://localhost:9000/cb" ])
+    assert_nil Hitch::Client.find_by(client_id: client["client_id"]).application_type
+    sign_in @user
+
+    post "/oauth/authorize", params: {
+      client_id: client["client_id"],
+      redirect_uri: "http://localhost:54321/cb",
+      code_challenge: @challenge,
+      code_challenge_method: "S256",
+      resource: RESOURCE_A
+    }
+    assert_response :redirect
+    assert response.location.start_with?("http://localhost:54321/cb")
+  end
+
+  # Equally: declaring "web" must NOT currently restrict anything. If
+  # enforcement is ever added it will be a deliberate, separately-tracked
+  # change — not something that arrives silently with this column.
+  test "declaring web does not restrict a loopback redirect (no enforcement yet)" do
+    post "/oauth/register", params: {
+      client_name: "Weblike", redirect_uris: [ "http://localhost:9000/cb" ], application_type: "web"
+    }
+    assert_response :created
+    client = JSON.parse(response.body)
+    sign_in @user
+
+    post "/oauth/authorize", params: {
+      client_id: client["client_id"],
+      redirect_uri: "http://localhost:54321/cb",
+      code_challenge: @challenge,
+      code_challenge_method: "S256",
+      resource: RESOURCE_A
+    }
+    assert_response :redirect
+  end
+
   test "happy path: register → authorize → token exchange → token usable" do
     client = register_client
     sign_in @user

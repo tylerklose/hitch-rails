@@ -12,14 +12,32 @@ module Hitch
   class Client < ApplicationRecord
     self.table_name = "hitch_clients"
 
-    validates :client_id, presence: true, uniqueness: true
+    # RFC 7591 §2 defines exactly these two. A client sending anything
+    # else is recorded as having declared nothing, rather than having its
+    # registration rejected — see #normalize_application_type.
+    APPLICATION_TYPES = %w[native web].freeze
 
-    def self.register!(client_id:, client_name:, redirect_uris:)
+    validates :client_id, presence: true, uniqueness: true
+    validates :application_type, inclusion: { in: APPLICATION_TYPES }, allow_nil: true
+
+    def self.register!(client_id:, client_name:, redirect_uris:, application_type: nil)
       create!(
         client_id: client_id,
         client_name: client_name.presence || "MCP Client",
-        redirect_uris: Array.wrap(redirect_uris).select { |v| v.is_a?(String) }.compact_blank
+        redirect_uris: Array.wrap(redirect_uris).select { |v| v.is_a?(String) }.compact_blank,
+        application_type: normalize_application_type(application_type)
       )
+    end
+
+    # Unrecognized values become nil rather than a registration error.
+    # `application_type` is recorded, never enforced (see the migration),
+    # so a junk value costs nothing to drop — whereas rejecting the
+    # registration would break a client over a field the server does not
+    # yet act on. Absent and unrecognized are both "did not declare",
+    # which is the honest reading of each.
+    def self.normalize_application_type(value)
+      value = value.to_s
+      APPLICATION_TYPES.include?(value) ? value : nil
     end
   end
 end

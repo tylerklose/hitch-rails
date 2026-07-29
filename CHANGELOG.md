@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`Duplicate migration` no longer aborts a schema load driven from the
+  engine root.** ActiveRecord's own `db:load_config` hook appends the
+  engine's `db/migrate` to `DatabaseTasks.migrations_paths` with `+=`
+  and no dedupe whenever `ENGINE_ROOT` is defined — which is the case
+  under this gem's own Rakefile, never a host app's. The engine's
+  `append_migrations` initializer was contributing the same directory,
+  so it landed in that collection twice and
+  `ActiveRecord::Schema.define` raised while walking it.
+
+  Latent until a schema was actually reloaded, which is to say until
+  someone added a third migration; every one after that hit it.
+  `bin/rails db:test:prepare` and `bin/rails test` from the engine root
+  both work again. Host applications were never affected — they do not
+  load `rails/tasks/engine.rake`, so the initializer still runs for
+  them, and the fix keys on that rather than on comparing paths.
+
 ### Security
 
 - **`redirect_uri` is now matched exactly.** Matching compared scheme,

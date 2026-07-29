@@ -8,6 +8,19 @@ module Hitch
     # to copy them — the install generator only writes the initializer.
     initializer :append_migrations do |app|
       next if app.root.to_s == root.to_s
+      # Skipped when ENGINE_ROOT is defined, which means the process was
+      # driven through `rails/tasks/engine.rake` — this gem's own
+      # Rakefile, never a host app's. ActiveRecord's own db:load_config
+      # hook (activerecord/railtie.rb) then appends the engine's
+      # db/migrate to DatabaseTasks.migrations_paths with `+=`, no
+      # dedupe. Contributing it here as well puts the directory in that
+      # collection twice, and ActiveRecord::Schema.define raises
+      # "Duplicate migration" as it walks them.
+      #
+      # Latent until a schema is actually reloaded — which is to say
+      # until someone adds a migration, at which point every subsequent
+      # one hits it.
+      next if defined?(ENGINE_ROOT)
 
       config.paths["db/migrate"].expanded.each do |path|
         app.config.paths["db/migrate"] << path

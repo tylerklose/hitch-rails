@@ -23,4 +23,19 @@ class Hitch::EngineTest < ActiveSupport::TestCase
     assert_equal "[FILTERED]", filtered["token"]
     assert_equal "Claude", filtered["client_name"]
   end
+
+  # ActiveRecord's own db:load_config hook appends the engine's
+  # db/migrate to DatabaseTasks.migrations_paths with `+=` and no dedupe
+  # whenever ENGINE_ROOT is defined. If the engine's append_migrations
+  # initializer contributes the same directory, it lands in that
+  # collection twice and ActiveRecord::Schema.define raises "Duplicate
+  # migration" while walking it — latent until a schema reload, which is
+  # to say until someone adds a migration.
+  test "no migration path is contributed twice" do
+    paths = ActiveRecord::Tasks::DatabaseTasks.migrations_paths.map { |p| File.expand_path(p) }
+    assert_equal paths.uniq, paths, "a duplicated migration path breaks every schema load"
+
+    app_paths = Rails.application.config.paths["db/migrate"].expanded.map { |p| File.expand_path(p) }
+    assert_equal app_paths.uniq, app_paths
+  end
 end

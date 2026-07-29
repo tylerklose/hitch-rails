@@ -83,22 +83,49 @@ Hitch.configure do |config|
 end
 ```
 
+### Rails 8 built-in authentication
+
+If you use Rails 8's `bin/rails generate authentication`, the signed-in
+user is exposed as `Current.user` and there is **no** `current_user`
+controller method. Hitch handles this automatically: when the configured
+`principal_method` (default `:current_user`) isn't defined, it falls back
+to `Current.user`. No extra configuration needed — the consent screen
+identifies the signed-in user out of the box. (Devise and
+`has_secure_password` apps that expose `current_user` keep working
+unchanged.)
+
+```ruby
+# config/routes.rb
+mount Hitch::Engine => "/"  # exposes /oauth/* + /.well-known/*
+```
+
 ### Client ID Metadata Documents
 
 MCP 2026-07-28 deprecates Dynamic Client Registration in favour of CIMD:
 a client uses an `https` URL as its `client_id`, and the authorization
 server fetches the client metadata from that URL.
 
-**On by default.** The spec makes supporting CIMD a **SHOULD** for
-authorization servers and demotes DCR to a deprecated **MAY**, and
+**Off by default, still.** The spec makes supporting CIMD a **SHOULD**
+for authorization servers and demotes DCR to a deprecated **MAY**, and
 clients choose their mechanism from
 `client_id_metadata_document_supported` in the discovery document — so a
-server with this off keeps every client on the legacy path. DCR keeps
-working either way; an opaque `client_id` and a URL `client_id` cannot
-collide.
+server with this off keeps every client on the legacy path. That is a
+known deviation, and the caps below answer the reason it was originally
+held (nothing bounded fetch *volume*).
+
+What they do not answer is what a flipped default would do to an
+adopter on `bundle update`. A host whose only egress is an HTTPS proxy
+cannot fetch at all — `build_connection` deliberately passes no proxy,
+for the SSRF model — so it would begin *advertising* support, steer
+conformant clients off DCR, and fail every one of them. That is worse
+than not supporting CIMD, and it isn't visible until a client tries. The
+flip wants its own release and an upgrade note.
+
+DCR keeps working either way; an opaque `client_id` and a URL
+`client_id` cannot collide.
 
 ```ruby
-config.client_id_metadata_enabled = false        # close the surface entirely
+config.client_id_metadata_enabled = true         # opt in
 config.client_id_metadata_cache_ttl = 3600       # ceiling on how long a document is cached
 config.client_id_metadata_max_concurrent_fetches = 4   # nil disables; 0 blocks every fetch
 config.client_id_metadata_fetches_per_minute = 20      # per signed-in principal; nil disables

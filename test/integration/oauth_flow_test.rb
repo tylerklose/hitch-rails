@@ -371,15 +371,21 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
   # server would reject every such client_id converts a working DCR flow
   # into a broken one, so it tracks the config exactly.
   test "the CIMD capability tracks the config in both directions" do
-    # On by default since the fetch caps landed — the spec makes
-    # supporting CIMD a SHOULD, and this flag is what clients read.
+    # Off by default, so nothing is advertised until a host opts in.
+    get "/.well-known/oauth-authorization-server"
+    assert_nil JSON.parse(response.body)["client_id_metadata_document_supported"]
+
+    Hitch.configure { |c| c.client_id_metadata_enabled = true }
     get "/.well-known/oauth-authorization-server"
     assert_equal true, JSON.parse(response.body)["client_id_metadata_document_supported"]
 
+    # Withdrawing it matters as much as advertising it: a client reads
+    # this flag to decide whether to send a document URL at all, so a
+    # server that stops supporting CIMD without withdrawing the
+    # advertisement breaks every client that believed it.
     Hitch.configure { |c| c.client_id_metadata_enabled = false }
     get "/.well-known/oauth-authorization-server"
-    assert_nil JSON.parse(response.body)["client_id_metadata_document_supported"],
-      "turning the feature off must also withdraw the advertisement, or clients keep sending document URLs"
+    assert_nil JSON.parse(response.body)["client_id_metadata_document_supported"]
   end
 
   test "an https client_id is an opaque unknown client while CIMD is disabled" do

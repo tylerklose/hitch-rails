@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Caps on outbound Client ID Metadata Document fetches.** Each fetch
+  was already tightly constrained; nothing bounded how *many* of them a
+  caller could provoke, and negative caching only bounds repeats of the
+  same thing. Two bypasses survived it: a wildcard DNS record yields
+  unlimited distinct hosts, and a host answering `404` yields unlimited
+  distinct URLs.
+
+  `config.client_id_metadata_enabled` remains **off by default**. The
+  volume objection that held it back is answered here; the ones that
+  concern an adopter's upgrade are not. A host whose only egress is an
+  HTTPS proxy cannot fetch at all — the connection deliberately carries
+  no proxy, for the SSRF model — so flipping the default would have it
+  begin *advertising* support, steering conformant clients off DCR onto
+  a path that fails every time, invisibly until a client tries. That
+  flip wants its own release and an upgrade note.
+
+  `config.client_id_metadata_max_concurrent_fetches` (default 4, per
+  process; `nil` disables, `0` blocks) bounds fetches in flight at once.
+  A fetch can occupy a request thread for the whole resolution budget,
+  so without a cap enough slow ones saturate the pool and the app stops
+  serving anything.
+
+  `config.client_id_metadata_fetches_per_minute` (default 20, per
+  signed-in principal; `nil` disables) bounds volume aimed at third
+  parties. Negative caching cannot: an attacker with a wildcard DNS
+  record gets unlimited distinct hosts, and a host answering `404` gets
+  one fetch per distinct URL. Neither trick changes who is asking.
+
+  A refusal on either cap writes no document or host cache entry.
+  Caching one as a host failure would turn cap exhaustion into a way to
+  poison a legitimate host's entry for every other caller. Capacity is
+  taken *before* the minute budget is charged, so a request refused for
+  want of a slot does not spend a token it never used — the other order
+  lets a squeeze on the slots drain every victim's own budget while they
+  retry. Cache hits are charged against neither cap, since a cached
+  resolution costs nothing outbound.
+
+  Two limits of the rate limiter, stated rather than implied. The window
+  is a fixed minute, so a caller aligned to the boundary can spend two
+  windows back to back and briefly reach twice the nominal rate. And
+  counters live in `Rails.cache`: if the cache is unavailable the limit
+  fails open, which keeps `/oauth/authorize` serving but means the limit
+  is absent exactly when infrastructure is degraded. That case now logs
+  once per process rather than passing silently.
+
+  Non-integer values for either cap are treated as unset rather than
+  raising. The docs say "`nil` disables", and the obvious wrong guess at
+  that — `false` — has no `#to_i`, which would have raised out of
+  `resolve` and returned 500 from `/oauth/authorize`.
+
+- **A production boot warning when CIMD is enabled and `Rails.cache` is
+  a `NullStore`.** Negative caching and the rate limit both live there,
+  so under a null store neither applies — silently, and precisely on the
+  deployment that believes itself protected. The in-process concurrency
+  cap still holds, so this warns rather than refuses. Production only:
+  `:null_store` is Rails' default in test and in development without
+  `tmp/caching-dev.txt`, and a warning on every console and rake task is
+  one adopters learn to ignore.
+
 ### Security
 
 - **`redirect_uri` is now matched exactly.** Matching compared scheme,
@@ -232,44 +293,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   — a browser ignores it otherwise. The README example and the
   `ServerEndpoint` docs now show including `CorsSupport` alongside it,
   which is what makes the 401 challenge readable to a browser client.
-## [Unreleased]
-
-### Added
-
-- **Caps on outbound Client ID Metadata Document fetches**, and with
-  them, **CIMD is now enabled by default**
-  (`config.client_id_metadata_enabled`). MCP 2026-07-28 makes supporting
-  CIMD a SHOULD for authorization servers and demotes Dynamic Client
-  Registration to a deprecated MAY; clients pick their mechanism from
-  `client_id_metadata_document_supported`, so a server with it off keeps
-  every client on the legacy path. It shipped off only because nothing
-  bounded fetch *volume* — that objection is now answered.
-
-  `config.client_id_metadata_max_concurrent_fetches` (default 4, per
-  process; `nil` disables, `0` blocks) bounds fetches in flight at once.
-  A fetch can occupy a request thread for the whole resolution budget,
-  so without a cap enough slow ones saturate the pool and the app stops
-  serving anything.
-
-  `config.client_id_metadata_fetches_per_minute` (default 20, per
-  signed-in principal; `nil` disables) bounds volume aimed at third
-  parties. Negative caching cannot: an attacker with a wildcard DNS
-  record gets unlimited distinct hosts, and a host answering `404` gets
-  one fetch per distinct URL. Neither trick changes who is asking.
-
-  A refusal on either cap is never cached, in either direction. Caching
-  it as a host failure would turn cap exhaustion into a way to poison a
-  legitimate host's entry for every other caller. Cache hits are not
-  charged against either cap, since a cached resolution costs nothing
-  outbound and charging it would make a busy, correctly-configured
-  server throttle itself.
-
-- **A boot warning when CIMD is enabled and `Rails.cache` is a
-  `NullStore`.** Negative caching and the rate limit both live there, so
-  under a null store neither applies — silently, and precisely on the
-  deployment that believes itself protected. The in-process concurrency
-  cap still holds, so this warns rather than refuses.
-
 ## [0.1.0]
 
 Initial release. A mountable Rails engine that turns a Rails app into a

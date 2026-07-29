@@ -23,6 +23,11 @@ module Hitch
     # warning rather than a refusal, but it is worth saying out loud.
     initializer "hitch.warn_on_uncacheable_cimd", after: :initialize_cache do
       next unless Hitch.configuration.client_id_metadata_enabled
+      # Production only. :null_store is Rails' default in test, and in
+      # development without tmp/caching-dev.txt, so warning everywhere
+      # would fire on every console, rake task and test run — training
+      # adopters to silence it in the one environment it matters.
+      next unless Rails.env.production?
       next unless defined?(ActiveSupport::Cache::NullStore)
       next unless Rails.cache.is_a?(ActiveSupport::Cache::NullStore)
 

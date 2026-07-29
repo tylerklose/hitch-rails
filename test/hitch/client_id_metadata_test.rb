@@ -18,6 +18,10 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   teardown do
     Rails.cache = @cache
     Hitch.reset_configuration!
+    # The in-flight counter is process-wide and nothing else resets it.
+    # A test that fails mid-slot would otherwise leave every later CIMD
+    # test failing closed and reporting as an unrelated cascade.
+    CIMD.instance_variable_set(:@fetches_in_flight, 0)
   end
 
   # --- reference? -----------------------------------------------------
@@ -306,6 +310,52 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
       3.times { |i| CIMD.resolve("https://y#{i}.example/d.json", actor: "User:9") }
     end
     assert_equal 6, calls
+  end
+
+  # Capacity is taken before the minute budget is charged. The other
+  # order spends a token on a request that never sent a packet — so an
+  # attacker holding the slots would drain every victim's own budget
+  # while they retried, locking them out past the point where the slots
+  # freed up.
+  test "a capacity refusal does not spend the principal's rate budget" do
+    Hitch.configure do |c|
+      c.client_id_metadata_max_concurrent_fetches = 0
+      c.client_id_metadata_fetches_per_minute = 3
+    end
+    5.times { |i| assert_nil CIMD.resolve("https://client.example/#{i}.json", actor: "User:1") }
+
+    calls = 0
+    Hitch.configure { |c| c.client_id_metadata_max_concurrent_fetches = 4 }
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id) { calls += 1; nil }) do
+      3.times { |i| CIMD.resolve("https://client.example/after#{i}.json", actor: "User:1") }
+    end
+    assert_equal 3, calls, "the refused requests must not have spent the budget they never used"
+  end
+
+  # The docs say "nil disables". The obvious wrong guess at that is
+  # `false`, whose #to_i does not exist — which raised NoMethodError
+  # straight out of resolve and 500ed /oauth/authorize.
+  test "a non-integer cap setting is treated as unset rather than raising" do
+    document = CIMD::Document.new(client_id: DOC_URL, client_name: "X", redirect_uris: [ "https://a.test/cb" ])
+
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id) { [ document, 3600 ] }) do
+      [ false, "four", Object.new, 2.5 ].each do |bad|
+        Rails.cache.clear
+        Hitch.configure do |c|
+          c.client_id_metadata_max_concurrent_fetches = bad
+          c.client_id_metadata_fetches_per_minute = bad
+        end
+        assert_nothing_raised { CIMD.resolve(DOC_URL, actor: "User:1") }
+      end
+    end
+  end
+
+  test "the in-flight counter is released when a fetch raises" do
+    Hitch.configure { |c| c.client_id_metadata_max_concurrent_fetches = 2 }
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id) { raise "boom" }) do
+      assert_raises(RuntimeError) { CIMD.resolve(DOC_URL) }
+    end
+    assert_equal 0, CIMD.fetches_in_flight
   end
 
   # --- the wire itself -------------------------------------------------

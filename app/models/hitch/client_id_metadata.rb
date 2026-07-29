@@ -120,6 +120,9 @@ module Hitch
     # here would turn cap exhaustion into a way to poison a legitimate
     # host's entry for everyone.
     CAPACITY_EXCEEDED = :capacity_exceeded
+    # Refused because this principal spent its minute budget. Same rule:
+    # no fetch happened, so nothing is known and nothing is cached.
+    RATE_LIMITED = :rate_limited
 
     class << self
       # A client_id is a CIMD reference when it is an https URL. Opaque
@@ -178,11 +181,19 @@ module Hitch
         # resolution costs nothing outbound, so charging it against
         # either budget would penalise the common case and make a busy,
         # correctly-configured server throttle itself.
-        return nil unless charge_rate_limit(actor)
+        #
+        # Capacity is taken FIRST, and the minute budget is only charged
+        # once a slot is held. The other order spends a token on a
+        # request that never sent a packet — which turns a squeeze on the
+        # slots into a way to drain every victim's own budget while they
+        # retry, locking them out past the point where the slots free up.
+        outcome = with_fetch_capacity do
+          charge_rate_limit(actor) ? fetch_and_validate(client_id) : RATE_LIMITED
+        end
 
-        case (outcome = with_fetch_capacity { fetch_and_validate(client_id) })
-        when CAPACITY_EXCEEDED
-          # Deliberately no cache write of any kind — see the constant.
+        case outcome
+        when CAPACITY_EXCEEDED, RATE_LIMITED
+          # Deliberately no cache write of any kind — see the constants.
           nil
         when Array
           # [document, ttl] — the TTL is derived from the document's own
@@ -225,31 +236,36 @@ module Hitch
       # limit is read from config at acquisition time — a host may change
       # it, and tests do.
       def with_fetch_capacity
-        limit = Hitch.configuration.client_id_metadata_max_concurrent_fetches
         # nil disables, matching the rate-limit knob. Integers are honored
         # literally — including 0, which blocks every fetch. Treating 0 as
         # "disabled" would make the most restrictive-looking setting the
         # least restrictive one.
+        limit = integer_setting(:client_id_metadata_max_concurrent_fetches)
         return yield if limit.nil?
 
-        limit = limit.to_i
-        acquired = @fetch_mutex.synchronize do
-          next false if @fetches_in_flight.to_i >= limit
+        # The increment and the ensure that undoes it must not be
+        # separable by an asynchronous exception. Rack::Timeout, an outer
+        # Timeout.timeout, or Puma's force_shutdown_after all deliver via
+        # Thread#raise, and one landing between the two would leak the
+        # slot permanently — after `limit` of those, CIMD is dead for the
+        # life of the process, silently and with nothing to alert on.
+        Thread.handle_interrupt(Object => :never) do
+          acquired = @fetch_mutex.synchronize do
+            next false if @fetches_in_flight >= limit
 
-          @fetches_in_flight = @fetches_in_flight.to_i + 1
-          true
-        end
+            @fetches_in_flight += 1
+            true
+          end
 
-        # Fails closed, and fails SILENTLY to the caller: an authorize
-        # request under load is refused rather than queued, because
-        # queueing is what consumes the thread this cap exists to
-        # protect.
-        return CAPACITY_EXCEEDED unless acquired
+          # Fails closed, and refuses rather than queues: queueing is what
+          # consumes the request thread this cap exists to protect.
+          next CAPACITY_EXCEEDED unless acquired
 
-        begin
-          yield
-        ensure
-          @fetch_mutex.synchronize { @fetches_in_flight = @fetches_in_flight.to_i - 1 }
+          begin
+            Thread.handle_interrupt(Object => :immediate) { yield }
+          ensure
+            @fetch_mutex.synchronize { @fetches_in_flight -= 1 }
+          end
         end
       end
 
@@ -258,12 +274,35 @@ module Hitch
       # change what this bounds — the order of magnitude of traffic one
       # principal can aim at a third party.
       def charge_rate_limit(actor)
-        limit = Hitch.configuration.client_id_metadata_fetches_per_minute
-        return true if actor.blank? || limit.nil? || limit.to_i <= 0
+        limit = integer_setting(:client_id_metadata_fetches_per_minute)
+        return true if limit.nil? || limit <= 0
+
+        if actor.blank?
+          # Not reachable from the shipped controller — both authorize
+          # actions bail to require_principal! first — but a host whose
+          # principal_method returns something without #id (a claims
+          # hash, a bare identifier) would land here and silently get no
+          # rate limiting at all.
+          warn_once(:cimd_rate_limit_no_actor,
+                    "client_id_metadata_fetches_per_minute is set but the resolution had no actor; " \
+                    "per-principal rate limiting is not being applied")
+          return true
+        end
 
         key = "hitch/cimd/v1/rate/#{Digest::SHA256.hexdigest(actor.to_s)}/#{(Time.now.to_i / 60)}"
-        spent = cache_read(key).to_i
-        return false if spent >= limit.to_i
+        spent = cache_read(key)
+        if spent.nil? && cache_unavailable?
+          # Fail open — a cache blip must not break /oauth/authorize —
+          # but say so. This limiter is the argument for CIMD being safe
+          # to enable, and it evaporates exactly when infrastructure is
+          # degraded. Silence there is the worst property it could have.
+          warn_once(:cimd_rate_limit_cache_down,
+                    "Rails.cache is unavailable; CIMD per-principal rate limiting is not being applied")
+          return true
+        end
+
+        spent = spent.to_i
+        return false if spent >= limit
 
         # Not atomic. A racing pair of requests can both read the same
         # value and each write spent+1, so a determined caller overshoots
@@ -311,9 +350,44 @@ module Hitch
         nil
       end
 
+      # Reads a numeric setting without trusting its type. The docs say
+      # "nil disables", and the obvious wrong guess at that is `false` —
+      # whose #to_i does not exist, which would raise NoMethodError
+      # straight out of resolve and 500 /oauth/authorize on the
+      # default-on path. Anything not coercible to an Integer is treated
+      # as unset rather than fatal.
+      def integer_setting(name)
+        value = Hitch.configuration.public_send(name)
+        return nil if value.nil? || value == false
+
+        Integer(value, exception: false)
+      end
+
+      # Distinguishes "cache is down" from "key genuinely absent", so the
+      # rate limiter can say which one it is failing open on.
+      def cache_unavailable?
+        @cache_unavailable
+      end
+
       # A cache outage must not take the authorize endpoint with it.
       def cache_read(key)
-        Rails.cache.read(key)
+        value = Rails.cache.read(key)
+        @cache_unavailable = false
+        value
+      rescue StandardError
+        @cache_unavailable = true
+        nil
+      end
+
+      # Warns once per process per reason. These describe a standing
+      # misconfiguration, not a per-request event; logging them on every
+      # authorize would bury the thing it is warning about.
+      def warn_once(reason, message)
+        @warned ||= {}
+        return if @warned[reason]
+
+        @warned[reason] = true
+        Rails.logger&.warn("[hitch] #{message}")
       rescue StandardError
         nil
       end

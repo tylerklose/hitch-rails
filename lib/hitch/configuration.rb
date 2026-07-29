@@ -61,21 +61,24 @@ module Hitch
     # it (Client ID Metadata Documents, the successor to Dynamic Client
     # Registration in MCP 2026-07-28).
     #
-    # On by default. MCP 2026-07-28 makes CIMD a SHOULD for authorization
-    # servers and demotes Dynamic Client Registration to a deprecated
-    # MAY; clients choose their mechanism from
-    # `client_id_metadata_document_supported` in the discovery document,
-    # so a server that leaves this off keeps every client on the legacy
-    # path. DCR continues to work either way.
+    # Still off by default, though the spec makes CIMD a SHOULD for
+    # authorization servers and demotes Dynamic Client Registration to a
+    # deprecated MAY. The volume objection that held it back is answered
+    # by the two caps below; three others are not, and they are about
+    # what happens to an adopter on `bundle update` rather than about
+    # this server's safety:
     #
-    # This shipped off by default until the fetch caps below existed,
-    # because enabling it gives /oauth/authorize an outbound-fetch
-    # surface and each fetch being tightly constrained says nothing about
-    # how MANY of them a caller can provoke. With the concurrency and
-    # per-principal limits in place that objection is answered, and the
-    # spec's SHOULD wins.
+    #   - A host whose only egress is an HTTPS proxy cannot fetch at all
+    #     (build_connection passes no proxy, deliberately, for the SSRF
+    #     model). Flipping the default would have it ADVERTISE support,
+    #     steering conformant clients off DCR and onto a path that fails
+    #     every time — worse than not supporting CIMD.
+    #   - Rate limiting and negative caching both need a real
+    #     Rails.cache.
+    #   - Neither is visible until a client tries.
     #
-    # Set to false to close the surface entirely.
+    # So the flip wants its own release and an upgrade note, not a
+    # bundle update. Set to true to opt in.
     # @return [Boolean]
     attr_accessor :client_id_metadata_enabled
 
@@ -124,7 +127,7 @@ module Hitch
       @authorization_code_lifetime_seconds = 600
       @principal_method = :current_user
       @login_path = nil
-      @client_id_metadata_enabled = true
+      @client_id_metadata_enabled = false
       @client_id_metadata_cache_ttl = 3600
       @client_id_metadata_max_concurrent_fetches = 4
       @client_id_metadata_fetches_per_minute = 20

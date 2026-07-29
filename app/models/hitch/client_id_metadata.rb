@@ -128,6 +128,7 @@ module Hitch
     # and now stated rather than implied.
     @rate_mutex = Mutex.new
     @rate_counts = {}
+    @rate_window = nil
 
     # Failure sentinels. Only HOST_FAILURE — nothing at that host
     # answered — may block the host's other documents; a document-level
@@ -349,23 +350,32 @@ module Hitch
         # out — the limit multiplied by the concurrency cap rather than
         # approached.
         @rate_mutex.synchronize do
-          # Windows older than the current one can never be consulted
-          # again, so memory stays bounded by the number of distinct
-          # principals seen within a single minute.
-          @rate_counts.reject! { |(_, seen), _| seen < window }
+          # The hash holds one window at a time and is dropped whole when
+          # the minute rolls over, so charging is O(1) and memory is
+          # bounded by the distinct principals seen within a single
+          # minute. Sweeping expired entries on every charge would make
+          # the common path scale with the number of actors instead.
+          if @rate_window != window
+            @rate_counts.clear
+            @rate_window = window
+          end
 
-          entry = [ actor.to_s, window ]
-          spent = @rate_counts[entry].to_i
+          key = actor.to_s
+          spent = @rate_counts[key].to_i
           next false if spent >= limit
 
-          @rate_counts[entry] = spent + 1
+          @rate_counts[key] = spent + 1
           true
         end
       end
 
       # Test seam: current count for an actor in this minute.
       def fetches_charged_to(actor)
-        @rate_mutex.synchronize { @rate_counts[[ actor.to_s, Time.now.to_i / 60 ]].to_i }
+        @rate_mutex.synchronize do
+          next 0 unless @rate_window == Time.now.to_i / 60
+
+          @rate_counts[actor.to_s].to_i
+        end
       end
 
       # Validates the rebuilt struct rather than relying on Document.new

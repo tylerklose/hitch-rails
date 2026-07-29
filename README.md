@@ -150,10 +150,17 @@ caching cannot close amplification on its own, since a wildcard DNS
 record yields unlimited distinct hosts and a host answering `404` yields
 unlimited distinct URLs, but neither trick changes who is asking.
 
-Both the rate limit and negative caching live in `Rails.cache`. Under a
-`NullStore` neither applies, and the engine logs a warning at boot when
-CIMD is enabled without a real cache store. The in-process concurrency
-cap still holds.
+Negative caching lives in `Rails.cache`. Under a `NullStore` it does not
+apply, and the engine logs a warning at boot when CIMD is enabled
+without a real cache store in production.
+
+Both caps are in-process and unaffected by the cache store. That makes
+the per-principal limit atomic — the check and the increment have to be
+one operation, and splitting them across a cache read and write lets
+every caller the concurrency cap admits read the same value and write
+value+1, multiplying the limit by the cap rather than approaching it.
+The trade is that both bounds are per process, so a fleet ceiling is the
+configured value times the worker count.
 
 ## Using a token from the host's MCP endpoint
 

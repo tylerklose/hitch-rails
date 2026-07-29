@@ -111,9 +111,13 @@ module Hitch
     # who is asking, so counting per principal is what actually bounds
     # the volume of traffic this server can be aimed at a third party.
     #
-    # Counters live in Rails.cache. Under a NullStore nothing is
-    # retained and this limit does not apply — see the boot warning in
-    # Hitch::Engine.
+    # Counted in process, under a mutex, rather than in Rails.cache: the
+    # check and the increment have to be one operation, and doing them as
+    # a cache read plus a cache write lets every caller the concurrency
+    # cap admits read the same value and write value+1 — the limit
+    # multiplied by the cap rather than approached. So this bound is per
+    # process, and a fleet ceiling is this times the worker count. It is
+    # unaffected by the cache store.
     # @return [Integer, nil]
     attr_accessor :client_id_metadata_fetches_per_minute
 

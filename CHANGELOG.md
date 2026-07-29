@@ -83,10 +83,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   settings often arrive from ENV.
 
 - **A production boot warning when CIMD is enabled and `Rails.cache` is
-  a `NullStore`.** Negative caching and the rate limit both live there,
-  so under a null store neither applies — silently, and precisely on the
-  deployment that believes itself protected. The in-process concurrency
-  cap still holds, so this warns rather than refuses. Production only:
+  a `NullStore`.** Negative caching lives there, so under a null store
+  it is silently absent — precisely on the deployment that believes
+  itself protected. Both caps are in-process and unaffected, which is
+  why this warns rather than refuses. Production only:
   `:null_store` is Rails' default in test and in development without
   `tmp/caching-dev.txt`, and a warning on every console and rake task is
   one adopters learn to ignore.

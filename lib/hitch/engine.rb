@@ -14,13 +14,15 @@ module Hitch
       end
     end
 
-    # CIMD leans on Rails.cache for two things that are not conveniences:
-    # negative caching, which stops a dead or hostile client_id buying an
-    # outbound request per inbound one, and the per-principal fetch rate
-    # limit. A NullStore retains neither, so both simply do not apply —
-    # silently, and precisely on the deployment that thinks it is
-    # protected. The in-process concurrency cap still holds, so this is a
-    # warning rather than a refusal, but it is worth saying out loud.
+    # CIMD leans on Rails.cache for negative caching, which is what stops
+    # a dead or hostile client_id buying an outbound request per inbound
+    # one. A NullStore retains nothing between requests, so that guard is
+    # silently absent — precisely on the deployment that thinks it is
+    # protected.
+    #
+    # The concurrency cap and the per-principal rate limit are both
+    # in-process and unaffected, which is why this warns rather than
+    # refuses.
     initializer "hitch.warn_on_uncacheable_cimd", after: :initialize_cache do
       next unless Hitch.configuration.client_id_metadata_enabled
       # Production only. :null_store is Rails' default in test, and in
@@ -33,9 +35,9 @@ module Hitch
 
       Rails.logger&.warn(
         "[hitch] client_id_metadata_enabled is on but Rails.cache is a NullStore. " \
-        "Client metadata documents will be refetched on every authorize request, " \
-        "negative caching will not limit a dead or hostile client_id, and the " \
-        "per-principal fetch rate limit will not apply. Configure a real cache store."
+        "Client metadata documents will be refetched on every authorize request, and " \
+        "negative caching will not limit a dead or hostile client_id. The concurrency " \
+        "cap and per-principal rate limit are unaffected. Configure a real cache store."
       )
     end
 

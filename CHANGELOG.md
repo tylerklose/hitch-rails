@@ -127,14 +127,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schemes run side by side for the spec's twelve-month deprecation
   window and beyond.
 
-  **Off by default** (`config.client_id_metadata_enabled`). Enabling it
-  means `/oauth/authorize` makes an outbound HTTPS request to a URL
-  chosen by an unauthenticated caller — a surface the endpoint otherwise
-  does not have. That warrants a deliberate decision rather than
-  arriving with an upgrade. The capability is advertised in the
-  discovery document (`client_id_metadata_document_supported`) only when
-  enabled, since that flag is what makes a conformant client stop
-  falling back to DCR.
+  **Off by default** (`config.client_id_metadata_enabled`), which is a
+  deliberate deviation from the spec: MCP 2026-07-28 makes CIMD a
+  **SHOULD** for authorization servers and demotes DCR to a deprecated
+  **MAY**. Clients choose their mechanism from
+  `client_id_metadata_document_supported` in the discovery document, so
+  leaving it off keeps every client on the legacy path. Adopters wanting
+  spec-conformant behaviour today should set it to `true`.
+
+  The reason to hold is that enabling it gives `/oauth/authorize` an
+  outbound-fetch surface with no rate or concurrency cap behind it yet.
+  Each fetch is tightly constrained, but bounding the *volume* of
+  fetches is separate work. The default flips once that lands, and no
+  later than 1.0.
 
   The fetch is constrained accordingly: `https` on port 443 only; no
   redirects followed; URLs carrying userinfo or a fragment refused; DNS
@@ -157,7 +162,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A document must name itself — its `client_id` field must equal the URL
   it was fetched from. Without that binding one hosted document could
   impersonate any other client by listing that client's `redirect_uris`.
-  Documents are parsed strictly, never coerced into shape.
+  `client_id`, `client_name` and `redirect_uris` are all required, per
+  the spec, and documents are parsed strictly rather than coerced into
+  shape. A `client_id` URL must carry a path component to be treated as
+  a document reference at all, so a bare origin never triggers a fetch.
+
+  Resolved documents are cached respecting their own HTTP cache headers
+  (`Cache-Control: max-age`, `Expires`, `no-store`/`no-cache`), with
+  `config.client_id_metadata_cache_ttl` acting as a **ceiling** rather
+  than the value — a document may ask to be cached for less, so a
+  client's `redirect_uris` rotation takes effect promptly, but never for
+  more, so a hostile document cannot pin itself in a shared cache.
+
+  The consent screen warns when a client's declared `redirect_uris` are
+  localhost-only. A metadata document cannot prevent `localhost`
+  impersonation by itself: anyone can host a document claiming any name
+  and point it at a loopback port, and nothing in the document proves
+  which program is listening there.
 
   Both successful and failed resolutions are cached
   (`config.client_id_metadata_cache_ttl`, default 1 hour; failures for

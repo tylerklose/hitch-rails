@@ -61,13 +61,20 @@ module Hitch
     # it (Client ID Metadata Documents, the successor to Dynamic Client
     # Registration in MCP 2026-07-28).
     #
-    # Off by default, deliberately. Enabling it means /oauth/authorize
-    # makes an outbound HTTPS request to a URL chosen by an
-    # unauthenticated caller — a surface the endpoint otherwise does not
-    # have. Hitch::ClientIdMetadata constrains it heavily (public
+    # Off by default, which is a deliberate deviation from the spec:
+    # MCP 2026-07-28 makes CIMD a SHOULD for authorization servers and
+    # demotes Dynamic Client Registration to a deprecated MAY. Clients
+    # choose their mechanism from `client_id_metadata_document_supported`
+    # in the discovery document, so leaving this off keeps every client
+    # on the legacy path.
+    #
+    # The reason to hold is that enabling it gives /oauth/authorize an
+    # outbound-fetch surface with no rate or concurrency cap behind it
+    # yet. Hitch::ClientIdMetadata constrains each fetch heavily (public
     # addresses only, connection pinned to a vetted IP, no redirects,
-    # capped size and time, negative caching), but a host should turn
-    # this on knowingly. DCR keeps working either way.
+    # capped size and time, negative caching), but bounding the VOLUME of
+    # fetches is separate work. This default flips once that lands, and
+    # no later than 1.0. DCR keeps working either way.
     # @return [Boolean]
     attr_accessor :client_id_metadata_enabled
 

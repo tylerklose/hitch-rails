@@ -486,6 +486,40 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     assert_includes response.body, "Claude" # derived from the redirect_uri host
   end
 
+  # MCP 2026-07-28 security considerations: a metadata document "cannot
+  # prevent localhost URL impersonation by itself", so the server SHOULD
+  # warn when a client's redirect URIs are localhost-only. Anyone can
+  # host a document claiming any name and point it at a loopback port;
+  # nothing in the document proves which program is listening there.
+  test "a localhost-only CIMD client raises a warning on the consent screen" do
+    Hitch.configure { |c| c.client_id_metadata_enabled = true }
+    sign_in @user
+
+    local = cimd_document(redirect_uris: [ "http://localhost:9000/cb", "http://127.0.0.1:9000/cb" ])
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id) { local }) do
+      get "/oauth/authorize", params: {
+        client_id: CIMD_URL, redirect_uri: "http://localhost:9000/cb",
+        code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
+      }
+      assert_response :success
+      assert_includes response.body, "runs on your own computer"
+    end
+  end
+
+  test "a CIMD client with a remote redirect_uri raises no localhost warning" do
+    Hitch.configure { |c| c.client_id_metadata_enabled = true }
+    sign_in @user
+
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id) { cimd_document }) do
+      get "/oauth/authorize", params: {
+        client_id: CIMD_URL, redirect_uri: CLIENT_REDIRECT,
+        code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
+      }
+      assert_response :success
+      assert_not_includes response.body, "runs on your own computer"
+    end
+  end
+
   test "a client's declared name never reaches the consent screen (CIMD)" do
     Hitch.configure { |c| c.client_id_metadata_enabled = true }
     sign_in @user

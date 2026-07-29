@@ -118,7 +118,11 @@ module Hitch
         return false unless Hitch.configuration.client_id_metadata_enabled
 
         uri = URI.parse(client_id.to_s)
-        uri.is_a?(URI::HTTPS) && uri.host.present?
+        # "The client_id URL MUST use the 'https' scheme and contain a
+        # path component" — MCP 2026-07-28, Client Registration. A bare
+        # origin is not a metadata document URL, so it falls through to
+        # the opaque/DCR lookup rather than triggering an outbound fetch.
+        uri.is_a?(URI::HTTPS) && uri.host.present? && uri.path.present? && uri.path != "/"
       rescue URI::InvalidURIError
         false
       end
@@ -156,9 +160,12 @@ module Hitch
         return nil if cache_read(failure_key(host)) == false
 
         case (outcome = fetch_and_validate(client_id))
-        when Document
-          cache_write(key, outcome.to_h, Hitch.configuration.client_id_metadata_cache_ttl)
-          outcome
+        when Array
+          # [document, ttl] — the TTL is derived from the document's own
+          # HTTP cache headers, clamped by config.
+          document, ttl = outcome
+          cache_write(key, document.to_h, ttl) if ttl.positive?
+          document
         when SHAPE_REJECT
           # Rejected on the URL alone, before any network work happened.
           # Caching that costs more than it saves: repeating the check is
@@ -255,11 +262,13 @@ module Hitch
           address = safe_address(uri.host)
           return HOST_FAILURE if address.nil?
 
-          body = fetch(uri, address)
-          return HOST_FAILURE if body == HOST_FAILURE
-          return nil if body.nil?
+          fetched = fetch(uri, address)
+          return HOST_FAILURE if fetched == HOST_FAILURE
+          return nil if fetched.nil?
 
-          build_document(client_id, body)
+          body, ttl = fetched
+          document = build_document(client_id, body)
+          document && [ document, ttl ]
         end
       rescue Timeout::Error => e
         log_rejection(client_id, "#{e.class}: #{e.message}")
@@ -351,8 +360,42 @@ module Hitch
           # framing. read_capped is what actually enforces the limit.
           return nil if response["Content-Length"].to_i > MAX_BYTES
 
-          return read_capped(response)
+          body = read_capped(response)
+          return nil if body.nil?
+
+          return [ body, cache_ttl_for(response) ]
         end
+      end
+
+      # "SHOULD cache metadata respecting HTTP cache headers" — MCP
+      # 2026-07-28, Client Registration.
+      #
+      # The configured TTL becomes a CEILING rather than the value: a
+      # document is allowed to ask to be cached for less time than the
+      # host's default, which is how a client rotates its redirect_uris
+      # promptly, but not for longer, which is how an attacker-supplied
+      # document would otherwise pin itself in a shared cache. Returns 0
+      # when the document asks not to be stored at all.
+      def cache_ttl_for(response)
+        ceiling = Hitch.configuration.client_id_metadata_cache_ttl.to_i
+        directives = response["Cache-Control"].to_s.downcase
+
+        return 0 if directives.include?("no-store") || directives.include?("no-cache")
+
+        seconds = directives[/max-age\s*=\s*(\d+)/, 1]&.to_i
+        seconds ||= expires_in_seconds(response["Expires"], response["Date"])
+        return ceiling if seconds.nil?
+
+        seconds.clamp(0, ceiling)
+      end
+
+      def expires_in_seconds(expires, date)
+        return nil if expires.blank?
+
+        now = date.present? ? Time.httpdate(date) : Time.now
+        (Time.httpdate(expires) - now).to_i
+      rescue ArgumentError
+        nil
       end
 
       # Content-Length is a claim, not a guarantee — read defensively and
@@ -388,11 +431,21 @@ module Hitch
         return log_rejection(client_id, "document declares no redirect_uris") if redirect_uris.empty?
         return log_rejection(client_id, "document declares too many redirect_uris") if redirect_uris.size > MAX_REDIRECT_URIS
 
+        # "The metadata document MUST include at least the following
+        # properties: client_id, client_name, redirect_uris" — MCP
+        # 2026-07-28, Client Registration. Absent or non-string
+        # client_name makes the document invalid rather than merely
+        # nameless.
+        client_name = parsed["client_name"]
+        unless client_name.is_a?(String) && client_name.present?
+          return log_rejection(client_id, "document is missing the required client_name")
+        end
+
         Document.new(
           client_id: client_id,
           # Attacker-controllable, exactly like the DCR client_name.
           # Retained for audit; never trusted for consent-screen display.
-          client_name: parsed["client_name"].is_a?(String) ? parsed["client_name"] : nil,
+          client_name: client_name,
           redirect_uris: redirect_uris
         )
       end

@@ -40,6 +40,19 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     end
   end
 
+  # "The client_id URL MUST use the 'https' scheme and contain a path
+  # component" — MCP 2026-07-28, Client Registration. A bare origin is
+  # not a document URL, and treating it as one would trigger an outbound
+  # fetch for something that can never be a valid reference.
+  test "an https client_id without a path component is not a CIMD reference" do
+    [ "https://client.example", "https://client.example/", "https://client.example?a=1" ].each do |value|
+      assert_not CIMD.reference?(value), "#{value.inspect} has no path component"
+    end
+
+    assert CIMD.reference?("https://client.example/client.json")
+    assert CIMD.reference?("https://client.example/oauth/client-metadata.json")
+  end
+
   # --- SSRF address vetting -------------------------------------------
 
   test "non-public addresses are refused" do
@@ -134,26 +147,26 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   # document could impersonate any other client by listing that client's
   # redirect_uris and having codes delivered there.
   test "a document naming a different client_id is refused" do
-    doc = build({ client_id: "https://victim.example/metadata.json", redirect_uris: [ "https://a.test/cb" ] }.to_json)
+    doc = build({ client_id: "https://victim.example/metadata.json", client_name: "V", redirect_uris: [ "https://a.test/cb" ] }.to_json)
     assert_nil doc
   end
 
   test "a document with a missing, non-string, or mismatched client_id is refused" do
     [ nil, 42, [ DOC_URL ], "#{DOC_URL}/", DOC_URL.upcase ].each do |value|
-      assert_nil build({ client_id: value, redirect_uris: [ "https://a.test/cb" ] }.to_json),
+      assert_nil build({ client_id: value, client_name: "N", redirect_uris: [ "https://a.test/cb" ] }.to_json),
         "client_id #{value.inspect} must not satisfy the self-binding check"
     end
   end
 
   test "a document without usable redirect_uris is refused" do
     [ nil, [], [ 1, 2 ], "https://a.test/cb" ].each do |value|
-      assert_nil build({ client_id: DOC_URL, redirect_uris: value }.to_json)
+      assert_nil build({ client_id: DOC_URL, client_name: "N", redirect_uris: value }.to_json)
     end
   end
 
   test "a document with an absurd number of redirect_uris is refused" do
     many = Array.new(CIMD::MAX_REDIRECT_URIS + 1) { |i| "https://client.example/cb#{i}" }
-    assert_nil build({ client_id: DOC_URL, redirect_uris: many }.to_json)
+    assert_nil build({ client_id: DOC_URL, client_name: "N", redirect_uris: many }.to_json)
   end
 
   test "a document that is not a JSON object is refused" do
@@ -162,10 +175,15 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     end
   end
 
-  test "a non-string client_name is dropped rather than failing the document" do
-    doc = build({ client_id: DOC_URL, client_name: { evil: true }, redirect_uris: [ "https://a.test/cb" ] }.to_json)
-    assert_not_nil doc
-    assert_nil doc.client_name
+  # "The metadata document MUST include at least the following
+  # properties: client_id, client_name, redirect_uris" — MCP 2026-07-28,
+  # Client Registration. Absent or non-string makes the document
+  # invalid, rather than merely nameless.
+  test "a document without a usable client_name is refused" do
+    [ nil, "", { evil: true }, 42, [ "Name" ] ].each do |value|
+      assert_nil build({ client_id: DOC_URL, client_name: value, redirect_uris: [ "https://a.test/cb" ] }.to_json),
+        "client_name #{value.inspect} must fail the document"
+    end
   end
 
   # --- the wire itself -------------------------------------------------
@@ -239,15 +257,17 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   end
 
   test "a valid document is actually read off the wire" do
-    body = { client_id: DOC_URL, redirect_uris: [ "https://client.example/cb" ] }.to_json
+    body = { client_id: DOC_URL, client_name: "Example", redirect_uris: [ "https://client.example/cb" ] }.to_json
     handler = lambda do |socket|
       socket.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n" \
                    "Content-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n#{body}")
     end
 
     serve(handler) do |port|
-      assert_equal body, read_over_socket(port),
-        "the document must come back intact — if this returns nil the feature is inert no matter how correct the surrounding logic is"
+      fetched = read_over_socket(port)
+      assert_not_nil fetched,
+        "the document must come back — if this is nil the feature is inert no matter how correct the surrounding logic is"
+      assert_equal body, fetched.first
     end
   end
 
@@ -278,6 +298,39 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     end
   end
 
+  # "SHOULD cache metadata respecting HTTP cache headers" — MCP
+  # 2026-07-28, Client Registration. The configured TTL is a ceiling, not
+  # the value: a document may ask to be cached for less (so a client's
+  # redirect_uri rotation takes effect promptly) but never for more (so
+  # an attacker-supplied document can't pin itself in a shared cache).
+  def ttl_for(headers)
+    handler = ->(socket) { socket.write("HTTP/1.1 200 OK\r\n#{headers}Content-Length: 2\r\nConnection: close\r\n\r\n{}") }
+    serve(handler) { |port| read_over_socket(port)&.last }
+  end
+
+  test "a document's cache headers set its TTL, clamped by config" do
+    Hitch.configure { |c| c.client_id_metadata_cache_ttl = 3600 }
+
+    assert_equal 3600, ttl_for(""), "no cache headers falls back to the configured default"
+    assert_equal 60, ttl_for("Cache-Control: max-age=60\r\n"), "a shorter max-age is honoured"
+    assert_equal 3600, ttl_for("Cache-Control: max-age=999999\r\n"), "a longer max-age is clamped to the ceiling"
+    assert_equal 0, ttl_for("Cache-Control: no-store\r\n")
+    assert_equal 0, ttl_for("Cache-Control: no-cache\r\n")
+    assert_equal 0, ttl_for("Cache-Control: private, no-store, max-age=600\r\n"), "no-store wins over max-age"
+  end
+
+  test "an Expires header sets the TTL when max-age is absent" do
+    Hitch.configure { |c| c.client_id_metadata_cache_ttl = 3600 }
+    now = Time.now.utc
+    ttl = ttl_for("Date: #{now.httpdate}\r\nExpires: #{(now + 120).httpdate}\r\n")
+    assert_in_delta 120, ttl, 2
+  end
+
+  test "a malformed Expires header falls back to the configured default" do
+    Hitch.configure { |c| c.client_id_metadata_cache_ttl = 3600 }
+    assert_equal 3600, ttl_for("Expires: not-a-date\r\n")
+  end
+
   test "a non-200 response is refused" do
     [ "404 Not Found", "302 Found", "500 Internal Server Error" ].each do |status|
       handler = ->(socket) { socket.write("HTTP/1.1 #{status}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}") }
@@ -299,7 +352,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     calls = 0
     document = CIMD::Document.new(client_id: DOC_URL, client_name: "X", redirect_uris: [ "https://a.test/cb" ])
 
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id) { calls += 1; document }) do
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id) { calls += 1; [ document, 3600 ] }) do
       3.times { assert_equal [ "https://a.test/cb" ], CIMD.resolve(DOC_URL).redirect_uris }
     end
     assert_equal 1, calls, "a cached document must not trigger a second outbound fetch"
@@ -353,7 +406,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   # once a minute.
   test "a document-level failure does not block other documents on the same host" do
     good = CIMD::Document.new(client_id: "https://shared.example/b.json", redirect_uris: [ "https://a.test/cb" ])
-    stub_class_method(CIMD, :fetch_and_validate, ->(id) { id.end_with?("a.json") ? nil : good }) do
+    stub_class_method(CIMD, :fetch_and_validate, ->(id) { id.end_with?("a.json") ? nil : [ good, 3600 ] }) do
       assert_nil CIMD.resolve("https://shared.example/a.json")
       assert_not_nil CIMD.resolve("https://shared.example/b.json"),
         "a co-tenant document must still resolve after a sibling failed"

@@ -44,6 +44,7 @@ module Hitch
       @client_name = friendly_client_name(oauth[:redirect_uri]) || @redirect_host || "An application"
       @brand_name = Hitch.configuration.brand_name
       @resource = oauth[:resource]
+      @localhost_only_client = localhost_only_client?(oauth[:client_id])
       # Show the user exactly what they're approving (clamped to the
       # server allowlist — never echo an unsupported requested scope).
       @scopes = granted_scopes(oauth[:scope])
@@ -161,6 +162,29 @@ module Hitch
       Hitch::ClientIdMetadata.resolve(client_id)
         &.redirect_uris
         &.select { |candidate| valid_redirect_uri?(candidate) }
+    end
+
+    # MCP 2026-07-28 security considerations: a Client ID Metadata
+    # Document "cannot prevent localhost URL impersonation by itself",
+    # and authorization servers SHOULD warn when a client's redirect
+    # URIs are localhost-only. Anyone can host a document claiming any
+    # name and point it at a loopback port — the user's own machine is
+    # then the destination, and nothing about the document proves which
+    # program is listening there.
+    def localhost_only_client?(client_id)
+      return false unless Hitch::ClientIdMetadata.reference?(client_id)
+
+      declared = registered_redirect_uris(client_id)
+      return false if declared.blank?
+
+      declared.all? { |candidate| loopback_redirect_uri?(candidate) }
+    end
+
+    def loopback_redirect_uri?(candidate)
+      parsed = URI.parse(candidate)
+      parsed.scheme == "http" && loopback_host?(parsed.host)
+    rescue URI::InvalidURIError
+      false
     end
 
     def unknown_client_message(client_id)

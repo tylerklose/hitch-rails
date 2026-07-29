@@ -94,6 +94,23 @@ config.client_id_metadata_enabled = true   # default: false
 config.client_id_metadata_cache_ttl = 3600 # seconds a resolved document is cached
 ```
 
+**This default is a deliberate deviation from the spec.** MCP 2026-07-28
+says authorization servers **SHOULD** support Client ID Metadata
+Documents, and that Dynamic Client Registration — which Hitch implements
+fully — is a **MAY** that is deprecated and retained for backwards
+compatibility. Clients pick their registration mechanism by looking for
+`client_id_metadata_document_supported` in the discovery document, so
+leaving this off means every client falls back to the legacy path.
+Adopters who want spec-conformant behaviour today should set it to
+`true`.
+
+The reason to hold is that the amplification backstop does not exist
+yet: there is no rate or concurrency cap on outbound fetches
+([#12](https://github.com/tylerklose/hitch-rails/issues/12)), so
+enabling this by default would hand every adopter an uncapped egress
+surface on a `bundle update`. The default flips to `true` once that
+lands, and no later than 1.0.
+
 It is off by default because it changes the shape of the endpoint:
 `/oauth/authorize` begins making outbound HTTPS requests to URLs chosen
 by unauthenticated callers. `Hitch::ClientIdMetadata` constrains that

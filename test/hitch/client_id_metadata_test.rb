@@ -335,19 +335,115 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   # The docs say "nil disables". The obvious wrong guess at that is
   # `false`, whose #to_i does not exist — which raised NoMethodError
   # straight out of resolve and 500ed /oauth/authorize.
-  test "a non-integer cap setting is treated as unset rather than raising" do
-    document = CIMD::Document.new(client_id: DOC_URL, client_name: "X", redirect_uris: [ "https://a.test/cb" ])
+  #
+  # Asserts the RESULTING BEHAVIOUR, not merely that nothing raised: an
+  # earlier version of this test passed while Kernel.Integer quietly
+  # truncated 2.5 to a working cap of 2, blessing exactly what its own
+  # name said it rejected.
+  test "a non-integer cap setting is treated as unset, not coerced" do
+    [ false, true, "four", Object.new, 2.5, 0.9 ].each do |bad|
+      Hitch.configure do |c|
+        c.client_id_metadata_max_concurrent_fetches = bad
+        c.client_id_metadata_fetches_per_minute = bad
+      end
+      assert_nil CIMD.send(:integer_setting, :client_id_metadata_max_concurrent_fetches),
+        "#{bad.inspect} must be unset, never coerced to a working limit"
+      assert_nil CIMD.send(:integer_setting, :client_id_metadata_fetches_per_minute)
+    end
 
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id) { [ document, 3600 ] }) do
-      [ false, "four", Object.new, 2.5 ].each do |bad|
-        Rails.cache.clear
-        Hitch.configure do |c|
-          c.client_id_metadata_max_concurrent_fetches = bad
-          c.client_id_metadata_fetches_per_minute = bad
+    # Strings are accepted, because settings often arrive from ENV.
+    Hitch.configure { |c| c.client_id_metadata_fetches_per_minute = "7" }
+    assert_equal 7, CIMD.send(:integer_setting, :client_id_metadata_fetches_per_minute)
+  end
+
+  # Parallel to the concurrency-zero test. The most restrictive-looking
+  # value must not be the one that removes the protection.
+  test "a rate limit of zero blocks every fetch, and nil disables the limit" do
+    calls = 0
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id) { calls += 1; nil }) do
+      Hitch.configure { |c| c.client_id_metadata_fetches_per_minute = 0 }
+      3.times { |i| CIMD.resolve("https://z#{i}.example/d.json", actor: "User:1") }
+      assert_equal 0, calls, "zero must block, not disable"
+
+      Hitch.configure { |c| c.client_id_metadata_fetches_per_minute = nil }
+      3.times { |i| CIMD.resolve("https://n#{i}.example/d.json", actor: "User:1") }
+      assert_equal 3, calls, "nil is what disables the limit"
+    end
+  end
+
+  # A store whose reads succeed but whose writes fail is the nastier
+  # outage: the counter never advances, so every request looks like the
+  # first and the limit is gone. Reads alone cannot detect it.
+  test "a cache that cannot write degrades the rate limit loudly" do
+    write_failing = Class.new(ActiveSupport::Cache::MemoryStore) do
+      def write(*) = false
+    end
+    Rails.cache = write_failing.new
+    CIMD.instance_variable_set(:@warned, {})
+
+    logged = []
+    logger = Rails.logger
+    Rails.logger = Class.new { def initialize(sink) = (@sink = sink); def warn(m) = @sink << m }.new(logged)
+
+    begin
+      Hitch.configure { |c| c.client_id_metadata_fetches_per_minute = 2 }
+      stub_class_method(CIMD, :fetch_and_validate, ->(_id) { nil }) do
+        3.times { |i| CIMD.resolve("https://w#{i}.example/d.json", actor: "User:1") }
+      end
+      assert logged.any? { |m| m.include?("rate limiting is not being applied") },
+        "a limiter that has silently stopped limiting is the worst thing it can do"
+    ensure
+      Rails.logger = logger
+    end
+  end
+
+  # Smoke test, and honest about being one: it drives Thread#raise —
+  # how Rack::Timeout and Puma's force_shutdown_after deliver — against
+  # the acquire path and asserts no slot is leaked.
+  #
+  # It does NOT reliably distinguish the masked implementation from the
+  # unmasked one. Verified by mutation: replacing the
+  # Thread.handle_interrupt pair with a no-op leaves this green across
+  # repeated runs, because Ruby already defers async interrupts across
+  # much of Mutex#synchronize, leaving a window far narrower in situ than
+  # in an isolated harness. Review measured up to 30% leakage there.
+  #
+  # So the mask is justified by that measurement rather than by this
+  # test. Widening the window with a test-only seam in a concurrency path
+  # this sensitive costs more than it buys; what this catches is a gross
+  # regression — an ensure removed, a decrement dropped — not the narrow
+  # interrupt race.
+  test "no slot is leaked when the acquire path is interrupted" do
+    Hitch.configure { |c| c.client_id_metadata_max_concurrent_fetches = 4 }
+    stop = false
+    leaked = nil
+
+    worker = Thread.new do
+      20_000.times do
+        begin
+          CIMD.send(:with_fetch_capacity) { :done }
+        rescue StandardError
+          nil # the injected interrupt; keep going
         end
-        assert_nothing_raised { CIMD.resolve(DOC_URL, actor: "User:1") }
+      end
+      leaked = CIMD.fetches_in_flight
+      stop = true
+    end
+
+    raiser = Thread.new do
+      until stop
+        begin
+          worker.raise("async interrupt")
+        rescue StandardError
+          nil
+        end
       end
     end
+
+    worker.join
+    raiser.join
+
+    assert_equal 0, leaked, "a leaked slot is permanent — after `limit` of them CIMD is dead for the process"
   end
 
   test "the in-flight counter is released when a fetch raises" do

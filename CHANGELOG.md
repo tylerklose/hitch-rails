@@ -51,13 +51,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   windows back to back and briefly reach twice the nominal rate. And
   counters live in `Rails.cache`: if the cache is unavailable the limit
   fails open, which keeps `/oauth/authorize` serving but means the limit
-  is absent exactly when infrastructure is degraded. That case now logs
-  once per process rather than passing silently.
+  is absent exactly when infrastructure is degraded. Both that and the
+  nastier variant — a store whose reads succeed but whose writes fail,
+  where the counter never advances so every request looks like the first
+  — now log once per process rather than passing silently.
 
-  Non-integer values for either cap are treated as unset rather than
-  raising. The docs say "`nil` disables", and the obvious wrong guess at
-  that — `false` — has no `#to_i`, which would have raised out of
-  `resolve` and returned 500 from `/oauth/authorize`.
+  `nil` disables either cap; `0` and below block, so the most
+  restrictive-looking value is never the one that removes the
+  protection. Non-integer values are treated as unset rather than
+  coerced — `Kernel.Integer` truncates `2.5` to a working cap of `2`,
+  and `false` (the obvious wrong guess at "nil disables") has no
+  `#to_i`, which would have raised out of `resolve` and returned 500
+  from `/oauth/authorize`. Integer-form strings are accepted, since
+  settings often arrive from ENV.
 
 - **A production boot warning when CIMD is enabled and `Rails.cache` is
   a `NullStore`.** Negative caching and the rate limit both live there,

@@ -275,7 +275,11 @@ module Hitch
       # principal can aim at a third party.
       def charge_rate_limit(actor)
         limit = integer_setting(:client_id_metadata_fetches_per_minute)
-        return true if limit.nil? || limit <= 0
+        # nil disables. 0 and below block, matching the concurrency knob —
+        # the most restrictive-looking setting must not be the one that
+        # removes the protection.
+        return true if limit.nil?
+        return false if limit <= 0
 
         if actor.blank?
           # Not reachable from the shipped controller — both authorize
@@ -309,7 +313,15 @@ module Hitch
         # the limit by roughly the concurrency cap — which the cap above
         # already bounds. An atomic increment would need a store-specific
         # API, and this is a volume bound, not an accounting ledger.
-        cache_write(key, spent + 1, 120)
+        #
+        # A store whose reads succeed but whose writes fail is the nastier
+        # outage: the counter never advances, so every request looks like
+        # the first and the limit is gone entirely. Reads alone cannot
+        # detect that, so the write result is checked.
+        unless cache_write(key, spent + 1, 120)
+          warn_once(:cimd_rate_limit_write_failed,
+                    "Rails.cache writes are failing; CIMD per-principal rate limiting is not being applied")
+        end
         true
       end
 
@@ -357,10 +369,13 @@ module Hitch
       # default-on path. Anything not coercible to an Integer is treated
       # as unset rather than fatal.
       def integer_setting(name)
-        value = Hitch.configuration.public_send(name)
-        return nil if value.nil? || value == false
-
-        Integer(value, exception: false)
+        case (value = Hitch.configuration.public_send(name))
+        when Integer then value
+        # Strings are accepted because settings often arrive from ENV.
+        # Floats are NOT: Kernel.Integer(2.5) truncates to 2, which would
+        # silently honour a value the docs say is unset.
+        when String then Integer(value, exception: false)
+        end
       end
 
       # Distinguishes "cache is down" from "key genuinely absent", so the
@@ -392,10 +407,13 @@ module Hitch
         nil
       end
 
+      # Returns whether the value was actually stored. Callers that only
+      # want best-effort persistence can ignore it; the rate limiter
+      # cannot, because a silently-dropped write disables it.
       def cache_write(key, value, ttl)
-        Rails.cache.write(key, value, expires_in: ttl)
+        Rails.cache.write(key, value, expires_in: ttl) ? true : false
       rescue StandardError
-        nil
+        false
       end
 
       def cache_delete(key)

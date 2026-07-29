@@ -530,6 +530,37 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     end
   end
 
+  # Every other rate-limit test calls resolve directly with an actor.
+  # Removing `actor: rate_limit_actor` from the controller would leave
+  # all of them green while the shipped per-principal limit did nothing,
+  # so this drives it through the real endpoint as a signed-in user.
+  test "the per-principal fetch limit applies through /oauth/authorize" do
+    real_cache = Rails.cache
+    Rails.cache = ActiveSupport::Cache::MemoryStore.new
+    Hitch.configure do |c|
+      c.client_id_metadata_enabled = true
+      c.client_id_metadata_fetches_per_minute = 2
+    end
+    sign_in @user
+    fetches = 0
+
+    begin
+      stub_class_method(Hitch::ClientIdMetadata, :fetch_and_validate, ->(_id) { fetches += 1; nil }) do
+        5.times do |i|
+          post "/oauth/authorize", params: {
+            client_id: "https://client.example/doc#{i}.json", redirect_uri: CLIENT_REDIRECT,
+            code_challenge: @challenge, code_challenge_method: "S256"
+          }
+          assert_response :bad_request
+        end
+      end
+      assert_equal 2, fetches,
+        "distinct document URLs must still be bounded per principal — that is the amplification guard"
+    ensure
+      Rails.cache = real_cache
+    end
+  end
+
   test "a client's declared name never reaches the consent screen (CIMD)" do
     Hitch.configure { |c| c.client_id_metadata_enabled = true }
     sign_in @user

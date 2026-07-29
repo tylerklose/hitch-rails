@@ -75,10 +75,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   emitted anyway so a local development flow exercises the same path as
   production, rather than the parameter appearing for the first time on
   deploy in a security control that is unpleasant to debug remotely.
-  Nothing breaks — the client compares it against an equally-`http`
-  issuer from the same discovery document — and an `http` deployment is
-  already outside the spec regardless, since MCP 2026-07-28 requires
-  every authorization server endpoint be served over HTTPS. Withholding
+  A client that already accepted the non-conformant `http` issuer from
+  the same discovery document can compare the two and pass; a stricter
+  client may reject that issuer during discovery and never reach the
+  comparison, which is correct behaviour and not something emitting
+  `iss` either causes or cures. An `http` deployment is already outside
+  the spec regardless, since MCP 2026-07-28 requires every authorization
+  server endpoint be served over HTTPS. Withholding
   the advertisement is what keeps it safe rather than conformant: a
   present-but-unadvertised `iss` is simply compared, whereas an
   advertised-but-unusable one makes a conformant client hard-fail.

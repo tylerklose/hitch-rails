@@ -67,9 +67,12 @@ module Hitch
     # local development flow exercises the same path as production. The
     # alternative — omit it below https — means the parameter silently
     # appears for the first time on deploy, in a security control that is
-    # unpleasant to debug remotely. Nothing breaks: the client compares
-    # it against the issuer from the same discovery document, which is
-    # equally http, so the comparison passes.
+    # unpleasant to debug remotely. A client that already accepted the
+    # non-conformant http issuer from this same discovery document can
+    # compare the two and pass. A stricter one may well reject the http
+    # issuer during discovery and never reach the comparison — which is
+    # the correct behaviour, and not something emitting `iss` either
+    # causes or cures.
     #
     # Withholding the advertisement is what keeps this safe rather than
     # conformant. Per the spec's validation table, an advertised-but-

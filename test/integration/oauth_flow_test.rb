@@ -92,9 +92,10 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
   # so a local flow exercises the same path as production instead of the
   # parameter appearing for the first time on deploy. An http deployment
   # is already outside the spec regardless (MCP 2026-07-28 requires every
-  # authorization server endpoint be served over HTTPS), and the client
-  # compares this against an equally-http issuer from the same discovery
-  # document, so the comparison passes.
+  # authorization server endpoint be served over HTTPS). A client that
+  # already accepted the http issuer from the same discovery document can
+  # compare the two and pass; a stricter one may reject the http issuer
+  # during discovery and never get here at all.
   test "iss is emitted over http as development compatibility, unadvertised" do
     client = register_client
     sign_in @user

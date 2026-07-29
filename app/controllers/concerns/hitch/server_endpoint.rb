@@ -11,8 +11,18 @@ module Hitch
   # Use a DEDICATED controller for /mcp: `skip_forgery_protection` is
   # controller-wide, so don't mix MCP and browser actions in one class.
   #
+  # Include Hitch::CorsSupport too if browser-based MCP clients
+  # (claude.ai, chatgpt.com) will reach this endpoint. This concern does
+  # NOT set Access-Control-Allow-Origin — the /mcp route is host-owned,
+  # so CORS on it is the host's decision — and without that header the
+  # Access-Control-Expose-Headers below has nothing to attach to, leaving
+  # a browser client unable to read the 401 challenge it needs to start
+  # the OAuth flow. Non-browser clients (CLI, desktop, server-to-server)
+  # are unaffected either way.
+  #
   #   class MCPServerController < ApplicationController
   #     include Hitch::ServerEndpoint
+  #     include Hitch::CorsSupport   # browser clients only
   #     before_action :require_mcp_token!
   #
   #     def create
@@ -100,6 +110,12 @@ module Hitch
       # challenge rather than in Hitch::CorsSupport because the MCP
       # endpoint is host-owned and does not necessarily include that
       # concern.
+      #
+      # On its own this header does nothing: a browser only honors
+      # Access-Control-Expose-Headers on a response that also carries
+      # Access-Control-Allow-Origin. Include Hitch::CorsSupport in the
+      # same controller to get that (see the module docs above); this
+      # line is what makes the challenge readable once you do.
       response.headers["Access-Control-Expose-Headers"] = "WWW-Authenticate"
       head :unauthorized
     end

@@ -28,10 +28,10 @@ module Hitch
         # RFC 9207 §3. Advertising this is a promise the authorization
         # response WILL carry `iss` — a conformant client treats an
         # advertised-but-absent `iss` as a hard failure and refuses the
-        # code exchange. It is only true because
+        # code exchange. It is only ever true because
         # AuthorizationsController#build_redirect_uri appends it
         # unconditionally; the two must never be separated.
-        authorization_response_iss_parameter_supported: true
+        authorization_response_iss_parameter_supported: issuer_is_https?
       }
     end
 
@@ -50,6 +50,21 @@ module Hitch
     end
 
     private
+
+    # RFC 9207 §2: the `iss` value "MUST be a URL that uses the 'https'
+    # scheme". Over plain http — development, or a deployment that never
+    # terminated TLS — the value this server would emit is not a valid
+    # issuer identifier, so promising conformance with it would be
+    # promising something it cannot deliver.
+    #
+    # `iss` is still SENT in that case. The spec's validation table has
+    # clients compare a present `iss` against the recorded issuer whether
+    # or not support is advertised, so emitting it stays useful; only the
+    # promise is withheld, which is what keeps a client from hard-failing
+    # on a value it should never have been given.
+    def issuer_is_https?
+      issuer_url.to_s.start_with?("https://")
+    end
 
     # The metadata body is derived from the request Host (issuer +
     # every endpoint URL come from request.base_url), so it must not be

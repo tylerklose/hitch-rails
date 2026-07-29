@@ -50,11 +50,10 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     # Only "none" — gem doesn't authenticate client secrets so it
     # must not advertise client_secret_post.
     assert_equal [ "none" ], body["token_endpoint_auth_methods_supported"]
-    # RFC 9207 §3. This is a promise, not a hint: a client that sees it
-    # advertised and then receives an authorization response without
-    # `iss` MUST refuse the code exchange. Asserted here and enforced
-    # end-to-end by the byte-equality test below.
-    assert_equal true, body["authorization_response_iss_parameter_supported"]
+    # Not advertised over plain http — RFC 9207 §2 requires the `iss`
+    # VALUE be an https URL, so over http the promise could not be kept.
+    # See the dedicated pair of tests below.
+    assert_equal false, body["authorization_response_iss_parameter_supported"]
 
     get "/.well-known/oauth-protected-resource"
     body = JSON.parse(response.body)
@@ -66,6 +65,41 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     # PRM SHOULD include scopes_supported (2025-11-25 spec) so RSes
     # can echo per-tool required scopes in 403 challenges.
     assert_equal [ "mcp" ], body["scopes_supported"]
+  end
+
+  # RFC 9207 §2: the `iss` value "MUST be a URL that uses the 'https'
+  # scheme". Advertising support while emitting an http issuer would be
+  # promising conformance the server cannot deliver — and per the spec's
+  # validation table, an advertised-but-unusable value is exactly what
+  # makes a conformant client hard-fail.
+  test "the RFC 9207 capability is advertised only when the issuer is https" do
+    get "/.well-known/oauth-authorization-server"
+    assert_equal "http://www.example.com", JSON.parse(response.body)["issuer"]
+    assert_equal false, JSON.parse(response.body)["authorization_response_iss_parameter_supported"]
+
+    https!
+    get "/.well-known/oauth-authorization-server"
+    body = JSON.parse(response.body)
+    assert_equal "https://www.example.com", body["issuer"]
+    assert_equal true, body["authorization_response_iss_parameter_supported"]
+  ensure
+    https!(false)
+  end
+
+  # `iss` is still SENT over http. The spec's table has clients compare a
+  # present `iss` against the recorded issuer whether or not support is
+  # advertised, so emitting it stays useful; only the promise is withheld.
+  test "iss is emitted even when the capability is not advertised" do
+    client = register_client
+    sign_in @user
+
+    post "/oauth/authorize", params: {
+      client_id: client["client_id"], redirect_uri: CLIENT_REDIRECT,
+      code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
+    }
+    assert_response :redirect
+    returned = URI.decode_www_form(URI.parse(response.location).query).to_h
+    assert_equal "http://www.example.com", returned["iss"]
   end
 
   # The metadata body is derived from the request Host (issuer + all
@@ -162,6 +196,67 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
       code_challenge_method: "S256"
     }
     assert_response :bad_request
+  end
+
+  # RFC 9700 §4.1.3 and MCP 2026-07-28 both require exact matching, with
+  # RFC 8252 §7.3 granting one carve-out: the PORT of a loopback
+  # redirect. Anything else that differs from the registration is a
+  # different URI, and a caller who can craft an authorize URL must not
+  # be able to add parameters a client's callback will read.
+  test "authorize rejects a redirect_uri whose query differs from the registration" do
+    client = register_client(redirect_uris: [ "https://app.test/cb?tenant=acme" ])
+    sign_in @user
+
+    [
+      "https://app.test/cb",                    # query dropped
+      "https://app.test/cb?tenant=evil",        # value changed
+      "https://app.test/cb?tenant=acme&next=x", # parameter added
+      "https://app.test/cb?TENANT=acme"         # key case changed
+    ].each do |inbound|
+      post "/oauth/authorize", params: {
+        client_id: client["client_id"], redirect_uri: inbound,
+        code_challenge: @challenge, code_challenge_method: "S256"
+      }
+      assert_response :bad_request, "#{inbound} is not an exact match for the registration"
+    end
+  end
+
+  test "authorize accepts the exact registered redirect_uri including its query" do
+    client = register_client(redirect_uris: [ "https://app.test/cb?tenant=acme" ])
+    sign_in @user
+
+    post "/oauth/authorize", params: {
+      client_id: client["client_id"], redirect_uri: "https://app.test/cb?tenant=acme",
+      code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
+    }
+    assert_response :redirect
+    assert_includes response.location, "tenant=acme"
+  end
+
+  # A userinfo component would let https://evil%40x:pw@app.test/cb match
+  # a registration of https://app.test/cb — same host to URI.parse, very
+  # different string to a user reading the address bar.
+  test "authorize rejects a redirect_uri carrying userinfo" do
+    client = register_client(redirect_uris: [ "https://app.test/cb" ])
+    sign_in @user
+
+    post "/oauth/authorize", params: {
+      client_id: client["client_id"], redirect_uri: "https://evil%40x:pw@app.test/cb",
+      code_challenge: @challenge, code_challenge_method: "S256"
+    }
+    assert_response :bad_request
+  end
+
+  # The loopback carve-out is the port and nothing else.
+  test "loopback matching stays port-agnostic but not query-agnostic" do
+    client = register_client(redirect_uris: [ "http://localhost:9000/cb" ])
+    sign_in @user
+
+    post "/oauth/authorize", params: {
+      client_id: client["client_id"], redirect_uri: "http://localhost:54321/cb?extra=1",
+      code_challenge: @challenge, code_challenge_method: "S256"
+    }
+    assert_response :bad_request, "an ephemeral port is permitted; an added query parameter is not"
   end
 
   test "authorize still rejects non-loopback host even if port matches" do
@@ -287,13 +382,37 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
   # its code exchange to the attacker's token endpoint — the exact mix-up
   # RFC 9207 exists to stop, with the discovery document now promising
   # clients that this defense is in place.
-  test "an injected iss in the redirect_uri query cannot shadow the real one" do
+  test "an injected iss in the redirect_uri query is refused outright" do
     client = register_client(redirect_uris: [ CLIENT_REDIRECT ])
     sign_in @user
 
     post "/oauth/authorize", params: {
       client_id: client["client_id"],
       redirect_uri: "#{CLIENT_REDIRECT}?iss=https%3A%2F%2Fattacker-as.example",
+      code_challenge: @challenge,
+      code_challenge_method: "S256",
+      state: "xyz",
+      resource: RESOURCE_A
+    }
+    # The registration carried no query, so this is not an exact match
+    # and never reaches the redirect builder at all (RFC 9700 §4.1.3).
+    assert_response :bad_request
+    assert_equal "invalid_request", JSON.parse(response.body)["error"]
+  end
+
+  # Defense in depth for the case exact matching cannot catch: a client
+  # that legitimately REGISTERED a query string containing a response
+  # parameter. The match succeeds, so the stripping in build_redirect_uri
+  # is the only thing standing between that and a duplicated `iss` — and
+  # which copy a client honors is a property of its query parser.
+  test "a registered iss in the redirect_uri query is stripped from the response" do
+    poisoned = "#{CLIENT_REDIRECT}?iss=https%3A%2F%2Fattacker-as.example"
+    client = register_client(redirect_uris: [ poisoned ])
+    sign_in @user
+
+    post "/oauth/authorize", params: {
+      client_id: client["client_id"],
+      redirect_uri: poisoned,
       code_challenge: @challenge,
       code_challenge_method: "S256",
       state: "xyz",
@@ -356,13 +475,14 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
   # Same primitive applied to code/state. Mandatory S256 PKCE blunts the
   # code case today (an injected code is bound to the attacker's
   # challenge), but the injection itself is what closes here.
-  test "injected code and state in the redirect_uri query cannot shadow the real ones" do
-    client = register_client(redirect_uris: [ CLIENT_REDIRECT ])
+  test "registered code and state in the redirect_uri query cannot shadow the real ones" do
+    poisoned = "#{CLIENT_REDIRECT}?code=ATTACKER_CODE&state=ATTACKER_STATE"
+    client = register_client(redirect_uris: [ poisoned ])
     sign_in @user
 
     post "/oauth/authorize", params: {
       client_id: client["client_id"],
-      redirect_uri: "#{CLIENT_REDIRECT}?code=ATTACKER_CODE&state=ATTACKER_STATE",
+      redirect_uri: poisoned,
       code_challenge: @challenge,
       code_challenge_method: "S256",
       state: "xyz",

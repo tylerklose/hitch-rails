@@ -86,6 +86,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   present-but-unadvertised `iss` is simply compared, whereas an
   advertised-but-unusable one makes a conformant client hard-fail.
 
+- **`application_type` is recorded at Dynamic Client Registration.** MCP
+  2026-07-28 has clients declare it (OpenID Connect Dynamic Client
+  Registration 1.0 §2: `native` or `web` — the field is defined there,
+  not in RFC 7591) so a server can tell a native/CLI client from a web
+  one. Hitch persists and echoes it, and **does not act on it**.
+
+  Deliberately not defaulted to `web` when omitted, though OpenID
+  Connect Dynamic Client Registration 1.0 §2 says it defaults that way:
+  adopting the default would make a client that genuinely declared
+  `web` indistinguishable from one that predates the field, erasing the
+  signal the column exists to capture. `NULL` means "did not declare".
+
+  Unrecognized values are recorded as no declaration rather than
+  rejecting the registration — the server does not act on the field, so
+  failing a client over it would cost them their registration for
+  nothing. The registration response echoes what was *stored*, so a
+  client learns its value was dropped instead of assuming it took
+  effect.
+
+  Enforcement — gating loopback redirects on `native` — is deliberately
+  out of scope. It would break every client that omits the field, Claude
+  Code included, whose ephemeral-port loopback redirects are why
+  `redirect_uri_matches?` has port-agnostic matching at all. Recording
+  the field first is what makes a later decision evidence-based.
+
 - **`Access-Control-Expose-Headers: WWW-Authenticate`** on the 401 from
   `Hitch::ServerEndpoint`. `WWW-Authenticate` is not a CORS-safelisted
   response header, so a browser-based MCP client could not read the

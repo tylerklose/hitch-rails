@@ -27,7 +27,13 @@ module Hitch
       client = Hitch::Client.register!(
         client_id: SecureRandom.uuid,
         client_name: params[:client_name],
-        redirect_uris: candidate_uris
+        redirect_uris: candidate_uris,
+        # MCP 2026-07-28 has clients declare this so the server can tell a
+        # native/CLI client from a web one. Recorded, never enforced:
+        # gating loopback redirects on "native" would break every client
+        # that omits the field, Claude Code among them. Persisting it is
+        # what makes a later decision evidence-based instead of a guess.
+        application_type: scalar_param(:application_type)
       )
 
       render json: {
@@ -39,7 +45,21 @@ module Hitch
         response_types: [ "code" ],
         scope: Hitch.configuration.supported_scopes.join(" "),
         token_endpoint_auth_method: "none"
-      }, status: :created
+      }.merge(
+        # Echo what was actually STORED, not what was sent — RFC 7591
+        # §3.2.1 makes the response the authoritative record of registered
+        # metadata, so a client that sent an unrecognized value can tell
+        # it was dropped by diffing its request against this response.
+        # (Not that it reads as an explicit rejection: §2 defaults an
+        # absent application_type to "web", so silence means the default,
+        # not "you declared nothing".)
+        #
+        # Omitted rather than sent as null when undeclared. Scoped to this
+        # one key deliberately: a blanket `.compact` would silently drop
+        # any future nullable field, and §3.2.1 makes some of them —
+        # `client_secret_expires_at` when a secret is issued — REQUIRED.
+        client.application_type ? { application_type: client.application_type } : {}
+      ), status: :created
     end
   end
 end

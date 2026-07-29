@@ -24,7 +24,14 @@ module Hitch
         # verification at /oauth/token. Advertising
         # client_secret_post would be a lie since the controller
         # never authenticates the secret.
-        token_endpoint_auth_methods_supported: [ "none" ]
+        token_endpoint_auth_methods_supported: [ "none" ],
+        # RFC 9207 §3. Advertising this is a promise the authorization
+        # response WILL carry `iss` — a conformant client treats an
+        # advertised-but-absent `iss` as a hard failure and refuses the
+        # code exchange. It is only true because
+        # AuthorizationsController#build_redirect_uri appends it
+        # unconditionally; the two must never be separated.
+        authorization_response_iss_parameter_supported: true
       }
     end
 
@@ -57,15 +64,6 @@ module Hitch
       existing = response.headers["Vary"]
       response.headers["Vary"] =
         existing.present? ? "#{existing}, Host" : "Host"
-    end
-
-    # request.base_url honors X-Forwarded-* when the host has set
-    # `config.action_dispatch.trusted_proxies` correctly — important
-    # behind reverse proxies (Kamal, fly, Heroku, etc.) where
-    # request.host_with_port would otherwise return the internal
-    # container address.
-    def issuer_url
-      request.base_url
     end
   end
 end

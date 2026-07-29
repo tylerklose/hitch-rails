@@ -30,6 +30,7 @@ module Hitch
   # mismatched tokens are rejected with 401.
   module ServerEndpoint
     extend ActiveSupport::Concern
+    include Hitch::IssuerUrl
 
     included do
       # MCP clients are non-browser, sessionless, and send no CSRF token —
@@ -90,6 +91,16 @@ module Hitch
     # server migration.
     def mcp_unauthorized!
       response.headers["WWW-Authenticate"] = bearer_challenge
+      # WWW-Authenticate is not a CORS-safelisted response header, so a
+      # browser-based MCP client can't read it off a cross-origin 401
+      # unless it's explicitly exposed — it would see an opaque failure
+      # instead. Since that header is the ONLY discovery signal pointing
+      # at the Protected Resource Metadata document, without this the
+      # client cannot bootstrap the OAuth flow at all. Set alongside the
+      # challenge rather than in Hitch::CorsSupport because the MCP
+      # endpoint is host-owned and does not necessarily include that
+      # concern.
+      response.headers["Access-Control-Expose-Headers"] = "WWW-Authenticate"
       head :unauthorized
     end
 
@@ -98,7 +109,10 @@ module Hitch
     end
 
     def bearer_challenge
-      metadata_url = "#{request.base_url}/.well-known/oauth-protected-resource"
+      # issuer_url, not a second request.base_url — the discovery
+      # document and everything pointing at it derive from one helper so
+      # they can't drift (see Hitch::IssuerUrl).
+      metadata_url = "#{issuer_url}/.well-known/oauth-protected-resource"
       scope = Array.wrap(Hitch.configuration.supported_scopes).join(" ")
       %(Bearer resource_metadata="#{metadata_url}", scope="#{scope}")
     end

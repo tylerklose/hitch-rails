@@ -167,11 +167,44 @@ module Hitch
       nil
     end
 
+    # RFC 9207: the authorization response MUST identify the issuer that
+    # produced it, so a client registered with more than one
+    # authorization server can detect a mix-up before redeeming the code.
+    #
+    # The value MUST be byte-identical to the `issuer` advertised at
+    # /.well-known/oauth-authorization-server — clients compare them with
+    # an exact string comparison — which is why both come from the shared
+    # Hitch::IssuerUrl helper rather than two independent derivations.
+    # Appended unconditionally: the metadata document promises it via
+    # `authorization_response_iss_parameter_supported`, and a client that
+    # sees that promise unfulfilled refuses the exchange. Any future
+    # error path that redirects to the client (rather than rendering
+    # JSON, as oauth_error does today) MUST carry `iss` as well — RFC
+    # 9207 §2 covers error responses too.
+    #
+    # Response parameters are stripped from the inbound query before
+    # being set. redirect_uri matching deliberately ignores the query
+    # string (see Hitch::UriValidation#redirect_uri_matches?), so anyone
+    # able to craft an authorize URL can append `?iss=…` to a legitimate
+    # client's registered callback and have it survive into the
+    # response. The client then sees the parameter twice, and which copy
+    # wins is a property of its query parser — first-wins parsers
+    # (URLSearchParams, Go's Query().Get, Python's parse_qs) read the
+    # injected value and route the code exchange at an attacker's token
+    # endpoint. That is exactly the mix-up RFC 9207 exists to prevent,
+    # and the discovery document now promises clients that defense, so
+    # it must not be switchable off by a query parameter. `code` and
+    # `state` are stripped for the same reason: mandatory S256 PKCE
+    # blunts those today, but the injection primitive is identical.
+    RESPONSE_PARAMS = %w[code state iss].freeze
+
     def build_redirect_uri(base_uri, code:, state:)
       uri = URI.parse(base_uri)
       query_params = URI.decode_www_form(uri.query || "")
+                        .reject { |key, _| RESPONSE_PARAMS.include?(key) }
       query_params << [ "code", code ]
       query_params << [ "state", state ] if state.present?
+      query_params << [ "iss", issuer_url ]
       uri.query = URI.encode_www_form(query_params)
       uri.to_s
     end

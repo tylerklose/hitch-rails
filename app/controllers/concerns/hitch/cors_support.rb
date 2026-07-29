@@ -32,7 +32,14 @@ module Hitch
 
       response.headers["Access-Control-Allow-Origin"] = origin
       response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-      response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+      # MCP 2026-07-28 makes MCP-Protocol-Version, Mcp-Method and
+      # Mcp-Name required request headers on Streamable HTTP (the latter
+      # two so gateways can route and authorize without parsing the JSON
+      # body). A browser-based client sending them fails preflight unless
+      # they're allowed here. Widening an allow-list is safe for older
+      # clients: one that never sends them is unaffected.
+      response.headers["Access-Control-Allow-Headers"] =
+        "Content-Type, Authorization, MCP-Protocol-Version, Mcp-Method, Mcp-Name"
       response.headers["Access-Control-Max-Age"] = "86400"
     end
 

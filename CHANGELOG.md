@@ -5,6 +5,62 @@ All notable changes to hitch-rails will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **Response parameters can no longer be shadowed through the
+  `redirect_uri` query string.** `redirect_uri` matching deliberately
+  ignores the query (RFC 8252 loopback handling), so anyone able to
+  craft an authorize URL could append `?iss=…` to a *legitimate*
+  registered client's callback. The response then carried `iss` twice,
+  and which copy a client honors is a property of its query parser —
+  first-wins parsers (`URLSearchParams`, Go's `Query().Get`, Python's
+  `parse_qs`) would read the injected issuer and send the code exchange
+  to an attacker's token endpoint. That is the precise mix-up RFC 9207
+  exists to prevent, so it must not be switchable off by a query
+  parameter. `code` and `state` are stripped for the same reason;
+  mandatory S256 PKCE blunts those today, but the injection primitive
+  was identical.
+
+### Added
+
+- **RFC 9207 authorization response issuer.** `/oauth/authorize` now
+  appends `iss` to the redirect, and the discovery document advertises
+  `authorization_response_iss_parameter_supported: true`. This lets a
+  client registered with more than one authorization server detect a
+  mix-up before redeeming the code. MCP 2026-07-28 makes sending `iss` a
+  SHOULD and advertising the capability a MUST once you do (a future
+  revision is expected to upgrade sending it to MUST). Additive for
+  older clients, which ignore an unrecognized redirect parameter.
+
+  The two halves ship together deliberately. A conformant client — the
+  Ruby MCP SDK does this as of 0.24.0 — treats an advertised-but-absent
+  `iss` as a hard failure and refuses the exchange, so advertising the
+  capability without sending the parameter is worse than doing neither.
+  Both values now come from a shared `Hitch::IssuerUrl` helper because
+  clients compare them with an exact string comparison.
+
+- **`Access-Control-Expose-Headers: WWW-Authenticate`** on the 401 from
+  `Hitch::ServerEndpoint`. `WWW-Authenticate` is not a CORS-safelisted
+  response header, so a browser-based MCP client could not read the
+  discovery challenge off a cross-origin 401 — it saw an opaque failure
+  and could never bootstrap the OAuth flow.
+
+### Changed
+
+- **CORS `Access-Control-Allow-Headers`** now includes
+  `MCP-Protocol-Version`, `Mcp-Method`, and `Mcp-Name`, which MCP
+  2026-07-28 makes required request headers on Streamable HTTP.
+
+  Scope note: `Hitch::CorsSupport` is mixed into the gem's OAuth and
+  discovery endpoints, which never receive those headers. This matters
+  for host MCP controllers that include `CorsSupport` themselves — the
+  `/mcp` endpoint is host-owned by design, and the gem does not put CORS
+  on it. Making `ServerEndpoint` carry CORS (including the `Mcp-Param-*`
+  headers, whose names are dynamic and cannot be enumerated in an
+  allow-list) is tracked separately.
+
 ## [0.1.0]
 
 Initial release. A mountable Rails engine that turns a Rails app into a

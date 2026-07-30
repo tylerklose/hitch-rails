@@ -437,6 +437,125 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     assert_equal 2, calls, "the legitimate fetches must not have been crowded out by rejected shapes"
   end
 
+  # --- operator diagnostic ---------------------------------------------
+  #
+  # Egress is the one prerequisite that cannot be inferred, so operators
+  # get a way to test it against a document they trust. It reports; it
+  # never changes what discovery advertises.
+
+  test "diagnose reports each way a resolution can fail, without touching discovery" do
+    document = CIMD::Document.new(client_id: DOC_URL, client_name: "X", redirect_uris: [ "https://a.test/cb" ])
+
+    assert_equal :not_a_reference, CIMD.diagnose("some-opaque-uuid").outcome
+    assert_equal :not_a_reference, CIMD.diagnose("https://client.example").outcome
+    assert_equal :rejected_shape, CIMD.diagnose("https://client.example:8443/d.json").outcome
+
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { CIMD::HOST_FAILURE }) do
+      result = CIMD.diagnose(DOC_URL)
+      assert_equal :unreachable, result.outcome
+      assert_match(/egress/, result.detail,
+                   "the failure an operator most needs to recognise should name itself")
+      assert_not result.ok?
+    end
+
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { nil }) do
+      assert_equal :invalid_document, CIMD.diagnose(DOC_URL).outcome
+    end
+
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { [ document, 3600 ] }) do
+      result = CIMD.diagnose(DOC_URL)
+      assert_equal :ok, result.outcome
+      assert result.ok?
+    end
+  end
+
+  # The README calls this "verifying egress BEFORE you enable it", and
+  # that is the only moment its answer is useful. Gating the probe on the
+  # setting it exists to inform made the documented command exit without
+  # touching the network.
+  test "diagnose runs with CIMD disabled, because that is when it is needed" do
+    document = CIMD::Document.new(client_id: DOC_URL, client_name: "X", redirect_uris: [ "https://a.test/cb" ])
+    Hitch.configure { |c| c.client_id_metadata_enabled = false }
+    reached = false
+
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { reached = true; [ document, 3600 ] }) do
+      assert_equal :ok, CIMD.diagnose(DOC_URL).outcome
+    end
+    assert reached, "the probe must actually attempt the fetch while the feature is off"
+
+    # And the flag still governs real traffic.
+    assert_nil CIMD.resolve(DOC_URL, actor: "User:1")
+  end
+
+  # A diagnostic that populated the cache would make the next real
+  # resolution look healthy on the strength of an operator's probe.
+  test "diagnose neither reads nor writes the resolution cache" do
+    document = CIMD::Document.new(client_id: DOC_URL, client_name: "X", redirect_uris: [ "https://a.test/cb" ])
+    calls = 0
+
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { calls += 1; [ document, 3600 ] }) do
+      3.times { assert_equal :ok, CIMD.diagnose(DOC_URL).outcome }
+      assert_equal 3, calls, "a probe must actually probe, not answer from cache"
+
+      CIMD.resolve(DOC_URL, actor: "User:1")
+      assert_equal 4, calls, "and it must not have primed the cache for real traffic"
+    end
+  end
+
+  # Whether one document is reachable now is a different question from
+  # whether this server supports CIMD. Only the second is advertised.
+  test "diagnose does not spend a principal's fetch budget" do
+    Hitch.configure { |c| c.client_id_metadata_fetches_per_minute = 2 }
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { CIMD::HOST_FAILURE }) do
+      5.times { CIMD.diagnose(DOC_URL) }
+    end
+    assert_equal 0, CIMD.send(:fetches_charged_to, "User:1")
+  end
+
+  # diagnose tells operators the log explains an invalid_document. These
+  # were the paths that returned nil silently, so for the most common
+  # failures — a 404, an oversized body — that promise was false.
+  test "every rejection read off the wire is logged" do
+    logged = []
+    logger = Rails.logger
+    Rails.logger = Class.new { def initialize(s) = (@s = s); def warn(m) = @s << m; def info(m) = @s << m }.new(logged)
+
+    begin
+      [ [ "404 Not Found", /404/ ],
+        [ "500 Internal Server Error", /500/ ] ].each do |status, pattern|
+        logged.clear
+        handler = ->(socket) { socket.write("HTTP/1.1 #{status}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}") }
+        serve(handler) { |port| read_over_socket(port) }
+        assert logged.any? { |m| m =~ pattern }, "a #{status} must say so in the log, not just return nil"
+      end
+
+      logged.clear
+      over = ->(socket) do
+        socket.write("HTTP/1.1 200 OK\r\nContent-Length: #{CIMD::MAX_BYTES + 1}\r\nConnection: close\r\n\r\n")
+        socket.write("x" * (CIMD::MAX_BYTES + 1))
+      end
+      serve(over) { |port| read_over_socket(port) }
+      assert logged.any? { |m| m.include?("Content-Length") }, "an oversized declaration must be explained"
+
+      # The path that matters most, and the one a declared-length check
+      # never sees: chunked framing with no Content-Length at all, cut
+      # off mid-stream by the cap. Silent here would leave an operator
+      # with diagnose's "the log says why" and nothing in the log.
+      logged.clear
+      chunk = "x" * 64_000
+      streamed = ->(socket) do
+        socket.write("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n")
+        50.times { socket.write("#{chunk.bytesize.to_s(16)}\r\n#{chunk}\r\n") }
+        socket.write("0\r\n\r\n")
+      end
+      serve(streamed) { |port| assert_nil read_over_socket(port) }
+      assert logged.any? { |m| m.include?("while streaming") },
+        "a body that outgrows the cap mid-stream must say so — Content-Length was never sent"
+    ensure
+      Rails.logger = logger
+    end
+  end
+
   # --- the wire itself -------------------------------------------------
   #
   # Everything above stubs the network. These drive read_document over a

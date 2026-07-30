@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **New installations enable Client ID Metadata Documents by default.**
+  The generated initializer now sets
+  `config.client_id_metadata_enabled = true`, so a fresh install is
+  conformant with MCP 2026-07-28 — which makes supporting CIMD a SHOULD
+  and demotes Dynamic Client Registration to a deprecated MAY — through
+  configuration the adopter owns and can see.
+
+  The library fallback stays `false`, so **upgrading an existing
+  application changes nothing** until it opts in. CIMD needs the app to
+  reach arbitrary https hosts on 443 directly; Hitch ignores
+  `http_proxy` deliberately, so a host whose only egress is a proxy
+  would begin advertising support it cannot deliver, steering conformant
+  clients off DCR onto a path that fails every time. That is not a
+  change to make during a `bundle update`.
+
+  Runtime-conditional advertisement was considered and rejected.
+  Operational readiness is not reliably observable — a probe tests one
+  destination at one moment, discovery is cached for an hour, and egress
+  is transient and destination-specific, unlike the https-issuer check
+  that gates `authorization_response_iss_parameter_supported` on a
+  deterministic property of the very response being generated. More to
+  the point, the field declares whether the server *supports* CIMD; it
+  is not an availability guarantee for any given fetch. It stays tied to
+  one setting and never varies at runtime.
+
+- **`bin/rails 'hitch:cimd:check[URL]'`**, an operator diagnostic that
+  runs the real fetch path against a document you trust — same SSRF
+  constraints, same concurrency cap — and reports whether this host can
+  reach it. Egress is the one prerequisite that cannot be inferred, so
+  it is checked deliberately rather than guessed at. It reports only,
+  and never alters what discovery advertises.
+
 - **Caps on outbound Client ID Metadata Document fetches.** Each fetch
   was already tightly constrained; nothing bounded how *many* of them a
   caller could provoke, and negative caching only bounds repeats of the
@@ -16,14 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unlimited distinct hosts, and a host answering `404` yields unlimited
   distinct URLs.
 
-  `config.client_id_metadata_enabled` remains **off by default**. The
-  volume objection that held it back is answered here; the ones that
-  concern an adopter's upgrade are not. A host whose only egress is an
-  HTTPS proxy cannot fetch at all — the connection deliberately carries
-  no proxy, for the SSRF model — so flipping the default would have it
-  begin *advertising* support, steering conformant clients off DCR onto
-  a path that fails every time, invisibly until a client tries. That
-  flip wants its own release and an upgrade note.
+  See the entry above for how `config.client_id_metadata_enabled` is
+  now defaulted: the library fallback stays `false`, while the generated
+  initializer opts new installations in.
 
   `config.client_id_metadata_max_concurrent_fetches` (default 4, per
   process; `nil` disables, `0` blocks) bounds fetches in flight at once.
@@ -228,19 +255,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schemes run side by side for the spec's twelve-month deprecation
   window and beyond.
 
-  **Off by default** (`config.client_id_metadata_enabled`), which is a
-  deliberate deviation from the spec: MCP 2026-07-28 makes CIMD a
-  **SHOULD** for authorization servers and demotes DCR to a deprecated
-  **MAY**. Clients choose their mechanism from
-  `client_id_metadata_document_supported` in the discovery document, so
-  leaving it off keeps every client on the legacy path. Adopters wanting
-  spec-conformant behaviour today should set it to `true`.
-
-  The reason to hold is that enabling it gives `/oauth/authorize` an
-  outbound-fetch surface with no rate or concurrency cap behind it yet.
-  Each fetch is tightly constrained, but bounding the *volume* of
-  fetches is separate work. The default flips once that lands, and no
-  later than 1.0.
+  Controlled by `config.client_id_metadata_enabled`. See the entries
+  above for how it is defaulted and bounded: the library fallback is
+  `false` while the generated initializer opts new installations in, and
+  outbound fetches are capped by concurrency and per principal.
 
   The fetch is constrained accordingly: `https` on port 443 only; no
   redirects followed; URLs carrying userinfo or a fragment refused; DNS
@@ -299,11 +317,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   That split is a deliberate trade, not a complete guard. It raises the
   cost of amplification rather than eliminating it — an attacker with a
   wildcard DNS record still gets distinct hosts, and a responsive host
-  serving unusable documents still gets one fetch per distinct URL. A
-  rate or concurrency cap on outbound fetches is the real backstop and
-  is not implemented here. All of it also depends on the host having a
-  real `Rails.cache`; under a `NullStore` nothing is retained between
-  requests.
+  serving unusable documents still gets one fetch per distinct URL.
+  Bounding fetch volume needs a cap, which arrived separately; see the
+  concurrency and per-principal limits under Unreleased. Negative
+  caching itself depends on the host having a real `Rails.cache`; under
+  a `NullStore` nothing is retained between requests.
 
   Declared `redirect_uris` are still held to the gem's `https`-or-
   loopback policy (RFC 8252). A metadata document never passes through

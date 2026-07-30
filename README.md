@@ -105,24 +105,36 @@ MCP 2026-07-28 deprecates Dynamic Client Registration in favour of CIMD:
 a client uses an `https` URL as its `client_id`, and the authorization
 server fetches the client metadata from that URL.
 
-**Off by default, still.** The spec makes supporting CIMD a **SHOULD**
-for authorization servers and demotes DCR to a deprecated **MAY**, and
-clients choose their mechanism from
-`client_id_metadata_document_supported` in the discovery document — so a
-server with this off keeps every client on the legacy path. That is a
-known deviation, and the caps below answer the reason it was originally
-held (nothing bounded fetch *volume*).
+**New installations get this on; existing ones do not.** The generated
+initializer sets `config.client_id_metadata_enabled = true`, so a fresh
+install is spec-conformant through configuration you can see and own.
+The library's own fallback stays `false`, so upgrading an existing app
+changes nothing until you opt in.
 
-What they do not answer is what a flipped default would do to an
-adopter on `bundle update`. A host whose only egress is an HTTPS proxy
-cannot fetch at all — `build_connection` deliberately passes no proxy,
-for the SSRF model — so it would begin *advertising* support, steer
-conformant clients off DCR, and fail every one of them. That is worse
-than not supporting CIMD, and it isn't visible until a client tries. The
-flip wants its own release and an upgrade note.
+That split is deliberate. The feature needs your app to reach arbitrary
+https hosts on port 443 **directly** — Hitch ignores `http_proxy`, since
+honouring it would reach the destination from the proxy's egress rather
+than your app's, which is part of what keeps this from being an SSRF
+hole. A host whose only outbound path is a proxy would begin
+*advertising* support it cannot deliver, steering conformant clients off
+DCR and onto a path that fails every time. Nothing surfaces that until a
+client tries, so it is not a thing to switch on during a `bundle
+update`.
 
-DCR keeps working either way; an opaque `client_id` and a URL
-`client_id` cannot collide.
+Note the capability is a stable declaration, not a health signal.
+`client_id_metadata_document_supported` says this server supports CIMD;
+it is not a promise that every document fetch will succeed. It stays
+tied to this one setting and never varies at runtime.
+
+### Verifying egress before you enable it
+
+```
+bin/rails 'hitch:cimd:check[https://some-client.example/client.json]'
+```
+
+Runs the real fetch path — same SSRF constraints, same concurrency cap —
+against a document you trust, and reports. It never changes what
+discovery advertises.
 
 ```ruby
 config.client_id_metadata_enabled = true         # opt in

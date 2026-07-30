@@ -61,24 +61,27 @@ module Hitch
     # it (Client ID Metadata Documents, the successor to Dynamic Client
     # Registration in MCP 2026-07-28).
     #
-    # Still off by default, though the spec makes CIMD a SHOULD for
-    # authorization servers and demotes Dynamic Client Registration to a
-    # deprecated MAY. The volume objection that held it back is answered
-    # by the two caps below; three others are not, and they are about
-    # what happens to an adopter on `bundle update` rather than about
-    # this server's safety:
+    # The library fallback is false, so upgrading an existing application
+    # changes nothing. The GENERATED INITIALIZER sets it to true, so new
+    # installations are conformant through configuration they own and can
+    # see — MCP 2026-07-28 makes supporting CIMD a SHOULD and demotes
+    # Dynamic Client Registration to a deprecated MAY, and clients read
+    # `client_id_metadata_document_supported` to choose between them.
     #
-    #   - A host whose only egress is an HTTPS proxy cannot fetch at all
-    #     (build_connection passes no proxy, deliberately, for the SSRF
-    #     model). Flipping the default would have it ADVERTISE support,
-    #     steering conformant clients off DCR and onto a path that fails
-    #     every time — worse than not supporting CIMD.
-    #   - Rate limiting and negative caching both need a real
-    #     Rails.cache.
-    #   - Neither is visible until a client tries.
+    # The split is by installation cohort rather than by runtime
+    # condition because the prerequisite cannot be inferred: CIMD needs
+    # this app to reach arbitrary https hosts on 443 DIRECTLY, and
+    # build_connection deliberately ignores http_proxy (honouring it
+    # would reach the destination from the proxy's egress rather than
+    # this app's). A host behind a proxy that flipped this on would begin
+    # ADVERTISING support it cannot deliver, steering conformant clients
+    # off a working path onto a broken one, invisibly until a client
+    # tries.
     #
-    # So the flip wants its own release and an upgrade note, not a
-    # bundle update. Set to true to opt in.
+    # `bin/rails 'hitch:cimd:check[URL]'` exercises the real fetch path
+    # against a document the operator trusts, and works whether or not
+    # this is enabled. Once an upgrade cycle has passed, this fallback
+    # can flip in a breaking release.
     # @return [Boolean]
     attr_accessor :client_id_metadata_enabled
 

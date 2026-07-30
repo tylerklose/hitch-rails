@@ -536,6 +536,21 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
       end
       serve(over) { |port| read_over_socket(port) }
       assert logged.any? { |m| m.include?("Content-Length") }, "an oversized declaration must be explained"
+
+      # The path that matters most, and the one a declared-length check
+      # never sees: chunked framing with no Content-Length at all, cut
+      # off mid-stream by the cap. Silent here would leave an operator
+      # with diagnose's "the log says why" and nothing in the log.
+      logged.clear
+      chunk = "x" * 64_000
+      streamed = ->(socket) do
+        socket.write("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n")
+        50.times { socket.write("#{chunk.bytesize.to_s(16)}\r\n#{chunk}\r\n") }
+        socket.write("0\r\n\r\n")
+      end
+      serve(streamed) { |port| assert_nil read_over_socket(port) }
+      assert logged.any? { |m| m.include?("while streaming") },
+        "a body that outgrows the cap mid-stream must say so — Content-Length was never sent"
     ensure
       Rails.logger = logger
     end

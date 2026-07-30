@@ -255,19 +255,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schemes run side by side for the spec's twelve-month deprecation
   window and beyond.
 
-  **Off by default** (`config.client_id_metadata_enabled`), which is a
-  deliberate deviation from the spec: MCP 2026-07-28 makes CIMD a
-  **SHOULD** for authorization servers and demotes DCR to a deprecated
-  **MAY**. Clients choose their mechanism from
-  `client_id_metadata_document_supported` in the discovery document, so
-  leaving it off keeps every client on the legacy path. Adopters wanting
-  spec-conformant behaviour today should set it to `true`.
-
-  The reason to hold is that enabling it gives `/oauth/authorize` an
-  outbound-fetch surface with no rate or concurrency cap behind it yet.
-  Each fetch is tightly constrained, but bounding the *volume* of
-  fetches is separate work. The default flips once that lands, and no
-  later than 1.0.
+  Controlled by `config.client_id_metadata_enabled`. See the entries
+  above for how it is defaulted and bounded: the library fallback is
+  `false` while the generated initializer opts new installations in, and
+  outbound fetches are capped by concurrency and per principal.
 
   The fetch is constrained accordingly: `https` on port 443 only; no
   redirects followed; URLs carrying userinfo or a fragment refused; DNS

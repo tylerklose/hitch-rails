@@ -101,13 +101,54 @@ module Hitch
 
     Document = Struct.new(:client_id, :client_name, :redirect_uris, keyword_init: true)
 
+    # Guards the in-flight counter below. Process-wide: the cap bounds
+    # this process's share of outbound work, so a fleet ceiling is the
+    # configured value times the worker count.
+    @fetch_mutex = Mutex.new
+    @fetches_in_flight = 0
+
+    # Per-actor fetch counts for the current minute, and the mutex that
+    # makes check-and-increment atomic.
+    #
+    # Deliberately in-process rather than in Rails.cache. A cache-backed
+    # counter needs read, compare and write as one operation; done as
+    # three, N callers admitted by the concurrency cap each read the same
+    # value and each write value+1, so the counter advances by one while
+    # N fetches proceed — measured at 4x the configured limit with a cap
+    # of 4, not "the limit plus a few". Getting that right needs an
+    # atomic increment, which is store-specific and absent on some stores
+    # entirely.
+    #
+    # Keeping it in-process makes it atomic by construction, and drops
+    # the two failure modes the cache-backed version had to warn about:
+    # a cache outage and a store whose writes silently fail both left the
+    # limit not applying at all. The cost is that the bound is per
+    # process, so a fleet ceiling is the configured value times the
+    # worker count — the same property the concurrency cap already has,
+    # and now stated rather than implied.
+    @rate_mutex = Mutex.new
+    @rate_counts = {}
+    @rate_window = nil
+
     # Failure sentinels. Only HOST_FAILURE — nothing at that host
     # answered — may block the host's other documents; a document-level
     # failure (plain nil) must not, or one bogus URL would take an entire
     # CIMD-hosting domain down for everyone on it.
     HOST_FAILURE = :host_failure
-    # Rejected on the URL's shape alone, before any network work.
+    # Rejected on the URL's shape alone. Handled before either cap is
+    # consulted, so it never reaches the case below — kept because the
+    # distinction (no fetch attempted, nothing knowable, nothing to
+    # cache) is the same one CAPACITY_EXCEEDED and RATE_LIMITED encode.
     SHAPE_REJECT = :shape_reject
+    # Refused because a cap was already spent — no fetch was attempted.
+    # Distinct from the two above because it says NOTHING about the URL
+    # or the host, and so must never be cached: writing a host failure
+    # here would turn cap exhaustion into a way to poison a legitimate
+    # host's entry for everyone.
+    CAPACITY_EXCEEDED = :capacity_exceeded
+    # Refused because this principal spent its minute budget. Same rule:
+    # no fetch happened, so nothing is known and nothing is cached.
+    RATE_LIMITED = :rate_limited
 
     class << self
       # A client_id is a CIMD reference when it is an https URL. Opaque
@@ -130,7 +171,10 @@ module Hitch
       # Returns a Document, or nil for anything that isn't a usable
       # client metadata document. Never raises into the authorize flow:
       # a fetch failure is an untrusted client's problem, not a 500.
-      def resolve(client_id)
+      # `actor` identifies the signed-in principal driving this
+      # resolution, for per-actor rate limiting. Optional: omitted, only
+      # the concurrency cap applies.
+      def resolve(client_id, actor: nil)
         return nil unless reference?(client_id)
 
         key = cache_key(client_id)
@@ -159,7 +203,32 @@ module Hitch
         # distinct key and each a valid CIMD reference.
         return nil if cache_read(failure_key(host)) == false
 
-        case (outcome = fetch_and_validate(client_id))
+        # Shape is judged BEFORE either cap is touched. Rejecting a URL on
+        # its scheme, port, userinfo or fragment costs nothing outbound,
+        # so charging it would let a caller spend their own minute budget
+        # on requests that never sent a packet — and then be refused a
+        # legitimate fetch.
+        target = fetch_target(client_id)
+        return nil if target.nil?
+
+        # Both caps are consulted only on a genuine miss. A cached
+        # resolution costs nothing outbound, so charging it against
+        # either budget would penalise the common case and make a busy,
+        # correctly-configured server throttle itself.
+        #
+        # Capacity is taken FIRST, and the minute budget is only charged
+        # once a slot is held. The other order spends a token on a
+        # request that never sent a packet — which turns a squeeze on the
+        # slots into a way to drain every victim's own budget while they
+        # retry, locking them out past the point where the slots free up.
+        outcome = with_fetch_capacity do
+          charge_rate_limit(actor) ? fetch_and_validate(client_id, target) : RATE_LIMITED
+        end
+
+        case outcome
+        when CAPACITY_EXCEEDED, RATE_LIMITED
+          # Deliberately no cache write of any kind — see the constants.
+          nil
         when Array
           # [document, ttl] — the TTL is derived from the document's own
           # HTTP cache headers, clamped by config.
@@ -190,7 +259,124 @@ module Hitch
         end
       end
 
+      # Number of fetches in flight right now. Test seam.
+      def fetches_in_flight
+        @fetch_mutex.synchronize { @fetches_in_flight.to_i }
+      end
+
       private
+
+      # A plain counter under a mutex rather than a Semaphore, so the
+      # limit is read from config at acquisition time — a host may change
+      # it, and tests do.
+      def with_fetch_capacity
+        # nil disables, matching the rate-limit knob. Integers are honored
+        # literally — including 0, which blocks every fetch. Treating 0 as
+        # "disabled" would make the most restrictive-looking setting the
+        # least restrictive one.
+        limit = integer_setting(:client_id_metadata_max_concurrent_fetches)
+        return yield if limit.nil?
+
+        # The increment and the ensure that undoes it must not be
+        # separable by an asynchronous exception. Rack::Timeout, an outer
+        # Timeout.timeout, or Puma's force_shutdown_after all deliver via
+        # Thread#raise, and one landing between the two would leak the
+        # slot permanently — after `limit` of those, CIMD is dead for the
+        # life of the process, silently and with nothing to alert on.
+        #
+        # Not covered by a test, deliberately. Review measured the
+        # unmasked window at up to 30% leakage in an isolated harness,
+        # but in situ Ruby already defers async interrupts across much of
+        # Mutex#synchronize, so the window is far narrower: a test driving
+        # Thread#raise at it stayed green against a no-op stand-in for
+        # this mask across repeated runs, while hanging the suite and
+        # emitting thread-death noise. A test that cannot fail for the
+        # reason it exists is worse than none, so the mask rests on that
+        # measurement and on this comment.
+        Thread.handle_interrupt(Object => :never) do
+          acquired = @fetch_mutex.synchronize do
+            next false if @fetches_in_flight >= limit
+
+            @fetches_in_flight += 1
+            true
+          end
+
+          # Fails closed, and refuses rather than queues: queueing is what
+          # consumes the request thread this cap exists to protect.
+          next CAPACITY_EXCEEDED unless acquired
+
+          begin
+            Thread.handle_interrupt(Object => :immediate) { yield }
+          ensure
+            @fetch_mutex.synchronize { @fetches_in_flight -= 1 }
+          end
+        end
+      end
+
+      # Fixed 60-second window. Coarse on purpose: a sliding window costs
+      # a read-modify-write per request for precision that does not
+      # change what this bounds — the order of magnitude of traffic one
+      # principal can aim at a third party.
+      # Fixed 60-second window. Coarse on purpose: a sliding window buys
+      # precision that does not change what this bounds — the order of
+      # magnitude of traffic one principal can aim at a third party. Note
+      # a caller aligned to the boundary can spend two windows back to
+      # back and briefly reach twice the nominal rate.
+      def charge_rate_limit(actor)
+        limit = integer_setting(:client_id_metadata_fetches_per_minute)
+        # nil disables. 0 and below block, matching the concurrency knob —
+        # the most restrictive-looking setting must not be the one that
+        # removes the protection.
+        return true if limit.nil?
+        return false if limit <= 0
+
+        if actor.blank?
+          # Not reachable from the shipped controller — both authorize
+          # actions bail to require_principal! first — but a host whose
+          # principal_method returns something without #id (a claims
+          # hash, a bare identifier) would land here and silently get no
+          # rate limiting at all.
+          warn_once(:cimd_rate_limit_no_actor,
+                    "client_id_metadata_fetches_per_minute is set but the resolution had no actor; " \
+                    "per-principal rate limiting is not being applied")
+          return true
+        end
+
+        window = Time.now.to_i / 60
+
+        # Check and increment under one lock. Split into read-then-write,
+        # every caller the concurrency cap admits reads the same value and
+        # writes value+1, so the count rises by one while N fetches go
+        # out — the limit multiplied by the concurrency cap rather than
+        # approached.
+        @rate_mutex.synchronize do
+          # The hash holds one window at a time and is dropped whole when
+          # the minute rolls over, so charging is O(1) and memory is
+          # bounded by the distinct principals seen within a single
+          # minute. Sweeping expired entries on every charge would make
+          # the common path scale with the number of actors instead.
+          if @rate_window != window
+            @rate_counts.clear
+            @rate_window = window
+          end
+
+          key = actor.to_s
+          spent = @rate_counts[key].to_i
+          next false if spent >= limit
+
+          @rate_counts[key] = spent + 1
+          true
+        end
+      end
+
+      # Test seam: current count for an actor in this minute.
+      def fetches_charged_to(actor)
+        @rate_mutex.synchronize do
+          next 0 unless @rate_window == Time.now.to_i / 60
+
+          @rate_counts[actor.to_s].to_i
+        end
+      end
 
       # Validates the rebuilt struct rather than relying on Document.new
       # to object. A keyword_init Struct accepts string keys without
@@ -229,6 +415,22 @@ module Hitch
         nil
       end
 
+      # Reads a numeric setting without trusting its type. The docs say
+      # "nil disables", and the obvious wrong guess at that is `false` —
+      # whose #to_i does not exist, which would raise NoMethodError
+      # straight out of resolve and 500 /oauth/authorize on the
+      # default-on path. Anything not coercible to an Integer is treated
+      # as unset rather than fatal.
+      def integer_setting(name)
+        case (value = Hitch.configuration.public_send(name))
+        when Integer then value
+        # Strings are accepted because settings often arrive from ENV.
+        # Floats are NOT: Kernel.Integer(2.5) truncates to 2, which would
+        # silently honour a value the docs say is unset.
+        when String then Integer(value, exception: false)
+        end
+      end
+
       # A cache outage must not take the authorize endpoint with it.
       def cache_read(key)
         Rails.cache.read(key)
@@ -236,10 +438,26 @@ module Hitch
         nil
       end
 
-      def cache_write(key, value, ttl)
-        Rails.cache.write(key, value, expires_in: ttl)
+      # Warns once per process per reason. These describe a standing
+      # misconfiguration, not a per-request event; logging them on every
+      # authorize would bury the thing it is warning about.
+      def warn_once(reason, message)
+        @warned ||= {}
+        return if @warned[reason]
+
+        @warned[reason] = true
+        Rails.logger&.warn("[hitch] #{message}")
       rescue StandardError
         nil
+      end
+
+      # Returns whether the value was actually stored. Callers that only
+      # want best-effort persistence can ignore it; the rate limiter
+      # cannot, because a silently-dropped write disables it.
+      def cache_write(key, value, ttl)
+        Rails.cache.write(key, value, expires_in: ttl) ? true : false
+      rescue StandardError
+        false
       end
 
       def cache_delete(key)
@@ -253,11 +471,22 @@ module Hitch
       # HOST's (nothing there answers) from one that is this DOCUMENT's
       # (the host answered, the document was unusable) — only the former
       # may block that host's other documents.
-      def fetch_and_validate(client_id)
+      # Parses a client_id into the URI to fetch, or nil when its shape
+      # rules it out. Deliberately separate from fetch_and_validate and
+      # called before the caps: none of these checks costs a packet, so
+      # none of them should cost a token.
+      def fetch_target(client_id)
         uri = URI.parse(client_id)
-        return SHAPE_REJECT if uri.userinfo.present? || uri.fragment.present?
-        return SHAPE_REJECT unless uri.port == ALLOWED_PORT
+        return nil if uri.userinfo.present? || uri.fragment.present?
+        return nil unless uri.port == ALLOWED_PORT
 
+        uri
+      rescue URI::InvalidURIError => e
+        log_rejection(client_id, "#{e.class}: #{e.message}")
+        nil
+      end
+
+      def fetch_and_validate(client_id, uri)
         Timeout.timeout(TOTAL_BUDGET) do
           address = safe_address(uri.host)
           return HOST_FAILURE if address.nil?
@@ -273,9 +502,6 @@ module Hitch
       rescue Timeout::Error => e
         log_rejection(client_id, "#{e.class}: #{e.message}")
         HOST_FAILURE
-      rescue URI::InvalidURIError => e
-        log_rejection(client_id, "#{e.class}: #{e.message}")
-        SHAPE_REJECT
       rescue JSON::ParserError => e
         log_rejection(client_id, "#{e.class}: #{e.message}")
         nil

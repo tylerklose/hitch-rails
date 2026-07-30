@@ -7,6 +7,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Caps on outbound Client ID Metadata Document fetches.** Each fetch
+  was already tightly constrained; nothing bounded how *many* of them a
+  caller could provoke, and negative caching only bounds repeats of the
+  same thing. Two bypasses survived it: a wildcard DNS record yields
+  unlimited distinct hosts, and a host answering `404` yields unlimited
+  distinct URLs.
+
+  `config.client_id_metadata_enabled` remains **off by default**. The
+  volume objection that held it back is answered here; the ones that
+  concern an adopter's upgrade are not. A host whose only egress is an
+  HTTPS proxy cannot fetch at all — the connection deliberately carries
+  no proxy, for the SSRF model — so flipping the default would have it
+  begin *advertising* support, steering conformant clients off DCR onto
+  a path that fails every time, invisibly until a client tries. That
+  flip wants its own release and an upgrade note.
+
+  `config.client_id_metadata_max_concurrent_fetches` (default 4, per
+  process; `nil` disables, `0` blocks) bounds fetches in flight at once.
+  A fetch can occupy a request thread for the whole resolution budget,
+  so without a cap enough slow ones saturate the pool and the app stops
+  serving anything.
+
+  `config.client_id_metadata_fetches_per_minute` (default 20, per
+  signed-in principal; `nil` disables) bounds volume aimed at third
+  parties. Negative caching cannot: an attacker with a wildcard DNS
+  record gets unlimited distinct hosts, and a host answering `404` gets
+  one fetch per distinct URL. Neither trick changes who is asking.
+
+  A URL refused on its **shape** — non-443 port, userinfo, fragment —
+  costs neither cap. Judging shape before acquiring capacity or charging
+  the budget matters: otherwise a caller spends their own minute on
+  requests that never sent a packet, and is then refused a legitimate
+  fetch.
+
+  A refusal on either cap writes no document or host cache entry.
+  Caching one as a host failure would turn cap exhaustion into a way to
+  poison a legitimate host's entry for every other caller. Capacity is
+  taken *before* the minute budget is charged, so a request refused for
+  want of a slot does not spend a token it never used — the other order
+  lets a squeeze on the slots drain every victim's own budget while they
+  retry. Cache hits are charged against neither cap, since a cached
+  resolution costs nothing outbound.
+
+  The rate limiter counts **in process**, under one mutex, rather than in
+  `Rails.cache`. A cache-backed counter needs read, compare and write as
+  a single operation; done as three, every caller the concurrency cap
+  admits reads the same value and writes value+1, so the count rises by
+  one while N fetches proceed — measured at 4× the configured limit with
+  a cap of 4. An atomic increment is store-specific and absent on some
+  stores entirely. Counting in process is atomic by construction, and
+  drops two failure modes the cache-backed version had to warn about: a
+  cache outage and a store whose writes silently fail both left the limit
+  not applying at all.
+
+  The cost is that the bound is per process, so a fleet ceiling is the
+  configured value times the worker count — the same property the
+  concurrency cap has, now stated rather than implied. Memory is bounded
+  by the number of distinct principals seen within a single minute; older
+  windows are pruned.
+
+  One further limit, stated rather than implied: the window is a fixed
+  minute, so a caller aligned to the boundary can spend two windows back
+  to back and briefly reach twice the nominal rate.
+
+  `nil` disables either cap; `0` and below block, so the most
+  restrictive-looking value is never the one that removes the
+  protection. Non-integer values are treated as unset rather than
+  coerced — `Kernel.Integer` truncates `2.5` to a working cap of `2`,
+  and `false` (the obvious wrong guess at "nil disables") has no
+  `#to_i`, which would have raised out of `resolve` and returned 500
+  from `/oauth/authorize`. Integer-form strings are accepted, since
+  settings often arrive from ENV.
+
+- **A production boot warning when CIMD is enabled and `Rails.cache` is
+  a `NullStore`.** Negative caching lives there, so under a null store
+  it is silently absent — precisely on the deployment that believes
+  itself protected. Both caps are in-process and unaffected, which is
+  why this warns rather than refuses. Production only:
+  `:null_store` is Rails' default in test and in development without
+  `tmp/caching-dev.txt`, and a warning on every console and rake task is
+  one adopters learn to ignore.
 ### Fixed
 
 - **`Duplicate migration` no longer aborts a schema load driven from the

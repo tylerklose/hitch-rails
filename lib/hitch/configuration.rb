@@ -61,20 +61,24 @@ module Hitch
     # it (Client ID Metadata Documents, the successor to Dynamic Client
     # Registration in MCP 2026-07-28).
     #
-    # Off by default, which is a deliberate deviation from the spec:
-    # MCP 2026-07-28 makes CIMD a SHOULD for authorization servers and
-    # demotes Dynamic Client Registration to a deprecated MAY. Clients
-    # choose their mechanism from `client_id_metadata_document_supported`
-    # in the discovery document, so leaving this off keeps every client
-    # on the legacy path.
+    # Still off by default, though the spec makes CIMD a SHOULD for
+    # authorization servers and demotes Dynamic Client Registration to a
+    # deprecated MAY. The volume objection that held it back is answered
+    # by the two caps below; three others are not, and they are about
+    # what happens to an adopter on `bundle update` rather than about
+    # this server's safety:
     #
-    # The reason to hold is that enabling it gives /oauth/authorize an
-    # outbound-fetch surface with no rate or concurrency cap behind it
-    # yet. Hitch::ClientIdMetadata constrains each fetch heavily (public
-    # addresses only, connection pinned to a vetted IP, no redirects,
-    # capped size and time, negative caching), but bounding the VOLUME of
-    # fetches is separate work. This default flips once that lands, and
-    # no later than 1.0. DCR keeps working either way.
+    #   - A host whose only egress is an HTTPS proxy cannot fetch at all
+    #     (build_connection passes no proxy, deliberately, for the SSRF
+    #     model). Flipping the default would have it ADVERTISE support,
+    #     steering conformant clients off DCR and onto a path that fails
+    #     every time — worse than not supporting CIMD.
+    #   - Rate limiting and negative caching both need a real
+    #     Rails.cache.
+    #   - Neither is visible until a client tries.
+    #
+    # So the flip wants its own release and an upgrade note, not a
+    # bundle update. Set to true to opt in.
     # @return [Boolean]
     attr_accessor :client_id_metadata_enabled
 
@@ -84,6 +88,38 @@ module Hitch
     # sooner.
     # @return [Integer]
     attr_accessor :client_id_metadata_cache_ttl
+
+    # Ceiling on client metadata fetches in flight AT ONCE, per process.
+    # Default 4. Set to nil to disable; 0 blocks every fetch.
+    #
+    # Each fetch can occupy a request thread for the whole resolution
+    # budget, so without a cap enough slow ones saturate the pool and the
+    # app stops serving anything. This bounds CIMD to a slice of the
+    # thread pool no matter what callers do: a Puma worker running the
+    # default 5 threads keeps one free. It is per process, so a fleet
+    # ceiling is this times the worker count.
+    # @return [Integer]
+    attr_accessor :client_id_metadata_max_concurrent_fetches
+
+    # Ceiling on client metadata fetches per signed-in principal per
+    # minute. Default 20. Set to nil to disable.
+    #
+    # The concurrency cap above protects THIS server; this one protects
+    # everyone else. Negative caching cannot: an attacker with a wildcard
+    # DNS record gets unlimited distinct hosts, and a host that answers
+    # with 404s gets one fetch per distinct URL. Neither trick changes
+    # who is asking, so counting per principal is what actually bounds
+    # the volume of traffic this server can be aimed at a third party.
+    #
+    # Counted in process, under a mutex, rather than in Rails.cache: the
+    # check and the increment have to be one operation, and doing them as
+    # a cache read plus a cache write lets every caller the concurrency
+    # cap admits read the same value and write value+1 — the limit
+    # multiplied by the cap rather than approached. So this bound is per
+    # process, and a fleet ceiling is this times the worker count. It is
+    # unaffected by the cache store.
+    # @return [Integer, nil]
+    attr_accessor :client_id_metadata_fetches_per_minute
 
     def initialize
       @principal_model = "User"
@@ -97,6 +133,8 @@ module Hitch
       @login_path = nil
       @client_id_metadata_enabled = false
       @client_id_metadata_cache_ttl = 3600
+      @client_id_metadata_max_concurrent_fetches = 4
+      @client_id_metadata_fetches_per_minute = 20
     end
 
     # Resolve principal_model to its class constant.

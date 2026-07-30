@@ -370,18 +370,28 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
   # and send a document URL as its client_id. Advertising it while the
   # server would reject every such client_id converts a working DCR flow
   # into a broken one, so it tracks the config exactly.
-  test "the CIMD capability is advertised only when the host enables it" do
+  test "the CIMD capability tracks the config in both directions" do
+    # Off by default, so nothing is advertised until a host opts in.
     get "/.well-known/oauth-authorization-server"
     assert_nil JSON.parse(response.body)["client_id_metadata_document_supported"]
 
     Hitch.configure { |c| c.client_id_metadata_enabled = true }
     get "/.well-known/oauth-authorization-server"
     assert_equal true, JSON.parse(response.body)["client_id_metadata_document_supported"]
+
+    # Withdrawing it matters as much as advertising it: a client reads
+    # this flag to decide whether to send a document URL at all, so a
+    # server that stops supporting CIMD without withdrawing the
+    # advertisement breaks every client that believed it.
+    Hitch.configure { |c| c.client_id_metadata_enabled = false }
+    get "/.well-known/oauth-authorization-server"
+    assert_nil JSON.parse(response.body)["client_id_metadata_document_supported"]
   end
 
   test "an https client_id is an opaque unknown client while CIMD is disabled" do
+    Hitch.configure { |c| c.client_id_metadata_enabled = false }
     sign_in @user
-    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id) { flunk "must not resolve while disabled" }) do
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id, **) { flunk "must not resolve while disabled" }) do
       post "/oauth/authorize", params: {
         client_id: CIMD_URL, redirect_uri: CLIENT_REDIRECT,
         code_challenge: @challenge, code_challenge_method: "S256"
@@ -395,7 +405,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     Hitch.configure { |c| c.client_id_metadata_enabled = true }
     sign_in @user
 
-    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id) { cimd_document }) do
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id, **) { cimd_document }) do
       post "/oauth/authorize", params: {
         client_id: CIMD_URL, redirect_uri: CLIENT_REDIRECT,
         code_challenge: @challenge, code_challenge_method: "S256",
@@ -417,7 +427,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     Hitch.configure { |c| c.client_id_metadata_enabled = true }
     sign_in @user
 
-    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id) { cimd_document }) do
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id, **) { cimd_document }) do
       post "/oauth/authorize", params: {
         client_id: CIMD_URL, redirect_uri: "https://attacker.test/cb",
         code_challenge: @challenge, code_challenge_method: "S256"
@@ -430,7 +440,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     Hitch.configure { |c| c.client_id_metadata_enabled = true }
     sign_in @user
 
-    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id) { nil }) do
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id, **) { nil }) do
       post "/oauth/authorize", params: {
         client_id: CIMD_URL, redirect_uri: CLIENT_REDIRECT,
         code_challenge: @challenge, code_challenge_method: "S256"
@@ -456,7 +466,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     # what makes this test fail if the filter is removed rather than
     # passing for an unrelated reason.
     hostile = cimd_document(redirect_uris: [ "javascript:alert(1)", "http://attacker.test/cb" ])
-    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id) { hostile }) do
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id, **) { hostile }) do
       post "/oauth/authorize", params: {
         client_id: CIMD_URL, redirect_uri: CLIENT_REDIRECT,
         code_challenge: @challenge, code_challenge_method: "S256"
@@ -496,7 +506,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     sign_in @user
 
     local = cimd_document(redirect_uris: [ "http://localhost:9000/cb", "http://127.0.0.1:9000/cb" ])
-    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id) { local }) do
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id, **) { local }) do
       get "/oauth/authorize", params: {
         client_id: CIMD_URL, redirect_uri: "http://localhost:9000/cb",
         code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
@@ -510,7 +520,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     Hitch.configure { |c| c.client_id_metadata_enabled = true }
     sign_in @user
 
-    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id) { cimd_document }) do
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id, **) { cimd_document }) do
       get "/oauth/authorize", params: {
         client_id: CIMD_URL, redirect_uri: CLIENT_REDIRECT,
         code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
@@ -520,12 +530,43 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     end
   end
 
+  # Every other rate-limit test calls resolve directly with an actor.
+  # Removing `actor: rate_limit_actor` from the controller would leave
+  # all of them green while the shipped per-principal limit did nothing,
+  # so this drives it through the real endpoint as a signed-in user.
+  test "the per-principal fetch limit applies through /oauth/authorize" do
+    real_cache = Rails.cache
+    Rails.cache = ActiveSupport::Cache::MemoryStore.new
+    Hitch.configure do |c|
+      c.client_id_metadata_enabled = true
+      c.client_id_metadata_fetches_per_minute = 2
+    end
+    sign_in @user
+    fetches = 0
+
+    begin
+      stub_class_method(Hitch::ClientIdMetadata, :fetch_and_validate, ->(_id, *) { fetches += 1; nil }) do
+        5.times do |i|
+          post "/oauth/authorize", params: {
+            client_id: "https://client.example/doc#{i}.json", redirect_uri: CLIENT_REDIRECT,
+            code_challenge: @challenge, code_challenge_method: "S256"
+          }
+          assert_response :bad_request
+        end
+      end
+      assert_equal 2, fetches,
+        "distinct document URLs must still be bounded per principal — that is the amplification guard"
+    ensure
+      Rails.cache = real_cache
+    end
+  end
+
   test "a client's declared name never reaches the consent screen (CIMD)" do
     Hitch.configure { |c| c.client_id_metadata_enabled = true }
     sign_in @user
 
     document = cimd_document(client_name: "<script>alert(1)</script>Trusted Bank")
-    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id) { document }) do
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id, **) { document }) do
       get "/oauth/authorize", params: {
         client_id: CIMD_URL, redirect_uri: CLIENT_REDIRECT,
         code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A

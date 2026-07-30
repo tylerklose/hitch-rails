@@ -161,14 +161,23 @@ module Hitch
       # DCR client_ids (UUIDs) never match, so the two schemes coexist
       # without ambiguity.
       def reference?(client_id)
-        return false if client_id.blank?
         return false unless Hitch.configuration.client_id_metadata_enabled
 
+        document_url?(client_id)
+      end
+
+      # The shape half of reference?, without consulting the enablement
+      # flag. Split out so the operator diagnostic can run BEFORE CIMD is
+      # switched on — which is the only moment its answer is useful.
+      #
+      # "The client_id URL MUST use the 'https' scheme and contain a path
+      # component" — MCP 2026-07-28, Client Registration. A bare origin
+      # is not a metadata document URL, so it falls through to the
+      # opaque/DCR lookup rather than triggering an outbound fetch.
+      def document_url?(client_id)
+        return false if client_id.blank?
+
         uri = URI.parse(client_id.to_s)
-        # "The client_id URL MUST use the 'https' scheme and contain a
-        # path component" — MCP 2026-07-28, Client Registration. A bare
-        # origin is not a metadata document URL, so it falls through to
-        # the opaque/DCR lookup rather than triggering an outbound fetch.
         uri.is_a?(URI::HTTPS) && uri.host.present? && uri.path.present? && uri.path != "/"
       rescue URI::InvalidURIError
         false
@@ -285,12 +294,13 @@ module Hitch
       # principal) but not the SSRF constraints or the concurrency cap —
       # exercising the real fetch path is the entire point.
       def diagnose(client_id)
-        unless Hitch.configuration.client_id_metadata_enabled
-          return Diagnosis.new(outcome: :disabled,
-                               detail: "config.client_id_metadata_enabled is false, so nothing was fetched")
-        end
-
-        unless reference?(client_id)
+        # Deliberately ignores client_id_metadata_enabled. The whole point
+        # is to answer "can this host reach a document?" BEFORE deciding
+        # to turn CIMD on, so gating the probe on the setting it informs
+        # makes it useless exactly when it is needed. That flag governs
+        # discovery and real authorization traffic; it does not govern an
+        # operator running a command.
+        unless document_url?(client_id)
           return Diagnosis.new(outcome: :not_a_reference,
                                detail: "not an https URL with a path component, so it would be treated as an opaque client_id")
         end
@@ -312,7 +322,7 @@ module Hitch
                                 "an ambient http_proxy is deliberately ignored")
         else
           Diagnosis.new(outcome: :invalid_document,
-                        detail: "the host answered but the document was unusable; the log carries the reason")
+                        detail: "the host answered but the document was unusable — the log line for this URL says why")
         end
       end
 
@@ -632,14 +642,19 @@ module Hitch
           # need the whole address-vetting dance again for each hop, and a
           # client metadata document has no legitimate reason to move
           # during a resolution.
-          return nil unless response.is_a?(Net::HTTPOK)
+          unless response.is_a?(Net::HTTPOK)
+            return log_rejection(uri.to_s, "responded #{response.code}, not 200")
+          end
+
           # An advisory check only — Content-Length is written by the same
           # party as the body, and can simply be omitted under chunked
           # framing. read_capped is what actually enforces the limit.
-          return nil if response["Content-Length"].to_i > MAX_BYTES
+          if response["Content-Length"].to_i > MAX_BYTES
+            return log_rejection(uri.to_s, "declared Content-Length above the #{MAX_BYTES}-byte cap")
+          end
 
           body = read_capped(response)
-          return nil if body.nil?
+          return log_rejection(uri.to_s, "body exceeded the #{MAX_BYTES}-byte cap while streaming") if body.nil?
 
           return [ body, cache_ttl_for(response) ]
         end

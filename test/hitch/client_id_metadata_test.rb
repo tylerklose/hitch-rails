@@ -446,10 +446,6 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   test "diagnose reports each way a resolution can fail, without touching discovery" do
     document = CIMD::Document.new(client_id: DOC_URL, client_name: "X", redirect_uris: [ "https://a.test/cb" ])
 
-    Hitch.configure { |c| c.client_id_metadata_enabled = false }
-    assert_equal :disabled, CIMD.diagnose(DOC_URL).outcome
-
-    Hitch.configure { |c| c.client_id_metadata_enabled = true }
     assert_equal :not_a_reference, CIMD.diagnose("some-opaque-uuid").outcome
     assert_equal :not_a_reference, CIMD.diagnose("https://client.example").outcome
     assert_equal :rejected_shape, CIMD.diagnose("https://client.example:8443/d.json").outcome
@@ -471,6 +467,24 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
       assert_equal :ok, result.outcome
       assert result.ok?
     end
+  end
+
+  # The README calls this "verifying egress BEFORE you enable it", and
+  # that is the only moment its answer is useful. Gating the probe on the
+  # setting it exists to inform made the documented command exit without
+  # touching the network.
+  test "diagnose runs with CIMD disabled, because that is when it is needed" do
+    document = CIMD::Document.new(client_id: DOC_URL, client_name: "X", redirect_uris: [ "https://a.test/cb" ])
+    Hitch.configure { |c| c.client_id_metadata_enabled = false }
+    reached = false
+
+    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { reached = true; [ document, 3600 ] }) do
+      assert_equal :ok, CIMD.diagnose(DOC_URL).outcome
+    end
+    assert reached, "the probe must actually attempt the fetch while the feature is off"
+
+    # And the flag still governs real traffic.
+    assert_nil CIMD.resolve(DOC_URL, actor: "User:1")
   end
 
   # A diagnostic that populated the cache would make the next real
@@ -496,6 +510,35 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
       5.times { CIMD.diagnose(DOC_URL) }
     end
     assert_equal 0, CIMD.send(:fetches_charged_to, "User:1")
+  end
+
+  # diagnose tells operators the log explains an invalid_document. These
+  # were the paths that returned nil silently, so for the most common
+  # failures — a 404, an oversized body — that promise was false.
+  test "every rejection read off the wire is logged" do
+    logged = []
+    logger = Rails.logger
+    Rails.logger = Class.new { def initialize(s) = (@s = s); def warn(m) = @s << m; def info(m) = @s << m }.new(logged)
+
+    begin
+      [ [ "404 Not Found", /404/ ],
+        [ "500 Internal Server Error", /500/ ] ].each do |status, pattern|
+        logged.clear
+        handler = ->(socket) { socket.write("HTTP/1.1 #{status}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}") }
+        serve(handler) { |port| read_over_socket(port) }
+        assert logged.any? { |m| m =~ pattern }, "a #{status} must say so in the log, not just return nil"
+      end
+
+      logged.clear
+      over = ->(socket) do
+        socket.write("HTTP/1.1 200 OK\r\nContent-Length: #{CIMD::MAX_BYTES + 1}\r\nConnection: close\r\n\r\n")
+        socket.write("x" * (CIMD::MAX_BYTES + 1))
+      end
+      serve(over) { |port| read_over_socket(port) }
+      assert logged.any? { |m| m.include?("Content-Length") }, "an oversized declaration must be explained"
+    ensure
+      Rails.logger = logger
+    end
   end
 
   # --- the wire itself -------------------------------------------------

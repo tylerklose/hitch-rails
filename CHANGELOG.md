@@ -48,14 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unlimited distinct hosts, and a host answering `404` yields unlimited
   distinct URLs.
 
-  `config.client_id_metadata_enabled` remains **off by default**. The
-  volume objection that held it back is answered here; the ones that
-  concern an adopter's upgrade are not. A host whose only egress is an
-  HTTPS proxy cannot fetch at all — the connection deliberately carries
-  no proxy, for the SSRF model — so flipping the default would have it
-  begin *advertising* support, steering conformant clients off DCR onto
-  a path that fails every time, invisibly until a client tries. That
-  flip wants its own release and an upgrade note.
+  See the entry above for how `config.client_id_metadata_enabled` is
+  now defaulted: the library fallback stays `false`, while the generated
+  initializer opts new installations in.
 
   `config.client_id_metadata_max_concurrent_fetches` (default 4, per
   process; `nil` disables, `0` blocks) bounds fetches in flight at once.
@@ -331,11 +326,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   That split is a deliberate trade, not a complete guard. It raises the
   cost of amplification rather than eliminating it — an attacker with a
   wildcard DNS record still gets distinct hosts, and a responsive host
-  serving unusable documents still gets one fetch per distinct URL. A
-  rate or concurrency cap on outbound fetches is the real backstop and
-  is not implemented here. All of it also depends on the host having a
-  real `Rails.cache`; under a `NullStore` nothing is retained between
-  requests.
+  serving unusable documents still gets one fetch per distinct URL.
+  Bounding fetch volume needs a cap, which arrived separately; see the
+  concurrency and per-principal limits under Unreleased. Negative
+  caching itself depends on the host having a real `Rails.cache`; under
+  a `NullStore` nothing is retained between requests.
 
   Declared `redirect_uris` are still held to the gem's `https`-or-
   loopback policy (RFC 8252). A metadata document never passes through

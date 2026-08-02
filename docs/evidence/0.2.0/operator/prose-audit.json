@@ -1,0 +1,159 @@
+{
+  "schema": "hitch.m5.3-prose-audit-evidence.v1",
+  "milestone": "M5.3",
+  "status": "verified_internal_development",
+  "verified_at": "2026-08-02T16:06:53Z",
+  "source": {
+    "commit": "c24893cda58e90eccd204792aedeb3633ee089af",
+    "tree": "05de8c72ded98502c77a9f4f386594bcecfb5da5",
+    "predecessor_commit": "ffb9f22faeba33f72ca7860db6e7ee90503891ab",
+    "state": "immutable_implementation_candidate",
+    "worktree_clean_before_acceptance": true,
+    "acceptance_commands_ran_against_source_commit": true
+  },
+  "artifact": {
+    "version": "0.2.0.pre.4.dev",
+    "target_checkpoint": "0.2.0.pre.4",
+    "published": false,
+    "tag_created": false,
+    "github_release_created": false,
+    "rubygems_publication_performed": false,
+    "publication_decision": "deferred_until_M5.4_or_final_0.2.0"
+  },
+  "audit": {
+    "command": "bin/prose-audit",
+    "root_override": "--root PATH",
+    "pattern_count": 31,
+    "searched_files": 301,
+    "release_policy_searched_files": 301,
+    "allowlisted_historical_fixtures": 3,
+    "stale_matches": 0,
+    "included_extensions": [
+      ".erb",
+      ".json",
+      ".md",
+      ".rake",
+      ".rb",
+      ".tt",
+      ".yaml",
+      ".yml"
+    ],
+    "extensionless_bin_files_included": true,
+    "generated_scenario_json_excluded": true,
+    "ignored_files": [
+      "bin/prose-audit"
+    ],
+    "ignored_prefixes": [
+      ".git/",
+      ".bundle/",
+      ".ruby-lsp/",
+      "coverage/",
+      "docs/evidence/",
+      "log/",
+      "node_modules/",
+      "pkg/",
+      "test/dummy/log/",
+      "tmp/",
+      "vendor/"
+    ]
+  },
+  "patterns": [
+    "removed principal model option",
+    "removed post-login redirect option",
+    "wrong consent override path",
+    "obsolete RFC 9207 gap",
+    "PostgreSQL-only support claim",
+    "obsolete SDK version claim",
+    "obsolete MCP revision",
+    "preflight routed through token exchange",
+    "missing host MCP preflight action",
+    "hard-coded origin constant",
+    "unconditional DCR alongside CIMD",
+    "PostgreSQL-only code consumption",
+    "blanket installation conformance claim",
+    "obsolete unimplemented MCP endpoint claim",
+    "tool generator auto-registration",
+    "tool generator registry mutation",
+    "generated tool allow-default",
+    "automatic tool discovery",
+    "production memory rate store",
+    "optional production Redis",
+    "doctor repair mode",
+    "obsolete doctor format variable",
+    "MCP route after engine mount",
+    "doctor application quota mutation",
+    "doctor external discovery request",
+    "obsolete public 0.1 install",
+    "obsolete M0 publication gate",
+    "obsolete pre-M5 publication",
+    "obsolete M0 downloaded-gem gate",
+    "obsolete published M0 predecessor",
+    "premature pre4 publication"
+  ],
+  "historical_allowlist": [
+    {
+      "pattern": "PostgreSQL-only support claim",
+      "path": "docs/work_packets/M0.5.md",
+      "reason": "historical SQLite and PostgreSQL planning fixture"
+    },
+    {
+      "pattern": "PostgreSQL-only code consumption",
+      "path": "ROADMAP.md",
+      "reason": "historical SKIP LOCKED design alternative"
+    },
+    {
+      "pattern": "PostgreSQL-only code consumption",
+      "path": "docs/work_packets/M0.3b.md",
+      "reason": "historical SKIP LOCKED work-packet alternative"
+    }
+  ],
+  "mutation_suite": {
+    "command": "bin/ci-test test/tooling/prose_audit_test.rb",
+    "source_commit": "c24893cda58e90eccd204792aedeb3633ee089af",
+    "runs": 3,
+    "assertions": 25,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "mutations_refused": [
+      "tool_generator_auto_registration",
+      "production_memory_rate_store",
+      "doctor_repair_mode",
+      "premature_pre4_publication"
+    ],
+    "historical_evidence_exclusion_verified": true
+  },
+  "acceptance": {
+    "prose_audit": {
+      "command": "bin/prose-audit",
+      "source_commit": "c24893cda58e90eccd204792aedeb3633ee089af",
+      "patterns": 31,
+      "searched_files": 301,
+      "allowlisted_historical_fixtures": 3,
+      "stale_matches": 0
+    },
+    "combined_tooling": {
+      "command": "bin/ci-test test/tooling/doctor_fixtures_dispatch_test.rb test/tooling/prose_audit_test.rb",
+      "source_commit": "c24893cda58e90eccd204792aedeb3633ee089af",
+      "runs": 6,
+      "assertions": 42,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0
+    }
+  },
+  "contains_raw_process_logs": false,
+  "checksums": {
+    "prose_audit_sha256": "ed9312f42da3f40156d06375e62401812e00bd4d6b741f3165ea4b39baa4fd7e",
+    "prose_audit_test_sha256": "c11d24050657c5002e9c21c94a5fb53d928e70c2640a92d39e97450d578a1fd7",
+    "readme_sha256": "fb594c1452eb507b91771de58a636096e37682d81fd6097fe0ae44c99f6c2b38",
+    "changelog_sha256": "6d57a05121bfee56209236060559e835702e1d7a16baebdf1c45887302c8e57c",
+    "security_sha256": "f4d2c437629303d655c382c36f61aee94dd27c276264bb9dd0dc4675b73be0a4",
+    "doctor_guide_sha256": "aedde0ff40d0e8c083939129b094c70c169e8a776b53c0470af1fdc9f822ef32",
+    "redis_guide_sha256": "c25bf0d09d62c80140e0b50bafe9c59d7737a0efbfecee71a462864200ad4210",
+    "upgrade_guide_sha256": "6a9aa97093a06397799d914364aa660a4d9331626c3ff905ff8025fd287ebaef",
+    "removal_guide_sha256": "99ca72c7e9e39e05f7a2a95bf32ebce98c9e861bbbf9d5df7a56e93b2e8fe551",
+    "public_api_sha256": "ca2ddfd9038da3e73fded99a7af2cd28fb6c16b3342cc8e804584342f7187115",
+    "work_packet_sha256": "e125090f1fb45f389b2f0191500009d848196255107b7d512693154f4d5b7ea7"
+  }
+}

@@ -89,7 +89,8 @@ checkpoint contract.
 
 There is no public RubyGems release yet. `0.1.0` identifies the verified
 auth-only checkpoint; `0.2.0.pre.1` identifies the verified authenticated-wire
-checkpoint. Neither is tagged or published. An approved
+checkpoint; and `0.2.0.pre.2.dev` identifies active internal M3 development.
+None is tagged or published. An approved
 source adopter must pin the accepted checkpoint's full commit SHA rather than a
 branch or a nonexistent RubyGems version:
 

@@ -341,7 +341,19 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
   end
 
   test "context is retrieved from Hitch context wrapper" do
-    context = { principal_id: "principal-42" }.freeze
+    context = Hitch::MCP::Context.new(
+      principal: Object.new,
+      access_token: Object.new,
+      scope: nil,
+      granted_scopes: [ "mcp" ],
+      client_id: "sdk-client",
+      resource: "https://sdk.test/mcp",
+      request_id: "sdk-context",
+      remote_ip: "198.51.100.42",
+      user_agent: nil,
+      protocol_version: PROTOCOL_VERSION,
+      meta: REQUEST_META
+    )
     received_context = nil
     server_contexts = []
     original_new = ::MCP::Server.method(:new)

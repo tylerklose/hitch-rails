@@ -5,6 +5,19 @@ All notable changes to hitch-rails will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Internal development build only. `0.2.0.pre.2.dev` is not tagged,
+GitHub-released, or published to RubyGems.
+
+### Added
+
+- Added the public, frozen, request-local `Hitch::MCP::Context` envelope. It
+  preserves principal, access-token, and host-scope references as opaque
+  request-local values while copying and freezing granted scopes, request
+  values, and untrusted MCP metadata. The SDK handoff remains exactly one
+  private `{ hitch_context: context }` wrapper.
+
 ## [0.2.0.pre.1] - 2026-08-02
 
 Internal verified checkpoint only. `0.2.0.pre.1` is not tagged, GitHub-released,

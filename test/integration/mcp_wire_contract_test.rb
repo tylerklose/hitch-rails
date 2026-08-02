@@ -4,6 +4,7 @@ require "test_helper"
 require "base64"
 require "digest"
 require "json"
+require "mcp"
 require "securerandom"
 require "yaml"
 

@@ -1,5 +1,5 @@
 schema_version: 1
-runtime_status: pending_m2
+runtime_status: m2_active_m4_pending
 tests:
   - path: test/hitch/mcp/sdk_contract_test.rb
     owner_issue: M2.1

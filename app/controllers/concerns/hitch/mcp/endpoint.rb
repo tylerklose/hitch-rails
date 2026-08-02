@@ -188,7 +188,7 @@ module Hitch
       end
 
       def hitch_mcp_dispatch!(verified_request)
-        context = hitch_mcp_slice_context(verified_request)
+        context = hitch_mcp_context(verified_request)
         server_info = hitch_mcp_server_info(context)
 
         hitch_mcp_registry_resolved!
@@ -204,14 +204,18 @@ module Hitch
         hitch_mcp_render_protocol!(protocol_response, status: 200)
       end
 
-      def hitch_mcp_slice_context(verified_request)
+      def hitch_mcp_context(verified_request)
         metadata = verified_request.fetch("params").fetch("_meta")
-        SliceContext.new(
+        Context.new(
           principal: @hitch_mcp_principal,
           access_token: @hitch_mcp_access_token,
+          scope: nil,
+          granted_scopes: @hitch_mcp_access_token.scopes.to_s.split,
           client_id: @hitch_mcp_client_id,
           resource: Hitch.configuration.resource_uri,
           request_id: verified_request.fetch("id"),
+          remote_ip: request.remote_ip,
+          user_agent: request.user_agent,
           protocol_version: metadata.fetch("io.modelcontextprotocol/protocolVersion"),
           meta: metadata
         )

@@ -46,7 +46,7 @@ class PackageContractTest < ActiveSupport::TestCase
       app/models/hitch/mcp/internal/sdk_adapter.rb
       app/models/hitch/mcp/internal/sdk_adapter/response_normalizer.rb
       app/models/hitch/mcp/internal/verified_request.rb
-      app/models/hitch/mcp/slice_context.rb
+      app/models/hitch/mcp/context.rb
       app/models/hitch/mcp/slice_tool.rb
       app/models/hitch/mcp/verified_request.rb
       lib/generators/hitch/install/install_generator.rb
@@ -89,7 +89,7 @@ class PackageContractTest < ActiveSupport::TestCase
     public_api = REPOSITORY_ROOT.join(contract_path).read
     development = @artifact_policy["development_version"] == version
 
-    assert_equal "M2.3", @artifact_issue
+    assert_equal "M3.3", @artifact_issue
     assert_equal "internal_only", @artifact_policy.fetch("distribution")
     if development
       assert_equal version, @artifact_policy.fetch("development_version")

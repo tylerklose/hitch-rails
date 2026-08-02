@@ -74,6 +74,8 @@ nodes:
     creates_commands: []
     artifact:
       version: 0.2.0.pre.2
+      development_version: 0.2.0.pre.2.dev
+      contract_path: docs/public_api/0.2.0.md
       distribution: internal_only
       verifier: bin/package-smoke
   M4.1:

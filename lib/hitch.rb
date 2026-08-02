@@ -19,7 +19,9 @@ require "hitch/dynamic_registration_rate_limit"
 # active: it stores only reload-safe names and frozen data, then resolves host
 # scope and deny-default availability for each request before static OAuth scope
 # filtering. The accepted auth substrate remains the authority the endpoint
-# validates tokens against; argument-aware policy remains a later milestone.
+# validates tokens against. The final Tool call now freezes JSON arguments and
+# runs deny-default argument policy before host execution; the closed Result
+# channel remains a later M4 milestone.
 #
 # Spec reference: https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization
 #

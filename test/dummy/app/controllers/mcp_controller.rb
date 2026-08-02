@@ -35,9 +35,9 @@ class McpController < ActionController::API
       }.freeze
     end
 
-    def call(arguments:, context:)
+    def call(server_context:, **arguments)
       @on_invoke.call
-      message = arguments.fetch("message")
+      message = arguments.fetch(:message)
       ::MCP::Tool::Response.new(
         [ { type: "text", text: message } ],
         structured_content: { "message" => message }

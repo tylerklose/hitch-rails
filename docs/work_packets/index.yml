@@ -95,6 +95,8 @@ nodes:
     creates_commands: [bin/mutation-mcp, bin/ci-generators]
     artifact:
       version: 0.2.0.pre.3
+      development_version: 0.2.0.pre.3.dev
+      contract_path: docs/public_api/0.2.0.md
       distribution: internal_only
       verifier: bin/package-smoke
   M5.1:

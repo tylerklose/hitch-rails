@@ -78,7 +78,7 @@ module Hitch
             }.freeze
           end
 
-          def call(arguments:, context:)
+          def call(server_context:, **arguments)
             @on_invoke.call
             if name == "test_error_handling"
               return ::MCP::Tool::Response.new(

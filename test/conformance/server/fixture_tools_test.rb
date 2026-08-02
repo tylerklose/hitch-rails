@@ -22,11 +22,11 @@ class ServerConformanceFixtureToolsTest < ActiveSupport::TestCase
   test "simple text and intentional error exercise the official contracts" do
     tools = Hitch::Conformance::Server::FixtureTools.all
     simple = tools.find { |tool| tool.name == "test_simple_text" }
-    response = simple.call(arguments: {}, context: Object.new)
+    response = simple.call(server_context: { hitch_context: Object.new })
 
     assert_includes response.content.first.fetch(:text), "simple text response"
     failure = tools.find { |tool| tool.name == "test_error_handling" }
-    error_response = failure.call(arguments: {}, context: Object.new)
+    error_response = failure.call(server_context: { hitch_context: Object.new })
     assert_predicate error_response, :error?
     assert_includes error_response.content.first.fetch(:text), "intentionally returns an error"
   end

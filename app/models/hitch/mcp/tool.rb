@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "mcp"
+
 module Hitch
   module MCP
     # Declarative MCP tool descriptor. Registry admission, listing, and later
@@ -49,18 +51,80 @@ module Hitch
         end
 
         # Coarse request-local admission. Host applications must opt each tool
-        # in explicitly; argument-aware authorization remains a later gate.
+        # in explicitly.
         def available_to?(_context)
           false
         end
 
-        # Framework-owned until M4 installs argument policy and host behavior.
-        # Registry validation rejects any subclass that replaces this boundary.
-        def call(arguments:, context:)
-          raise "MCP tool execution is unavailable in this development milestone"
+        # Argument-aware host policy is deny-default. Its return value is not an
+        # authority signal: allowing means returning without raising.
+        def authorize!(_context, arguments:)
+          raise Hitch::MCP::Forbidden
+        end
+
+        # Host behavior runs only after availability, static scope, SDK schema,
+        # and argument-aware policy have all admitted the invocation.
+        def perform(_context, arguments:)
+          raise "MCP tool perform must be implemented"
+        end
+
+        # This SDK-facing boundary is final. Registry validation rejects any
+        # subclass that replaces it, so every invocation follows the same
+        # context extraction, argument normalization, policy, and host order.
+        def call(server_context:, **sdk_arguments)
+          context = server_context.fetch(:hitch_context)
+          arguments = normalize_arguments(sdk_arguments)
+          authorize!(context, arguments:)
+          perform(context, arguments:)
+        rescue StandardError
+          generic_tool_error
         end
 
         private
+
+        def normalize_arguments(value, seen = {})
+          normalized = case value
+          when Hash
+            raise ArgumentError, "recursive MCP tool arguments" if seen.key?(value.object_id)
+
+            seen[value.object_id] = true
+            value.each_with_object({}) do |(key, child), result|
+              normalized_key = case key
+              when String then key.dup.freeze
+              when Symbol then key.to_s.freeze
+              else raise ArgumentError, "MCP tool argument keys must be strings"
+              end
+              raise ArgumentError, "duplicate MCP tool argument key" if result.key?(normalized_key)
+
+              result[normalized_key] = normalize_arguments(child, seen)
+            end
+          when Array
+            raise ArgumentError, "recursive MCP tool arguments" if seen.key?(value.object_id)
+
+            seen[value.object_id] = true
+            value.map { |child| normalize_arguments(child, seen) }
+          when String
+            value.dup
+          when Float
+            raise ArgumentError, "MCP tool arguments contain a non-finite number" unless value.finite?
+
+            value
+          when Integer, TrueClass, FalseClass, NilClass
+            value
+          else
+            raise ArgumentError, "MCP tool arguments must contain only JSON values"
+          end
+          normalized.freeze
+        ensure
+          seen.delete(value.object_id) if value.is_a?(Hash) || value.is_a?(Array)
+        end
+
+        def generic_tool_error
+          ::MCP::Tool::Response.new(
+            [ { type: "text", text: "Tool execution failed" } ],
+            error: true
+          )
+        end
 
         def combine_value_and_keywords(value, keywords)
           return keywords unless keywords.empty?

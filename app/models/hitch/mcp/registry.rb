@@ -53,8 +53,8 @@ module Hitch
         def output_schema = entry.output_schema
         def annotations = entry.annotations
 
-        def call(arguments:, context:)
-          tool_class.call(arguments:, context:)
+        def call(server_context:, **arguments)
+          tool_class.call(server_context:, **arguments)
         end
       end
 

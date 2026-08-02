@@ -72,7 +72,6 @@ module Hitch
         def build_tools
           tools.map do |definition|
             name = validate_tool_name!(definition.name)
-            argument_copy = method(:deep_string_copy_and_freeze)
             annotations = definition.annotations if definition.respond_to?(:annotations)
 
             ::MCP::Tool.define(
@@ -82,10 +81,7 @@ module Hitch
               output_schema: definition.output_schema,
               annotations: annotations
             ) do |server_context:, **arguments|
-              definition.call(
-                arguments: argument_copy.call(arguments),
-                context: server_context.fetch(:hitch_context)
-              )
+              definition.call(server_context:, **arguments)
             end
           end
         end

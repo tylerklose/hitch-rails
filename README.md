@@ -43,8 +43,9 @@ The accepted 0.1 checkpoint leaves the `/mcp` endpoint, SDK integration, and
 tool dispatch to the host. The 0.2 development line now owns the private SDK
 compatibility boundary, authenticated endpoint, public request Context, and
 validated host Registry descriptors. Per-principal registry resolution,
-authorization policy, production request store, and public observation events
-remain later roadmap milestones. Existing integrations may keep using the
+filtered listing, and deny-default argument policy are active; the closed Result
+channel, production request store, and public observation events remain later
+roadmap milestones. Existing integrations may keep using the
 deprecated `Hitch::ServerEndpoint` compatibility helper for bearer validation
 and response shaping while moving toward the 0.2 endpoint.
 
@@ -91,7 +92,8 @@ checkpoint contract.
 There is no public RubyGems release yet. `0.1.0` identifies the verified
 auth-only checkpoint; `0.2.0.pre.1` identifies the verified authenticated-wire
 checkpoint; and `0.2.0.pre.2` identifies the verified request-context,
-registry, and filtered-listing checkpoint. None is tagged or published. An approved
+registry, and filtered-listing checkpoint. `0.2.0.pre.3.dev` identifies active
+internal M4 invocation-safety work. None is tagged or published. An approved
 source adopter must pin the accepted checkpoint's full commit SHA rather than a
 branch or a nonexistent RubyGems version:
 
@@ -175,11 +177,20 @@ module McpTools
   class Echo < Hitch::MCP::Tool
     tool_name "echo"
     description "Describe one signed-in account"
-    input_schema type: "object", properties: {}, additionalProperties: false
+    input_schema(
+      type: "object",
+      properties: { message: { type: "string" } },
+      required: [ "message" ],
+      additionalProperties: false
+    )
     annotations read_only_hint: true, destructive_hint: false
 
     def self.available_to?(context)
       context.scope.can_use_echo?
+    end
+
+    def self.authorize!(context, arguments:)
+      raise Hitch::MCP::Forbidden unless context.scope.may_echo?(arguments.fetch("message"))
     end
   end
 end
@@ -210,7 +221,12 @@ Listings are MCP-name sorted and private. Unknown and unavailable calls share
 one generic `-32602`; only a known available tool can return a 403
 `insufficient_scope` step-up. Resolver or availability failures become generic
 internal errors without registry or scope disclosure. Final tool execution and
-argument-aware policy arrive in M4.
+argument-aware policy now follow SDK input-schema validation: Hitch copies
+arguments into one recursively frozen, string-keyed Hash, runs deny-default
+`.authorize!`, then calls `.perform` with the same Context and Hash. Policy and
+host exception messages are always generic externally. M4.2 supplies the closed
+`Hitch::MCP::Result` output channel, so successful host results are not yet a
+completed compatibility surface in this development build.
 
 ### Client ID Metadata Documents
 

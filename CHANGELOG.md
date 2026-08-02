@@ -5,6 +5,21 @@ All notable changes to hitch-rails will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Internal development build only. `0.2.0.pre.3.dev` is not tagged,
+GitHub-released, or published to RubyGems.
+
+### Added
+
+- Completed the framework-owned Tool invocation boundary. SDK input-schema
+  validation now precedes one recursively copied, string-keyed, deeply frozen
+  arguments Hash; deny-default `.authorize!` then runs before `.perform` with
+  the same Context and Hash. `Hitch::MCP::Forbidden`, unexpected policy errors,
+  invalid argument values, and host exceptions all become one generic tool
+  error without exposing messages, and registry validation continues to reject
+  any subclass override of `.call`.
+
 ## [0.2.0.pre.2] - 2026-08-02
 
 Internal verified checkpoint only. `0.2.0.pre.2` is not tagged, GitHub-released,

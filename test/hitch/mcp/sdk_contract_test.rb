@@ -45,10 +45,17 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
       @input_schema = input_schema
       @output_schema = output_schema
       @implementation = implementation || method(:default_implementation)
+      implementation = @implementation
+      @tool_class = Class.new(Hitch::MCP::Tool)
+      @tool_class.define_singleton_method(:authorize!) do |_context, arguments:|
+      end
+      @tool_class.define_singleton_method(:perform) do |context, arguments:|
+        implementation.call(arguments:, context:)
+      end
     end
 
-    def call(arguments:, context:)
-      @implementation.call(arguments:, context:)
+    def call(server_context:, **arguments)
+      @tool_class.call(server_context:, **arguments)
     end
 
     private
@@ -253,7 +260,8 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
         tools: [ raising_tool ]
       )
 
-      assert_equal(-32603, response.dig(:error, :code))
+      assert_equal true, response.dig(:result, :isError)
+      assert_equal "Tool execution failed", response.dig(:result, :content, 0, :text)
       assert_empty observed
       assert_same hostile, ::MCP.configuration
     end

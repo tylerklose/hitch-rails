@@ -17,8 +17,9 @@ Gem::Specification.new do |spec|
     provides a strict authenticated endpoint, a public request-local Context,
     and an atomically validated host Registry with request-local scope
     resolution, deny-default availability, static OAuth scope filtering, and
-    deterministic private listings. Safe host invocation remains milestone-
-    gated. A deprecated ServerEndpoint
+    deterministic private listings. The final Tool call freezes string-keyed
+    JSON arguments and runs deny-default argument policy before host execution;
+    the closed Result channel remains milestone-gated. A deprecated ServerEndpoint
     compatibility concern remains available through the 0.2 line for bearer
     validation and basic MCP Streamable HTTP response shaping. Principal lookup is
     host-configurable, browser origins are exact and default-deny, and both

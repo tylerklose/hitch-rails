@@ -76,9 +76,9 @@ class McpContractArtifactsTest < ActiveSupport::TestCase
     assert_equal checked.fetch("scenarios"), generated.fetch("scenarios")
   end
 
-  test "runtime contract tracks active M2 and pending M4 tests without misleading skips" do
+  test "runtime contract tracks active boundaries and pending M4.5 without misleading skips" do
     pending = load_yaml("test/contracts/pending_runtime_tests.yml")
-    assert_equal "m2_active_m4_pending", pending.fetch("runtime_status")
+    assert_equal "m2_m4_1_active_m4_5_pending", pending.fetch("runtime_status")
     probes = load_yaml("docs/contracts/sdk_probes.yml").fetch("probes")
     sdk_tests = pending.fetch("tests").find { |entry| entry.fetch("owner_issue") == "M2.1" }
     assert_equal probes.map { |probe| probe.fetch("runtime_test") }.sort,

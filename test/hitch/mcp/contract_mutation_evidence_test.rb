@@ -33,13 +33,14 @@ class Hitch::MCP::ContractMutationEvidenceTest < ActiveSupport::TestCase
     @source = @evidence.fetch("source")
   end
 
-  test "evidence resolves to the immutable M4.5 implementation candidate" do
+  test "evidence resolves to the immutable M4.5 checkpoint" do
     assert_equal "hitch.m4.5-contract-mutation-evidence.v1", @evidence.fetch("schema")
     assert_equal "M4.5", @evidence.fetch("milestone")
-    assert_equal "accepted_internal_quality_candidate", @evidence.fetch("status")
+    assert_equal "accepted_internal_checkpoint", @evidence.fetch("status")
     assert_instance_of Time, Time.iso8601(@evidence.fetch("verified_at"))
-    assert_equal "immutable_implementation_candidate", @source.fetch("state")
+    assert_equal "immutable_checkpoint", @source.fetch("state")
     assert_equal true, @source.fetch("acceptance_commands_ran_against_source_commit")
+    assert_equal true, @source.fetch("worktree_clean_before_acceptance")
 
     commit = @source.fetch("commit")
     tree = @source.fetch("tree")
@@ -47,15 +48,22 @@ class Hitch::MCP::ContractMutationEvidenceTest < ActiveSupport::TestCase
     assert_match(/\A[0-9a-f]{40}\z/, tree)
     assert_equal tree, git!("rev-parse", "#{commit}^{tree}").strip
     assert_equal @source.fetch("predecessor_commit"), git!("rev-parse", "#{commit}^").strip
+    assert_equal @source.fetch("seal_commit"), @source.fetch("predecessor_commit")
+    assert_predicate git_status(
+      "merge-base", "--is-ancestor", @source.fetch("implementation_commit"), commit
+    ), :success?
+    assert_predicate git_status(
+      "merge-base", "--is-ancestor", @source.fetch("candidate_evidence_commit"), commit
+    ), :success?
     assert_predicate git_status("merge-base", "--is-ancestor", commit, "HEAD"), :success?
     assert_includes git!("show", "#{commit}:lib/hitch/version.rb"),
       %(VERSION = "#{@evidence.dig('artifact', 'version')}")
 
     artifact = @evidence.fetch("artifact")
-    assert_equal "0.2.0.pre.3.dev", artifact.fetch("version")
+    assert_equal "0.2.0.pre.3", artifact.fetch("version")
     assert_equal "0.2.0.pre.3", artifact.fetch("target_checkpoint")
     assert_equal "internal_only", artifact.fetch("distribution")
-    assert_equal false, artifact.fetch("checkpoint_sealed")
+    assert_equal true, artifact.fetch("checkpoint_sealed")
     assert artifact.values_at(
       "published",
       "tag_created",
@@ -139,9 +147,10 @@ class Hitch::MCP::ContractMutationEvidenceTest < ActiveSupport::TestCase
     assert_equal "destroyed_after_redacted_summary", raw.fetch("retention")
   end
 
-  test "acceptance records every M4.5 command without claiming checkpoint CI" do
+  test "acceptance records every M4.5 and checkpoint command" do
     contract = @evidence.dig("acceptance", "contract")
     assert_equal "bin/contract", contract.fetch("command")
+    assert_equal @source.fetch("commit"), contract.fetch("source_commit")
     assert_equal [ 12, 13, 121, 3657, 0, 0, 0 ], contract.values_at(
       "scenario_rows",
       "forced_suites",
@@ -154,6 +163,7 @@ class Hitch::MCP::ContractMutationEvidenceTest < ActiveSupport::TestCase
 
     mutation = @evidence.dig("acceptance", "mutation")
     assert_equal "bin/mutation-mcp", mutation.fetch("command")
+    assert_equal @source.fetch("commit"), mutation.fetch("source_commit")
     assert_equal [ 15, 13, 818, 818, 0, 0 ], mutation.values_at(
       "subjects",
       "domains",
@@ -166,13 +176,38 @@ class Hitch::MCP::ContractMutationEvidenceTest < ActiveSupport::TestCase
     lanes = @evidence.dig("acceptance", "sdk_lanes")
     assert_equal %w[min latest], lanes.map { |lane| lane.fetch("name") }
     assert_equal [ "bin/ci-sdk min", "bin/ci-sdk latest" ], lanes.map { |lane| lane.fetch("command") }
+    assert lanes.all? { |lane| lane.fetch("source_commit") == @source.fetch("commit") }
     assert lanes.all? { |lane| lane.fetch("resolved") == "1.1.0" }
     assert_equal [ 21, 21 ], lanes.map { |lane| lane.fetch("runs") }
     assert_equal [ 350, 349 ], lanes.map { |lane| lane.fetch("assertions") }
     assert lanes.all? { |lane| lane.values_at("failures", "errors", "skips") == [ 0, 0, 0 ] }
 
-    assert_equal "deferred_to_sealed_checkpoint_acceptance", @evidence.dig("acceptance", "full_ci")
-    assert_equal "deferred_to_sealed_checkpoint_acceptance", @evidence.dig("acceptance", "package_smoke")
+    full_ci = @evidence.dig("acceptance", "full_ci")
+    assert_equal [ "bin/ci", @source.fetch("commit"), "passed", 191 ],
+      full_ci.values_at("command", "source_commit", "result", "rubocop_files")
+    assert_equal [ 568, 568 ], full_ci.fetch("appraisals").map { |appraisal| appraisal.fetch("runs") }
+    assert_equal [ 6682, 7176 ],
+      full_ci.fetch("appraisals").map { |appraisal| appraisal.fetch("assertions") }
+    assert full_ci.fetch("appraisals").all? do |appraisal|
+      appraisal.values_at("failures", "errors", "skips") == [ 0, 0, 0 ]
+    end
+    assert_equal [ 49, 2, 5, 0 ], full_ci.fetch("official_conformance").values_at(
+      "success",
+      "reviewed_expected_failures",
+      "capability_gated_skips",
+      "unexpected_failures"
+    )
+
+    package = @evidence.dig("acceptance", "package_smoke")
+    assert_equal [ "bin/package-smoke", @source.fetch("commit"), "0.2.0.pre.3", false ],
+      package.values_at("command", "source_commit", "version", "published")
+    assert_match(/\A[0-9a-f]{64}\z/, package.fetch("gem_sha256"))
+    assert_equal %w[rails_7_2_sqlite rails_8_1_postgresql],
+      package.fetch("profiles").map { |profile| profile.fetch("name") }
+    assert package.fetch("profiles").all? do |profile|
+      profile.fetch("generator_migrations_boot_oauth_mcp") == "passed"
+    end
+    assert_equal "sealed_local_gem_passed_without_publication", package.fetch("result")
   end
 
   test "evidence contains no credentials request bodies host records or raw process logs" do

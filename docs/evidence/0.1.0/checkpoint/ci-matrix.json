@@ -1,7 +1,7 @@
 {
   "checkpoint": "0.1.0",
   "recorded_on": "2026-08-01",
-  "status": "internal_checkpoint_candidate_exact_matrix_green",
+  "status": "internal_checkpoint_exact_matrix_green",
   "required_lanes": [
     {
       "ruby": "3.3",

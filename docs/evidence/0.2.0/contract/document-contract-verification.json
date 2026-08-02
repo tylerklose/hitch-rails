@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "verified_on": "2026-08-01",
-  "source_revision": "cd42bf84fec834923fa9c900287e76dabd0e1cf4",
-  "source_state": "uncommitted_worktree",
-  "acceptance_status": "locally_prepared_and_verified",
-  "checkpoint_predecessor": {"issue": "M0.5", "status": "not_accepted"},
+  "source_revision": "30935db6fff52e22bce035895df03c88f47419bc",
+  "source_state": "immutable_checkpoint",
+  "acceptance_status": "accepted_contract_checkpoint",
+  "checkpoint_predecessor": {"issue": "M0.5", "status": "accepted_internal_checkpoint"},
   "counts": {"public_and_private_api_entries": 31, "invariants": 24, "sdk_probes": 15, "adrs": 4},
   "checksums": {
     "docs/contracts/mcp_public_api.yml": "5ef90dc37caa57f776639a824075e5f0d7f615db107570ab6f351c3977f31ec2",

@@ -1,11 +1,11 @@
 {
   "checkpoint": "0.1.0",
   "recorded_on": "2026-08-01",
-  "status": "internal_checkpoint_candidate_verified",
+  "status": "internal_checkpoint_verified",
   "artifact": {
     "name": "hitch-rails-0.1.0.gem",
     "sha256": "2c0ab9a0db3b79991523e44ce1ab3aeb9ff3d3df89c51e179a58277145ce9cb7",
-    "installation_source": "temporary local gem repository built from the exact internal checkpoint candidate",
+    "installation_source": "temporary local gem repository built from the exact internal checkpoint",
     "package_inputs": "unchanged_by_size_and_sha256_after_smoke"
   },
   "applications": [

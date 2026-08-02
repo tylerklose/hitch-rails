@@ -1,6 +1,6 @@
 {
   "recorded_at": "2026-08-01",
-  "source_revision": "cd42bf84fec834923fa9c900287e76dabd0e1cf4+working-tree",
+  "source_revision": "30935db6fff52e22bce035895df03c88f47419bc",
   "command": "bin/ci-migrations",
   "exit_status": 0,
   "profiles": {

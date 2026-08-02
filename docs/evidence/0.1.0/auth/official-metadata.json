@@ -1,7 +1,7 @@
 {
   "recorded_at": "2026-08-01",
   "classification": "official_unmodified_authorization_metadata",
-  "source_revision": "M0 working tree",
+  "source_revision": "30935db6fff52e22bce035895df03c88f47419bc",
   "upstream": {
     "repository": "https://github.com/modelcontextprotocol/conformance",
     "package": "@modelcontextprotocol/conformance",

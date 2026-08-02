@@ -1,0 +1,183 @@
+{
+  "schema": "hitch.m5.4-automated-client-evidence.v1",
+  "milestone": "M5.4",
+  "status": "accepted_internal_checkpoint",
+  "verified_at": "2026-08-02T23:29:49Z",
+  "source": {
+    "commit": "b43dda583cd989de73fb545e195484b8fc9891a9",
+    "tree": "40272d7d669528a103a35f9c30f2cfa4ef6939cc",
+    "package_inputs_match_source_commit": true
+  },
+  "artifact": {
+    "name": "hitch-rails-0.2.0.pre.4.gem",
+    "version": "0.2.0.pre.4",
+    "sha256": "e31a7636a4321026c4b10deaafddc1d396615622a5637b840285312c12870b31",
+    "source": "locally_built_gem",
+    "install_source": "isolated_local_gem_repository"
+  },
+  "acceptance": {
+    "command": "bin/client-smokes --automated",
+    "exit_status": 0,
+    "result": "Package, disposable Rails apps, and automated official client smokes passed.",
+    "sanitized_report_sha256": "4e2e91c71ee071ebbd565f665d034069224d27dcf6d4ebff2029f4c22acaf096"
+  },
+  "matrix": {
+    "model": "hitch_m5_automated_clients",
+    "schema_path": "test/lattice/m5_automated_clients.json",
+    "schema_sha256": "0cfd777295abaedbdb595df86b5861ef89e89e1e7ea4042755ecb5ad310903a3",
+    "scenarios_path": "test/lattice/m5_automated_clients_scenarios.json",
+    "scenarios_sha256": "92ea37a048ead1ba1ef959956074266e7a65b7d989157844b1facbd40c2ab4a5",
+    "seed": 42,
+    "strength": 3,
+    "exhaustive_count": 8,
+    "rows": 8,
+    "coverage_percent": 100.0
+  },
+  "clients": {
+    "typescript": {
+      "package": "@modelcontextprotocol/client",
+      "version": "2.0.0",
+      "artifact": "https://registry.npmjs.org/@modelcontextprotocol/client/-/client-2.0.0.tgz",
+      "integrity": "sha512-8f1OghQ2rjzIOfqgUCP+8GiUWqRs89njoWLNqAe8kWmDePv3s1fZXseej+QXemssEuuOvLLmLO/kqM3IQHtISw==",
+      "package_lock_sha256": "8af64c115bfa39814622dc9a9b79ffa6766469c896cc898e4ee1445d0ada72b2",
+      "fixture_sha256": "0c78ce56d32e86c0e7bd607812b5960d03f787f252737cb2048b335b26ac0557"
+    },
+    "python": {
+      "package": "mcp",
+      "version": "2.0.0",
+      "artifact": "https://files.pythonhosted.org/packages/67/72/7d7897418912c1d12e87556630dfb7bf0eac71160e9bef8b447960804ee3/mcp-2.0.0-py3-none-any.whl",
+      "wheel_sha256": "1cb4c75d2d2c7b8c1d756355e5d82a39f2822cc7f13e22a2051d7ca3592349d6",
+      "requirements_sha256": "ae6a19492ee0c0c493ea66fd3bb2134c79a30eae2fe51257c7c43955e930fc63",
+      "requirements_hashes": "required",
+      "install_source": "verified_offline_wheelhouse",
+      "fixture_sha256": "3fb86a2854c2a31f8c83fd36f46c555153cce1b046bdd404c8091d85895c3f96"
+    }
+  },
+  "redis": {
+    "image": "docker.io/library/redis:7.4.5-alpine",
+    "index_digest": "sha256:bb186d083732f669da90be8b0f975a37812b15e913465bb14d845db72a4e3e08",
+    "platform": "linux/arm64",
+    "platform_digest": "sha256:53ced3c237c7411bcac9047db4a04e4d1060adc052f8cfb409136be6ced7f293",
+    "server_version": "7.4.5",
+    "gem_version": "6.0.0",
+    "database": 15,
+    "network": "ephemeral_loopback_port",
+    "persistence": "disabled"
+  },
+  "scenarios": [
+    {
+      "id": 1,
+      "database": "rails_7_2_sqlite",
+      "sdk": "typescript",
+      "oauth_client": "public",
+      "token_endpoint_auth_method": "none",
+      "initial_scope": "mcp",
+      "step_up_scope": "mcp admin",
+      "result": "discover_list_base_call_step_up_list_admin_call_ok"
+    },
+    {
+      "id": 2,
+      "database": "rails_7_2_sqlite",
+      "sdk": "typescript",
+      "oauth_client": "confidential",
+      "token_endpoint_auth_method": "client_secret_basic",
+      "initial_scope": "mcp",
+      "step_up_scope": "mcp admin",
+      "result": "discover_list_base_call_step_up_list_admin_call_ok"
+    },
+    {
+      "id": 3,
+      "database": "rails_7_2_sqlite",
+      "sdk": "python",
+      "oauth_client": "public",
+      "token_endpoint_auth_method": "none",
+      "initial_scope": "mcp",
+      "step_up_scope": "mcp admin",
+      "result": "discover_list_base_call_step_up_list_admin_call_ok"
+    },
+    {
+      "id": 4,
+      "database": "rails_7_2_sqlite",
+      "sdk": "python",
+      "oauth_client": "confidential",
+      "token_endpoint_auth_method": "client_secret_basic",
+      "initial_scope": "mcp",
+      "step_up_scope": "mcp admin",
+      "result": "discover_list_base_call_step_up_list_admin_call_ok"
+    },
+    {
+      "id": 5,
+      "database": "rails_8_1_postgresql",
+      "sdk": "typescript",
+      "oauth_client": "public",
+      "token_endpoint_auth_method": "none",
+      "initial_scope": "mcp",
+      "step_up_scope": "mcp admin",
+      "result": "discover_list_base_call_step_up_list_admin_call_ok"
+    },
+    {
+      "id": 6,
+      "database": "rails_8_1_postgresql",
+      "sdk": "typescript",
+      "oauth_client": "confidential",
+      "token_endpoint_auth_method": "client_secret_basic",
+      "initial_scope": "mcp",
+      "step_up_scope": "mcp admin",
+      "result": "discover_list_base_call_step_up_list_admin_call_ok"
+    },
+    {
+      "id": 7,
+      "database": "rails_8_1_postgresql",
+      "sdk": "python",
+      "oauth_client": "public",
+      "token_endpoint_auth_method": "none",
+      "initial_scope": "mcp",
+      "step_up_scope": "mcp admin",
+      "result": "discover_list_base_call_step_up_list_admin_call_ok"
+    },
+    {
+      "id": 8,
+      "database": "rails_8_1_postgresql",
+      "sdk": "python",
+      "oauth_client": "confidential",
+      "token_endpoint_auth_method": "client_secret_basic",
+      "initial_scope": "mcp",
+      "step_up_scope": "mcp admin",
+      "result": "discover_list_base_call_step_up_list_admin_call_ok"
+    }
+  ],
+  "shared_assertions": {
+    "protocol_version": "2026-07-28",
+    "protocol_era": "modern",
+    "initial_listing": [
+      "package.echo"
+    ],
+    "stepped_up_listing": [
+      "admin.echo",
+      "package.echo"
+    ],
+    "authorization_sequence": [
+      "mcp",
+      "admin mcp"
+    ],
+    "credential_input": "private_mode_0600_file",
+    "confidential_clients_created_and_rotated_through_documented_tasks": true,
+    "old_confidential_secrets_rejected": true
+  },
+  "cleanup": {
+    "redis_container_absence_verified": true,
+    "postgresql_drop_command": "passed",
+    "postgresql_catalog_absence_verified": true,
+    "temporary_app_and_client_directories": "removed"
+  },
+  "approval": {
+    "automated_official_clients": "roadmap_gate",
+    "product_model_clients": "not_approved",
+    "product_model_client_status": "not_run"
+  },
+  "contains_credentials": false,
+  "contains_request_bodies": false,
+  "contains_host_records": false,
+  "contains_raw_process_logs": false,
+  "contains_temporary_paths": false
+}

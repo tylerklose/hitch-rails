@@ -1,0 +1,42 @@
+{
+  "schema": "hitch.m5.4-pre4-publication-decision.v1",
+  "milestone": "M5.4",
+  "recorded_at": "2026-08-02T23:23:24Z",
+  "decision": "deferred_to_final",
+  "checkpoint": {
+    "status": "accepted_internal_checkpoint",
+    "version": "0.2.0.pre.4",
+    "source": {
+      "commit": "b43dda583cd989de73fb545e195484b8fc9891a9",
+      "tree": "40272d7d669528a103a35f9c30f2cfa4ef6939cc",
+      "clean_worktree": true
+    },
+    "artifact": {
+      "name": "hitch-rails-0.2.0.pre.4.gem",
+      "sha256": "e31a7636a4321026c4b10deaafddc1d396615622a5637b840285312c12870b31"
+    }
+  },
+  "publication": {
+    "tag_created": false,
+    "github_release_created": false,
+    "rubygems_publication_performed": false,
+    "repository_tag": null,
+    "github_release": null,
+    "rubygems_artifact": null,
+    "rubygems_sha256": null
+  },
+  "downloaded_pre4": {
+    "status": "not_applicable",
+    "evidence_path": null
+  },
+  "m6_input": {
+    "kind": "accepted_internal_artifact",
+    "artifact": "hitch-rails-0.2.0.pre.4.gem",
+    "sha256": "e31a7636a4321026c4b10deaafddc1d396615622a5637b840285312c12870b31"
+  },
+  "product_clients": {
+    "approval": "not_approved",
+    "status": "not_run",
+    "evidence_path": null
+  }
+}

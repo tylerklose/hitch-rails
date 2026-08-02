@@ -1009,7 +1009,43 @@ generator collisions cannot cross their owning boundary.
 - named authorization adapters or bundled Pundit integration;
 - per-tool quotas and distributed concurrency leases;
 - framework-owned durable audit persistence; and
-- automatic tool discovery.
+- automatic tool discovery, including the controller/action-shaped seed below.
+
+### Seed: controller/action-shaped tools
+
+Rails may have a more natural host-side tool convention than one class per MCP
+tool plus a separately edited registry. The seed is to explore whether a
+controller-like class can group related tools while its public actions describe
+individual MCP calls, much as an ordinary Rails controller groups HTTP actions.
+It must support model-backed tools, arbitrary additional tools for one model,
+and tools with no model at all. Names such as `MCP::CustomersController` are
+illustrative only; this roadmap does not yet choose `Controller`, `Action`, or
+another public noun.
+
+The idea is deliberately less formed than a milestone. Before it can change the
+framework contract, design work must answer:
+
+- what makes an action an exposed tool rather than an accidentally public Ruby
+  method;
+- where MCP name, description, input/output schemas, annotations, and static
+  scopes are declared;
+- whether convention generates an explicit registry, contributes reviewed
+  entries to one, or eventually replaces part of today's registration API;
+- how deny-by-default availability, argument-aware host policy, request context,
+  result normalization, and structural observation wrap every action exactly
+  once;
+- how Zeitwerk reloads, inheritance, name collisions, action renames, and
+  multiple modules contributing tools remain deterministic and fail closed;
+- how generators produce controller/action code and focused tests without
+  silently broadening the callable surface; and
+- whether independent host applications demonstrate enough repeated shape for
+  the dispatch layer to earn its keep over ordinary tool classes.
+
+For `0.2`, ADR 0002 remains authoritative: configuration names one explicit
+registry, tools are not auto-discovered, and the M5.2 generator reports a manual
+registration line. This seed is not accepted API, implementation authority, or
+a promise for the next release. It exists so real host examples can flesh out
+or reject the convention without losing the Rails-shaped idea.
 
 ## Normative references
 

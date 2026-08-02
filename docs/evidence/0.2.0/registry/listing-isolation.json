@@ -2,20 +2,22 @@
   "schema_version": 1,
   "schema": "hitch.m3.3-listing-isolation-evidence.v1",
   "milestone": "M3.3",
-  "status": "accepted_internal_listing_boundary",
-  "verified_at": "2026-08-02T08:24:41Z",
+  "status": "accepted_internal_checkpoint",
+  "verified_at": "2026-08-02T08:35:27Z",
   "source": {
-    "commit": "3ec558cd6a640984688f9583d9e87e87ed82be47",
-    "tree": "2bddfe24862abe66c6024a0de5ece5a2d7f3a4f9",
-    "predecessor_commit": "752c771ff5220ac99cdd600ec27cf33951b8305a",
-    "state": "immutable_candidate",
+    "commit": "ebab46e178a494065c285cfcf0f87d21689f98b8",
+    "tree": "44f9f67565ef59a1da9913ee11cb85f1d1a5927e",
+    "predecessor_commit": "7ae70b9f250b0cb8505004b24388d6a8dc6cc41f",
+    "implementation_commit": "3ec558cd6a640984688f9583d9e87e87ed82be47",
+    "candidate_evidence_commit": "89beb5d096bbfe74e128f2e8de499f1820b8a68f",
+    "state": "immutable_checkpoint",
     "worktree_clean_at_capture": true
   },
   "artifact": {
-    "version": "0.2.0.pre.2.dev",
+    "version": "0.2.0.pre.2",
     "target_checkpoint": "0.2.0.pre.2",
     "distribution": "internal_only",
-    "checkpoint_sealed": false,
+    "checkpoint_sealed": true,
     "published": false,
     "tag_created": false,
     "github_release_created": false,
@@ -117,6 +119,18 @@
     "stale_class_served": false
   },
   "acceptance": {
+    "full_ci": {
+      "command": "bin/ci",
+      "source_commit": "ebab46e178a494065c285cfcf0f87d21689f98b8",
+      "result": "passed",
+      "rubocop_files": 168,
+      "rails_7_2_sqlite": "passed",
+      "rails_8_1_postgresql": "passed",
+      "migration_and_concurrency": "passed_on_sqlite_and_postgresql",
+      "wire_min_and_latest": "passed",
+      "official_server_conformance": "passed_with_reviewed_baseline",
+      "package_smoke": "passed"
+    },
     "focused_default": {
       "command": "bin/ci-test test/integration/mcp_listing_test.rb",
       "runs": 10,
@@ -181,14 +195,14 @@
       "skips": 0
     },
     "package_smoke": {
-      "version": "0.2.0.pre.2.dev",
-      "observed_gem_sha256": "4ecc3dd9cd491a1935eacb0f456e94043ac4467c5c6e317a698b9f14abd5ecb4",
+      "version": "0.2.0.pre.2",
+      "observed_gem_sha256": "f4f4723ef9279b0bc58ae5df0a0fe400a5d773fd8bd66936d4c482dd8f81508d",
       "container_digest_reproducibility_claimed": false,
       "profiles": [
         "rails_7_2_sqlite",
         "rails_8_1_postgresql"
       ],
-      "result": "authenticated_registry_discover_and_list_passed_from_local_gem_without_publication"
+      "result": "authenticated_registry_discover_and_list_passed_from_sealed_local_gem_without_publication"
     },
     "contract_prose_style": "passed"
   },

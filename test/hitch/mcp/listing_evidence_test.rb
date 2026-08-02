@@ -28,7 +28,8 @@ class Hitch::MCP::ListingEvidenceTest < ActiveSupport::TestCase
   test "evidence resolves to the immutable M3.3 implementation candidate" do
     assert_equal "hitch.m3.3-listing-isolation-evidence.v1", @evidence.fetch("schema")
     assert_equal "M3.3", @evidence.fetch("milestone")
-    assert_equal "accepted_internal_listing_boundary", @evidence.fetch("status")
+    assert_equal "accepted_internal_checkpoint", @evidence.fetch("status")
+    assert_equal "immutable_checkpoint", @source.fetch("state")
     assert_equal true, @source.fetch("worktree_clean_at_capture")
 
     commit = @source.fetch("commit")
@@ -126,9 +127,15 @@ class Hitch::MCP::ListingEvidenceTest < ActiveSupport::TestCase
 
     artifact = @evidence.fetch("artifact")
     assert_equal "internal_only", artifact.fetch("distribution")
-    assert_equal false, artifact.fetch("checkpoint_sealed")
+    assert_equal true, artifact.fetch("checkpoint_sealed")
     assert_equal false, artifact.fetch("published")
     assert_equal false, artifact.fetch("rubygems_publication_performed")
+
+    full_ci = @evidence.dig("acceptance", "full_ci")
+    assert_equal @source.fetch("commit"), full_ci.fetch("source_commit")
+    assert_equal "passed", full_ci.fetch("result")
+    assert_equal "passed", full_ci.fetch("rails_7_2_sqlite")
+    assert_equal "passed", full_ci.fetch("rails_8_1_postgresql")
   end
 
   test "evidence contains no credentials bodies or host records" do

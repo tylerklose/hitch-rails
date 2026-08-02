@@ -1,12 +1,14 @@
 {
   "schema_version": 1,
   "milestone": "M2.1",
-  "status": "verified_working_tree",
-  "verified_at": "2026-08-02T05:10:59Z",
+  "status": "accepted_internal_sdk_boundary",
+  "verified_at": "2026-08-02T05:17:18Z",
   "source": {
+    "commit": "ef2eb971c87b917c5035225d2af091fcc0110567",
+    "tree": "20c51d73c9b5b85dee5e9f8016905446bc0b685c",
     "predecessor_commit": "e663c33a66aef292373df4a14f7f77c98258a3b0",
     "predecessor_tree": "e325a6b99c88af7d4c9006b18fee57396bde7ebe",
-    "state": "successor_working_tree"
+    "state": "immutable_candidate"
   },
   "sdk": {
     "gem": "mcp",

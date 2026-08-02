@@ -99,6 +99,10 @@ class McpContractArtifactsTest < ActiveSupport::TestCase
     ledger = JSON.parse(REPOSITORY_ROOT.join("docs/evidence/0.2.0/sdk/gap-ledger.json").read)
 
     assert_equal "M2.1", ledger.fetch("milestone")
+    assert_equal "accepted_internal_sdk_boundary", ledger.fetch("status")
+    assert_equal "immutable_candidate", ledger.dig("source", "state")
+    assert_match(/\A[0-9a-f]{40}\z/, ledger.dig("source", "commit"))
+    assert_match(/\A[0-9a-f]{40}\z/, ledger.dig("source", "tree"))
     assert_equal %w[latest min], ledger.fetch("lanes").map { |lane| lane.fetch("name") }.sort
     assert ledger.fetch("lanes").all? { |lane| lane.values_at("failures", "errors", "skips") == [ 0, 0, 0 ] }
     assert_equal 0, ledger.dig("adapter", "global_callback_mutations")

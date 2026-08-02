@@ -47,6 +47,14 @@ events remain later roadmap milestones. Existing integrations may keep using the
 deprecated `Hitch::ServerEndpoint` compatibility helper for bearer validation
 and response shaping while moving toward the 0.2 endpoint.
 
+The authenticated slice is checked against seven explicitly applicable
+scenarios from the pinned official conformance runner. Five disposable tools
+exist only under `test/`; they are not packaged or available to host apps.
+One separate test-only diagnostic makes the two reviewed missing-capability
+failures executable instead of treating a missing fixture as evidence.
+Capability-gated subscription checks remain visible skips, and the caching
+scenario is excluded because it also probes prompts and resources.
+
 That is the current internal-checkpoint boundary. Hitch's direction is to become the
 opinionated Rails framework for providing MCP tools—from OAuth through an
 explicit registry and safe invocation conventions—while the host continues to

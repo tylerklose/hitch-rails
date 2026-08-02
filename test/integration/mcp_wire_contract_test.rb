@@ -553,6 +553,8 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
       end
       if code == -32022
         assert_equal [ PROTOCOL_VERSION ], body.dig("error", "data", "supportedVersions"), vector_id
+        assert_equal [ PROTOCOL_VERSION ], body.dig("error", "data", "supported"), vector_id
+        assert_equal LEGACY_PROTOCOL_VERSION, body.dig("error", "data", "requested"), vector_id
       end
       return
     end

@@ -192,10 +192,7 @@ module Hitch
         server_info = hitch_mcp_server_info(context)
 
         hitch_mcp_registry_resolved!
-        tools = [ SliceTool.new(on_invoke: lambda {
-          hitch_mcp_invocation_observed!
-          hitch_mcp_host_called!
-        }) ]
+        tools = hitch_mcp_tools
 
         hitch_mcp_sdk_dispatch_started!
         protocol_response = SDKAdapter.call(
@@ -428,6 +425,13 @@ module Hitch
 
       # Private staging seams. M3 owns the registry/context replacement; M4
       # owns production rate admission and public observation events.
+      def hitch_mcp_tools
+        [ SliceTool.new(on_invoke: lambda {
+          hitch_mcp_invocation_observed!
+          hitch_mcp_host_called!
+        }) ]
+      end
+
       def hitch_mcp_admit_authenticated_request(**)
         :allow
       end

@@ -133,6 +133,7 @@ jobs:
       HITCH_MIGRATIONS_POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
       HITCH_PACKAGE_POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
       HITCH_PACKAGE_REPORT: ${{ runner.temp }}/package-smoke.json
+      HITCH_CONFORMANCE_SERVER_EVIDENCE_DIR: ${{ runner.temp }}/server-conformance
       RAILS_ENV: test
 
     steps:
@@ -201,3 +202,11 @@ jobs:
           if-no-files-found: error
           retention-days: 1
           path: ${{ runner.temp }}/auth-conformance
+
+      - name: Upload sanitized server conformance evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: hitch-server-conformance-sanitized
+          if-no-files-found: error
+          retention-days: 1
+          path: ${{ runner.temp }}/server-conformance

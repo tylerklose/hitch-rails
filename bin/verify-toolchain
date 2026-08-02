@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require "digest"
+require "json"
 require "open3"
 require "optparse"
 require "yaml"
@@ -58,6 +59,38 @@ unless conformance["package"] == "@modelcontextprotocol/conformance" &&
     conformance["revision"] == "a9896553900a2ef61787b57adfcbbe936a8ab1f9" &&
     conformance["integrity"] == "sha512-0V/HZDdWHcg6j0zVBzBsXcPZ571IVi6umKgTpnBhtTx/jm/LONmGF6cIWL2k4Xjyps0OiHV6B37nj2s0pUg0nQ=="
   errors << "conformance: exact package/version/revision/integrity pin is required"
+end
+%w[package_manifest package_lock harness_patch].each do |key|
+  entry = conformance[key]
+  unless entry.is_a?(Hash) && entry["path"] && entry["sha256"].to_s.match?(/\A[0-9a-f]{64}\z/)
+    errors << "conformance.#{key}: path and SHA-256 pin are required"
+    next
+  end
+  target = File.join(root, entry.fetch("path"))
+  if !File.file?(target)
+    errors << "conformance.#{key}: missing #{entry.fetch('path')}"
+  elsif Digest::SHA256.file(target).hexdigest != entry.fetch("sha256")
+    errors << "conformance.#{key}: checksum drift for #{entry.fetch('path')}"
+  end
+end
+patch = conformance["harness_patch"] || {}
+unless patch["authorization_input"] == "private_mode_0600_file" &&
+    patch["upstream_scenario_assertions_changed"] == false
+  errors << "conformance.harness_patch: private-file credential input and unchanged scenario assertions are required"
+end
+
+begin
+  package = JSON.parse(File.read(File.join(root, conformance.dig("package_manifest", "path").to_s)))
+  package_lock = JSON.parse(File.read(File.join(root, conformance.dig("package_lock", "path").to_s)))
+  locked_package = package_lock.dig("packages", "node_modules/@modelcontextprotocol/conformance") || {}
+  unless package.dig("dependencies", "@modelcontextprotocol/conformance") == conformance["version"].to_s &&
+      package_lock.dig("packages", "", "dependencies", "@modelcontextprotocol/conformance") == conformance["version"].to_s &&
+      locked_package["version"] == conformance["version"].to_s &&
+      locked_package["integrity"] == conformance["integrity"]
+    errors << "conformance: local package lock disagrees with the exact package pin"
+  end
+rescue Errno::ENOENT, JSON::ParserError => error
+  errors << "conformance: invalid local package lock: #{error.message}"
 end
 
 lattice = lock["lattice"] || {}

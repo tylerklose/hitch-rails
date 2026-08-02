@@ -32,6 +32,17 @@ conformance:
   version: 0.2.0-alpha.10
   revision: a9896553900a2ef61787b57adfcbbe936a8ab1f9
   integrity: sha512-0V/HZDdWHcg6j0zVBzBsXcPZ571IVi6umKgTpnBhtTx/jm/LONmGF6cIWL2k4Xjyps0OiHV6B37nj2s0pUg0nQ==
+  package_manifest:
+    path: test/conformance/package.json
+    sha256: d6e4c68b0e9512fbf183ab4a0a928883fafd4a37543c7559de59fb86a2b08082
+  package_lock:
+    path: test/conformance/package-lock.json
+    sha256: 84e71df11eaa61d9cbdff1c43f62cd4a64d8a651b0d4c9f12f80c04ca84c92f7
+  harness_patch:
+    path: test/conformance/harness.patch
+    sha256: 495975758b1f42f08c91b46f4151529348d2c8e82e376f672b27d7018faaca8b
+    authorization_input: private_mode_0600_file
+    upstream_scenario_assertions_changed: false
 lattice:
   package: lattice-cli
   implementation: python

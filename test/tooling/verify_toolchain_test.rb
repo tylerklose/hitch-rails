@@ -12,7 +12,7 @@ class VerifyToolchainTest < ActiveSupport::TestCase
 
   setup do
     @root = Dir.mktmpdir("hitch-toolchain")
-    %w[ROADMAP.md test/lattice/mcp_tool_authorization.json test/lattice/mcp_tool_authorization_scenarios.json test/conformance/toolchain.lock.yml test/conformance/expected-failures.yml].each do |relative_path|
+    %w[ROADMAP.md test/lattice/mcp_tool_authorization.json test/lattice/mcp_tool_authorization_scenarios.json test/conformance/toolchain.lock.yml test/conformance/expected-failures.yml test/conformance/package.json test/conformance/package-lock.json test/conformance/harness.patch].each do |relative_path|
       destination = File.join(@root, relative_path)
       FileUtils.mkdir_p(File.dirname(destination))
       FileUtils.cp(REPOSITORY_ROOT.join(relative_path), destination)
@@ -65,6 +65,14 @@ class VerifyToolchainTest < ActiveSupport::TestCase
     _stdout, stderr, status = run_verifier
     assert_not status.success?
     assert_includes stderr, "exact two-entry server baseline differs"
+  end
+
+  test "rejects local conformance lock or harness patch drift" do
+    File.write(File.join(@root, "test/conformance/harness.patch"), "drift")
+
+    _stdout, stderr, status = run_verifier
+    assert_not status.success?
+    assert_includes stderr, "checksum drift for test/conformance/harness.patch"
   end
 
   test "selected live binary version cannot be shadowed by an unrelated Ruby gem" do

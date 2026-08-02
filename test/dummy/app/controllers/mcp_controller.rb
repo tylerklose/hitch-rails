@@ -3,6 +3,10 @@
 class McpController < ActionController::API
   include Hitch::MCP::Endpoint
 
+  if ENV["HITCH_CONFORMANCE_SERVER"] == "1"
+    require Rails.root.join("../conformance/server/fixture_tools").to_s
+  end
+
   class_attribute :wire_metrics, instance_accessor: false,
     default: Hash.new(0).freeze
 
@@ -40,6 +44,19 @@ class McpController < ActionController::API
 
   def hitch_mcp_host_called!
     self.class.increment_wire_metric!(:host)
+  end
+
+  def hitch_mcp_tools
+    return super unless ENV["HITCH_CONFORMANCE_SERVER"] == "1"
+
+    on_invoke = lambda {
+      hitch_mcp_invocation_observed!
+      hitch_mcp_host_called!
+    }
+    (
+      Hitch::Conformance::Server::FixtureTools.all(on_invoke:) +
+      Hitch::Conformance::Server::FixtureTools.runner_diagnostics(on_invoke:)
+    ).freeze
   end
 
   def hitch_mcp_request_observed!

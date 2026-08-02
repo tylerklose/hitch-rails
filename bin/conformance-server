@@ -1,0 +1,16 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require_relative "../test/conformance/server/harness"
+
+abort "Usage: bin/conformance-server" unless ARGV.empty?
+
+root = File.expand_path("..", __dir__)
+begin
+  summary = Hitch::Conformance::Server::Harness.new(root: root).run
+  puts JSON.pretty_generate(summary)
+rescue Hitch::Conformance::Server::Harness::Failure => error
+  warn "Server conformance failed: #{error.message}"
+  exit 1
+end

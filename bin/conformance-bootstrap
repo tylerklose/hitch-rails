@@ -1,0 +1,21 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require_relative "../test/conformance/bootstrap"
+
+root = File.expand_path("..", __dir__)
+abort "Usage: bin/conformance-bootstrap" unless ARGV.empty?
+
+begin
+  bootstrap = Hitch::Conformance::Bootstrap.new(root: root)
+  checkout = bootstrap.call
+  puts JSON.pretty_generate(
+    status: "ready",
+    checkout: checkout.relative_path_from(Pathname(root)).to_s,
+    manifest: bootstrap.manifest
+  )
+rescue Hitch::Conformance::Bootstrap::Failure => error
+  warn "Conformance bootstrap failed: #{error.message}"
+  exit 1
+end

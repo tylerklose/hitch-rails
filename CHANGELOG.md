@@ -24,6 +24,21 @@ Internal development build only. The checkout version is
   dispatch, and stable HTTP/protocol errors. A private read-only `hitch.echo`
   slice proves the transport; the public Registry, production Redis limit,
   authorization policy, and observation events remain later milestones.
+- Added the pinned M2.3 server-conformance gate. `bin/conformance-bootstrap`
+  verifies the exact upstream source, npm integrity, reviewed resource/bearer
+  input patch, focused upstream tests, and built runner checksum;
+  `bin/conformance-server` runs only the seven applicable official scenarios
+  against an authenticated disposable Rails host. It preserves exactly two
+  reviewed check-level failures, reports five capability-gated subscription
+  checks as skips, and explicitly excludes the mixed prompts/resources caching
+  scenario. Its five fixture tools, separate missing-capability diagnostic, and
+  bearer-file bridge live under `test/` and are excluded from the gem.
+- Made the final-profile unsupported-version error additive across the frozen
+  Hitch and official conformance shapes: it retains `supportedVersions` while
+  also returning `supported` and the echoed `requested` version. A missing
+  `tools/call.params.arguments` member is accepted as protocol-optional; when
+  present it must still be an object, and the reserved top-level
+  `server_context` rejection remains unchanged.
 
 ## [0.1.0] - 2026-08-01
 

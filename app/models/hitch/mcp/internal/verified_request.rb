@@ -152,7 +152,11 @@ module Hitch
             -32022,
             "Unsupported protocol version",
             request_id: request_id,
-            data: { "supportedVersions" => [ PROTOCOL_VERSION ] }
+            data: {
+              "supportedVersions" => [ PROTOCOL_VERSION ],
+              "supported" => [ PROTOCOL_VERSION ],
+              "requested" => protocol_version
+            }
           )
         end
 
@@ -169,7 +173,7 @@ module Hitch
           name = params["name"]
           arguments = params["arguments"]
           invalid_params!(request_id, 200) unless name.is_a?(String) && !name.empty?
-          invalid_params!(request_id, 200) unless arguments.is_a?(Hash)
+          invalid_params!(request_id, 200) unless !params.key?("arguments") || arguments.is_a?(Hash)
         end
 
         def validate_name_header!(request, request_id)
@@ -186,7 +190,9 @@ module Hitch
         def validate_reserved_arguments!(request, request_id)
           return unless request.fetch("method") == "tools/call"
 
-          arguments = request.fetch("params").fetch("arguments")
+          arguments = request.fetch("params")["arguments"]
+          return unless arguments
+
           invalid_params!(request_id, 200) if arguments.key?("server_context")
         end
 

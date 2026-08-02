@@ -49,7 +49,7 @@ reporting is active too. The production request boundary is active as well: one
 Redis-backed authenticated fixed window spans discovery, listing, and calls for
 each principal/client. Versioned structural request and invocation events are
 active, with HMAC identities and subscriber-failure isolation. Integrated
-mutation/concurrency acceptance remains before the internal pre.3 checkpoint.
+mutation/concurrency acceptance is complete for the internal pre.3 checkpoint.
 Existing integrations may keep using the
 deprecated `Hitch::ServerEndpoint` compatibility helper for bearer validation
 and response shaping while moving toward the 0.2 endpoint.
@@ -98,10 +98,10 @@ checkpoint contract.
 There is no public RubyGems release yet. `0.1.0` identifies the verified
 auth-only checkpoint; `0.2.0.pre.1` identifies the verified authenticated-wire
 checkpoint; and `0.2.0.pre.2` identifies the verified request-context,
-registry, and filtered-listing checkpoint. `0.2.0.pre.3.dev` identifies active
-internal M4 invocation-safety work. None is tagged or published. An approved
-source adopter must pin the accepted checkpoint's full commit SHA rather than a
-branch or a nonexistent RubyGems version:
+registry, and filtered-listing checkpoint. `0.2.0.pre.3` identifies the verified
+safe-invocation, result, admission, and observation checkpoint. None is tagged
+or published. An approved source adopter must pin the accepted checkpoint's
+full commit SHA rather than a branch or a nonexistent RubyGems version:
 
 ```ruby
 # Gemfile

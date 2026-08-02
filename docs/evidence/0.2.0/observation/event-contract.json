@@ -1,0 +1,344 @@
+{
+  "schema_version": 1,
+  "schema": "hitch.m4.4-observation-event-contract-evidence.v1",
+  "milestone": "M4.4",
+  "status": "accepted_internal_observation_boundary",
+  "verified_at": "2026-08-02T10:58:48Z",
+  "source": {
+    "commit": "ed08833ac1f5da1a9472d720ff15eac18c5a3fbe",
+    "tree": "d9d3fab4c6483d1c6b3ecb1f9612ee477c08e745",
+    "predecessor_commit": "9fa68df33373d4b06df3c5a8c8c5c7b877e25a23",
+    "state": "immutable_implementation_candidate",
+    "worktree_clean_before_evidence_write": true
+  },
+  "artifact": {
+    "version": "0.2.0.pre.3.dev",
+    "target_checkpoint": "0.2.0.pre.3",
+    "distribution": "internal_only",
+    "checkpoint_sealed": false,
+    "published": false,
+    "tag_created": false,
+    "github_release_created": false,
+    "rubygems_publication_performed": false
+  },
+  "events": {
+    "request": {
+      "name": "request.hitch_mcp",
+      "payload_version": 1,
+      "payload_keys": [
+        "schema_version",
+        "request_id",
+        "method",
+        "tool_name",
+        "principal_type",
+        "principal_key",
+        "client_key",
+        "http_status",
+        "protocol_code",
+        "outcome",
+        "request_bytes",
+        "response_bytes",
+        "duration_ms"
+      ],
+      "emission": {
+        "non_options_request_count": 1,
+        "options_request_count": 0,
+        "outer_callback_precedes_host_origin_method_auth_and_admission": true
+      },
+      "request_id": {
+        "source": "framework_generated",
+        "format": "32_lowercase_hex_characters",
+        "json_rpc_request_id_reused": false
+      },
+      "identity": {
+        "algorithm": "HMAC-SHA256",
+        "secret_source": "Rails application key generator",
+        "salt": "hitch/mcp/observation/v1",
+        "principal_input": "canonical JSON principal base class and principal id",
+        "client_input": "canonical JSON client id",
+        "principal_and_client_domains_separated": true,
+        "token_rotation_stable": true,
+        "principal_digest_characters": 64,
+        "client_digest_characters": 64,
+        "raw_principal_identifier_emitted": false,
+        "raw_client_identifier_emitted": false
+      },
+      "method_values": [
+        "server/discover",
+        "tools/list",
+        "tools/call"
+      ],
+      "method_present_only_after_verified_request": true,
+      "tool_name_present_only_after_registered_available_resolution": true,
+      "fixed_outcome_categories": [
+        "bad_request",
+        "complete",
+        "forbidden",
+        "header_mismatch",
+        "http_error",
+        "internal_error",
+        "invalid_params",
+        "invalid_request",
+        "method_not_allowed",
+        "method_not_found",
+        "not_acceptable",
+        "not_found",
+        "parse_error",
+        "rate_limited",
+        "request_too_large",
+        "service_unavailable",
+        "unauthorized",
+        "unsupported_media_type",
+        "unsupported_protocol"
+      ],
+      "terminal_matrix": {
+        "case_count": 26,
+        "options_cases": 1,
+        "non_options_cases": 25,
+        "request_events": 25,
+        "invocation_events": 4,
+        "outcome_assertions": 25,
+        "http_statuses": [
+          200,
+          204,
+          400,
+          401,
+          403,
+          404,
+          405,
+          406,
+          413,
+          415,
+          429,
+          503
+        ],
+        "observed_outcome_categories": [
+          "bad_request",
+          "complete",
+          "forbidden",
+          "header_mismatch",
+          "internal_error",
+          "invalid_params",
+          "invalid_request",
+          "method_not_allowed",
+          "method_not_found",
+          "not_acceptable",
+          "parse_error",
+          "rate_limited",
+          "request_too_large",
+          "service_unavailable",
+          "unauthorized",
+          "unsupported_media_type",
+          "unsupported_protocol"
+        ]
+      }
+    },
+    "invocation": {
+      "name": "invocation.hitch_mcp",
+      "payload_version": 1,
+      "payload_keys": [
+        "schema_version",
+        "request_id",
+        "tool_name",
+        "availability",
+        "argument_policy",
+        "executed",
+        "result_category",
+        "duration_ms"
+      ],
+      "emission_boundary": "after SDK input validation and Hitch argument normalization reach a registered available tool",
+      "unknown_unavailable_scope_and_schema_terminal_events": 0,
+      "availability_values": [
+        "available"
+      ],
+      "argument_policy_values": [
+        "allowed",
+        "denied",
+        "failed"
+      ],
+      "result_category_values": [
+        "success",
+        "explicit_error",
+        "generic_error"
+      ],
+      "category_matrix": {
+        "case_count": 5,
+        "events": 5,
+        "policy_denial_executed": false,
+        "policy_failure_executed": false,
+        "host_failure_executed": true,
+        "explicit_error_executed": true,
+        "success_executed": true
+      }
+    },
+    "correlation": {
+      "request_and_invocation_share_framework_request_id": true,
+      "payload_strings_frozen": true,
+      "durations_nonnegative_milliseconds": true
+    }
+  },
+  "subscriber_isolation": {
+    "hostile_subscriber_failures": 2,
+    "sanitized_reports": 2,
+    "successful_response_unchanged": true,
+    "original_subscriber_exception_reported": false,
+    "reported_wrapper_cause_present": false,
+    "report_context_keys": [
+      "hitch_mcp_category",
+      "hitch_mcp_event"
+    ],
+    "report_source": "hitch.mcp.observation",
+    "subscriber_failure_escapes_request": false
+  },
+  "sdk_callbacks": {
+    "global_callback_inheritance": false,
+    "exception_data_forwarded": false,
+    "around_request_data_forwarded": false,
+    "instrumentation_data_forwarded": false,
+    "request_meta_forwarded": false,
+    "global_callback_observations": 0
+  },
+  "acceptance": {
+    "focused": {
+      "command": "bin/ci-test test/hitch/mcp/observation_test.rb",
+      "runs": 5,
+      "assertions": 223,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0
+    },
+    "full_default": {
+      "command": "bin/ci-test",
+      "runs": 532,
+      "assertions": 6340,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0
+    },
+    "sdk_lanes": [
+      {
+        "name": "min",
+        "selector": "= 1.1.0",
+        "resolved": "1.1.0",
+        "runs": 19,
+        "assertions": 321,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      {
+        "name": "latest",
+        "selector": ">= 1.1, < 2",
+        "resolved": "1.1.0",
+        "runs": 19,
+        "assertions": 320,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      }
+    ],
+    "wire_lanes": [
+      {
+        "name": "min",
+        "resolved": "1.1.0",
+        "vectors": 44,
+        "runs": 16,
+        "assertions": 1549,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      {
+        "name": "latest",
+        "resolved": "1.1.0",
+        "vectors": 44,
+        "runs": 16,
+        "assertions": 1549,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      }
+    ],
+    "rate_limit_lanes": [
+      {
+        "name": "rails_7_2_sqlite",
+        "rails": "7.2.3.2",
+        "adapter": "sqlite3",
+        "runs": 27,
+        "assertions": 160,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      {
+        "name": "rails_8_1_postgresql",
+        "rails": "8.1.3.1",
+        "adapter": "postgresql",
+        "runs": 27,
+        "assertions": 166,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      }
+    ],
+    "package_smoke": {
+      "command": "bin/package-smoke",
+      "artifact_install": "exact locally built gem through a local gem repository",
+      "manifest_matches_allowlist": true,
+      "archive_matches_manifest": true,
+      "source_bytes_match_checkout": true,
+      "observation_implementation_in_artifact": true,
+      "forbidden_paths_absent": true,
+      "profiles": [
+        {
+          "name": "rails_7_2_sqlite",
+          "rails": "7.2.3.2",
+          "adapter": "sqlite3",
+          "generator_migrations_boot_oauth_mcp": "passed"
+        },
+        {
+          "name": "rails_8_1_postgresql",
+          "rails": "8.1.3.1",
+          "adapter": "postgresql",
+          "generator_migrations_boot_oauth_mcp": "passed"
+        }
+      ]
+    },
+    "quality": {
+      "rubocop_files": 187,
+      "rubocop_offenses": 0,
+      "documented_api_entries": 31,
+      "documented_invariants": 24,
+      "sdk_probes": 15,
+      "adrs": 4,
+      "toolchain_verified": true
+    }
+  },
+  "sensitive_data": {
+    "credentials": false,
+    "bearer_tokens": false,
+    "request_bodies": false,
+    "arguments": false,
+    "results": false,
+    "meta": false,
+    "principal_objects": false,
+    "access_token_objects": false,
+    "raw_principal_identifiers": false,
+    "raw_client_identifiers": false,
+    "exception_messages": false,
+    "original_exceptions": false,
+    "original_backtraces": false
+  },
+  "checksums": {
+    "endpoint_sha256": "59a43e0af4b2184f54979f69824866054a091d2123851c68f3ec3e28b3c9e4d2",
+    "observation_sha256": "82e445a61d83a9c4926b303dbbbb5ac2178e2f73c5d80f0c02a45f8d2682fc48",
+    "tool_sha256": "6eaba55c3d7b29818e653646e7d23e40418149788d0d2da6954f1741efbdcff4",
+    "sdk_adapter_sha256": "08131e120daa45fdbedb6f2a7362e70c6b9ac9bac6d091bd8e816a0d175077b6",
+    "observation_test_sha256": "1b87a5c63499bde07285dd46c727cae1a107eade229e407d8aa7cdda20ace0c3",
+    "wire_fixture_sha256": "ab463979506afa3c1bb2afbf26eeafb6dc4ac6c2065daa90c87c49af9512e695",
+    "public_api_sha256": "5ef90dc37caa57f776639a824075e5f0d7f615db107570ab6f351c3977f31ec2",
+    "invariants_sha256": "ca5233d89fe98d8d84593cb90bfc656552e1d7320ab4f4495c05c436d99a7a23",
+    "work_packet_sha256": "cfaaf97f1a8a094f0167d1f9681f89f8441321adf9d7c01a69cb4417d92e3e8e",
+    "package_contract_sha256": "16fb1e8e73ca54702ba8b6f8966c052865b328c7053487b7c02bcba78fe1c76b"
+  }
+}

@@ -44,8 +44,11 @@ class PackageContractTest < ActiveSupport::TestCase
       config/routes.rb
       docs/public_api/0.1.0.md
       docs/public_api/0.2.0.md
+      docs/operator/doctor.md
+      docs/operator/redis.md
       docs/removing.md
       docs/upgrading/0.1.0.md
+      docs/upgrading/0.2.0.md
       app/models/hitch/mcp/sdk_adapter.rb
       app/models/hitch/mcp/internal/sdk_adapter.rb
       app/models/hitch/mcp/internal/sdk_adapter/response_normalizer.rb
@@ -74,6 +77,8 @@ class PackageContractTest < ActiveSupport::TestCase
       lib/generators/hitch/tool/templates/tool_test.rb.tt
       lib/hitch/mcp/configuration.rb
       lib/hitch/mcp/test_helper.rb
+      lib/hitch/doctor.rb
+      lib/tasks/hitch.rake
     ]
     required.concat(Dir.chdir(REPOSITORY_ROOT) { Dir["db/migrate/*.rb"] })
 

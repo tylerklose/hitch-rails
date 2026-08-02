@@ -1,0 +1,790 @@
+# frozen_string_literal: true
+
+require "json"
+require "rack/mock"
+require "redis"
+require "securerandom"
+require "uri"
+
+module Hitch
+  class Doctor
+    SCHEMA = "hitch.doctor.v1"
+    CHECK_IDS = %w[
+      versions
+      configuration
+      resource_discovery
+      route_order
+      migrations
+      registry
+      hosts
+      origins
+      redis_connectivity
+      redis_atomicity_expiry
+      package
+      legacy_endpoint
+    ].freeze
+    STATUS_ORDER = { "pass" => 0, "skip" => 1, "warn" => 2, "fail" => 3 }.freeze
+    REDIS_PROBE_LUA = <<~LUA.freeze
+      if redis.call("EXISTS", KEYS[1]) ~= 0 then
+        return { 0, 0, 0, 0 }
+      end
+      local first = redis.call("INCR", KEYS[1])
+      redis.call("PEXPIRE", KEYS[1], ARGV[1])
+      local second = redis.call("INCR", KEYS[1])
+      local ttl = redis.call("PTTL", KEYS[1])
+      local removed = redis.call("DEL", KEYS[1])
+      return { first, second, ttl, removed }
+    LUA
+
+    Check = Data.define(:id, :status, :code, :summary, :details) do
+      def initialize(id:, status:, code:, summary:, details: {})
+        super(
+          id: id.to_s.freeze,
+          status: status.to_s.freeze,
+          code: code.to_s.freeze,
+          summary: summary.to_s.freeze,
+          details: Doctor.__send__(:copy_json, details)
+        )
+        freeze
+      end
+
+      def to_h
+        {
+          "id" => id,
+          "status" => status,
+          "code" => code,
+          "summary" => summary,
+          "details" => details
+        }
+      end
+    end
+
+    Report = Data.define(:schema, :status, :checks) do
+      def initialize(schema:, status:, checks:)
+        super(schema: schema.to_s.freeze, status: status.to_s.freeze, checks: checks.dup.freeze)
+        freeze
+      end
+
+      def failure?
+        checks.any? { |check| check.status == "fail" }
+      end
+
+      def to_h
+        {
+          "schema" => schema,
+          "status" => status,
+          "checks" => checks.map(&:to_h)
+        }
+      end
+    end
+
+    class Renderer
+      class << self
+        def call(report, format:)
+          case format
+          when "human" then human(report)
+          when "json" then "#{JSON.pretty_generate(report.to_h)}\n"
+          else raise ArgumentError, "HITCH_DOCTOR_FORMAT must be human or json"
+          end
+        end
+
+        private
+
+        def human(report)
+          lines = [ "Hitch doctor v1: #{report.status.upcase}" ]
+          report.checks.each do |check|
+            lines << format("%-4s %-24s %-28s %s", check.status.upcase, check.id, check.code, check.summary)
+          end
+          counts = %w[pass warn fail skip].to_h do |status|
+            [ status, report.checks.count { |check| check.status == status } ]
+          end
+          lines << "Summary: pass=#{counts.fetch('pass')} warn=#{counts.fetch('warn')} " \
+            "fail=#{counts.fetch('fail')} skip=#{counts.fetch('skip')}"
+          "#{lines.join("\n")}\n"
+        end
+      end
+    end
+
+    class System
+      REQUIRED_TABLES = %w[
+        hitch_access_tokens
+        hitch_clients
+        hitch_client_redirect_uris
+        hitch_schema_states
+      ].freeze
+      REQUIRED_PACKAGE_FILES = %w[
+        app/controllers/concerns/hitch/mcp/endpoint.rb
+        app/models/hitch/mcp/registry.rb
+        app/models/hitch/mcp/redis_rate_store.rb
+        app/models/hitch/mcp/tool.rb
+        docs/operator/doctor.md
+        docs/operator/redis.md
+        docs/public_api/0.2.0.md
+        docs/removing.md
+        docs/upgrading/0.2.0.md
+        lib/generators/hitch/mcp/install_generator.rb
+        lib/generators/hitch/tool_generator.rb
+        lib/hitch/doctor.rb
+        lib/hitch/mcp/test_helper.rb
+        lib/tasks/hitch.rake
+      ].freeze
+      FORBIDDEN_PACKAGE_PATH = %r{A(?:test|spec|tmp|log)/|\Adocs/(?:evidence|work_packets)/}
+
+      def versions
+        {
+          "hitch" => Hitch::VERSION,
+          "rails" => Rails.version,
+          "ruby" => RUBY_VERSION,
+          "mcp" => Gem.loaded_specs["mcp"]&.version&.to_s
+        }
+      end
+
+      def environment_name
+        Rails.env.to_s
+      end
+
+      def validate_configuration!
+        configuration = Hitch.configuration
+        configuration.validate!
+        if Rails.env.production? && configuration.dynamic_client_registration_enabled
+          Hitch::DynamicRegistrationRateLimit.validate_production_store!(
+            configuration.dynamic_client_registration_rate_store
+          )
+        end
+        true
+      end
+
+      def runtime_enabled?
+        Hitch.configuration.mcp.__send__(:runtime_configured?)
+      end
+
+      def discovery_facts
+        resource = URI.parse(Hitch.configuration.resource_uri.to_s)
+        issuer = uri_origin(resource)
+        resource_metadata_uri = protected_resource_metadata_uri(resource, issuer)
+        authorization = application_get("/.well-known/oauth-authorization-server", resource)
+        protected_resource = application_get(URI.parse(resource_metadata_uri).request_uri, resource)
+
+        {
+          "resource_uri" => Hitch.configuration.resource_uri,
+          "issuer" => issuer,
+          "resource_metadata_uri" => resource_metadata_uri,
+          "authorization_status" => authorization.fetch("status"),
+          "authorization_document" => authorization.fetch("document"),
+          "resource_status" => protected_resource.fetch("status"),
+          "resource_document" => protected_resource.fetch("document")
+        }
+      end
+
+      def route_facts
+        resource_path = URI.parse(Hitch.configuration.resource_uri.to_s).path
+        resource_path = "/" if resource_path.empty?
+        routes = Rails.application.routes.routes.to_a
+        endpoint_indexes = routes.each_index.select do |index|
+          route = routes.fetch(index)
+          normalized_route_path(route) == resource_path && modern_endpoint_route?(route)
+        end
+        engine_indexes = routes.each_index.select { |index| hitch_engine_route?(routes.fetch(index)) }
+        endpoint_index = endpoint_indexes.one? ? endpoint_indexes.first : nil
+        predecessors = if endpoint_index
+          routes.each_index.select do |index|
+            index < endpoint_index && normalized_route_path(routes.fetch(index)) == resource_path
+          end
+        else
+          []
+        end
+
+        {
+          "resource_path" => resource_path,
+          "endpoint_indexes" => endpoint_indexes,
+          "endpoint_all_verbs" => endpoint_index ? routes.fetch(endpoint_index).verb.to_s.empty? : false,
+          "same_path_predecessor_indexes" => predecessors,
+          "engine_mount_indexes" => engine_indexes,
+          "engine_mount_paths" => engine_indexes.map { |index| normalized_route_path(routes.fetch(index)) }
+        }
+      end
+
+      def migration_facts
+        connection = ActiveRecord::Base.connection
+        installed = ActiveRecord::Base.connection_pool.migration_context.get_all_versions.map(&:to_s)
+        required = Dir[Hitch::Engine.root.join("db/migrate/*.rb")].map do |path|
+          File.basename(path).split("_", 2).first
+        end.sort
+        {
+          "required_versions" => required,
+          "missing_versions" => required - installed,
+          "missing_tables" => REQUIRED_TABLES.reject { |table| connection.data_source_exists?(table) },
+          "redirect_cutover_version" => Hitch::SchemaState.redirect_uris_version
+        }
+      end
+
+      def registry_facts
+        configuration = Hitch.configuration
+        snapshot = Hitch::MCP::Registry.__send__(
+          :build_snapshot,
+          registry_name: configuration.mcp.registry,
+          supported_scopes: configuration.supported_scopes
+        )
+        {
+          "registry" => snapshot.registry_name,
+          "tool_count" => snapshot.entries.length,
+          "tool_names" => snapshot.entries.map(&:name)
+        }
+      end
+
+      def host_facts
+        resource_host = URI.parse(Hitch.configuration.resource_uri.to_s).hostname&.downcase
+        configured = Hitch.configuration.allowed_hosts
+        expected = [ resource_host, *configured ].compact.uniq
+        rails_hosts = Rails.application.config.hosts
+        blocked = if rails_hosts.empty?
+          []
+        else
+          permissions = ActionDispatch::HostAuthorization::Permissions.new(rails_hosts)
+          expected.reject { |host| permissions.allows?(host) }
+        end
+        {
+          "canonical_host" => resource_host,
+          "configured_hosts" => configured,
+          "rails_host_policy_entries" => rails_hosts.length,
+          "blocked_hosts" => blocked
+        }
+      end
+
+      def origin_facts
+        origins = Hitch.configuration.allowed_origins
+        {
+          "configured_origins" => origins,
+          "deny_default" => origins.empty?,
+          "production" => Rails.env.production?,
+          "insecure_production_origins" => Rails.env.production? ? origins.grep(/\Ahttp:\/\//) : []
+        }
+      end
+
+      def redis_url
+        Hitch.configuration.mcp.rate_limit_redis_url
+      end
+
+      def redis_target
+        uri = URI.parse(redis_url.to_s)
+        host = uri.host.to_s.include?(":") ? "[#{uri.host}]" : uri.host
+        database = uri.path.to_s.match?(%r{\A/[0-9]+\z}) ? uri.path : "/0"
+        "#{uri.scheme}://#{host}:#{uri.port || 6379}#{database}"
+      rescue URI::InvalidURIError
+        "configured Redis"
+      end
+
+      def redis_probe
+        return @redis_probe if defined?(@redis_probe)
+
+        key = "hitch:doctor:v1:#{SecureRandom.hex(16)}"
+        client = Redis.new(
+          url: redis_url,
+          timeout: 1.0,
+          connect_timeout: 1.0,
+          reconnect_attempts: 0
+        )
+        ping = client.ping
+        response = client.eval(REDIS_PROBE_LUA, [ key ], [ 5_000 ])
+        @redis_probe = {
+          "connected" => ping == "PONG",
+          "atomicity" => response.is_a?(Array) && response.values_at(0, 1, 3) == [ 1, 2, 1 ],
+          "expiry_ms" => response.is_a?(Array) ? response.fetch(2, nil) : nil,
+          "cleanup" => response.is_a?(Array) && response.fetch(3, nil) == 1
+        }
+      ensure
+        begin
+          client&.del(key)
+        rescue StandardError
+          nil
+        end
+        begin
+          client&.close
+        rescue StandardError
+          nil
+        end
+      end
+
+      def package_facts
+        specification = Gem.loaded_specs["hitch-rails"]
+        raise "hitch-rails loaded specification is unavailable" unless specification
+
+        root = specification.full_gem_path
+        files = specification.files.sort
+        if files.empty?
+          files = Dir.glob("**/*", File::FNM_DOTMATCH, base: root).select do |path|
+            File.file?(File.join(root, path))
+          end.sort
+        end
+        required = REQUIRED_PACKAGE_FILES + Dir[Hitch::Engine.root.join("db/migrate/*.rb")].map do |path|
+          "db/migrate/#{File.basename(path)}"
+        end
+        {
+          "artifact_version" => specification.version.to_s,
+          "missing_required_files" => required.uniq.sort - files,
+          "missing_on_disk_files" => files.reject { |path| File.file?(File.join(root, path)) },
+          "forbidden_files" => files.grep(FORBIDDEN_PACKAGE_PATH)
+        }
+      end
+
+      def legacy_facts
+        resource_path = URI.parse(Hitch.configuration.resource_uri.to_s).path
+        resource_path = "/" if resource_path.empty?
+        routes = Rails.application.routes.routes.to_a
+        legacy_routes = routes.filter_map.with_index do |route, index|
+          next unless legacy_endpoint_route?(route)
+
+          {
+            "index" => index,
+            "path" => normalized_route_path(route),
+            "controller" => route.defaults[:controller].to_s
+          }
+        end
+        {
+          "routes" => legacy_routes,
+          "canonical_routes" => legacy_routes.select { |route| route.fetch("path") == resource_path }
+        }
+      end
+
+      private
+
+      def application_get(path, resource)
+        host = resource.host.to_s.include?(":") ? "[#{resource.host}]" : resource.host
+        default_port = resource.scheme == "https" ? 443 : 80
+        authority = resource.port == default_port ? host : "#{host}:#{resource.port}"
+        environment = Rack::MockRequest.env_for(
+          path,
+          method: "GET",
+          "HTTP_HOST" => authority,
+          "SERVER_NAME" => resource.host,
+          "SERVER_PORT" => resource.port.to_s,
+          "rack.url_scheme" => resource.scheme,
+          "HTTPS" => ("on" if resource.scheme == "https")
+        ).compact
+        status, _headers, body = Rails.application.call(environment)
+        bytes = +""
+        body.each do |part|
+          bytes << part.to_s
+          raise "discovery response exceeds diagnostic bound" if bytes.bytesize > 1_048_576
+        end
+        { "status" => status, "document" => JSON.parse(bytes) }
+      ensure
+        body&.close if body.respond_to?(:close)
+      end
+
+      def protected_resource_metadata_uri(resource, issuer)
+        path = resource.path.to_s
+        suffix = path.empty? || path == "/" ? "" : "/#{path.delete_prefix('/')}"
+        query = resource.query ? "?#{resource.query}" : ""
+        "#{issuer}/.well-known/oauth-protected-resource#{suffix}#{query}"
+      end
+
+      def uri_origin(uri)
+        host = uri.host.to_s.include?(":") ? "[#{uri.host}]" : uri.host
+        default_port = uri.scheme == "https" ? 443 : 80
+        port = uri.port == default_port ? "" : ":#{uri.port}"
+        "#{uri.scheme}://#{host}#{port}"
+      end
+
+      def normalized_route_path(route)
+        route.path.spec.to_s.sub(/\(\.?:format\)\z/, "").sub("(.:format)", "")
+      end
+
+      def modern_endpoint_route?(route)
+        controller_uses?(route, Hitch::MCP::Endpoint) && route.defaults[:action].to_s == "handle"
+      end
+
+      def legacy_endpoint_route?(route)
+        controller_uses?(route, Hitch::ServerEndpoint)
+      end
+
+      def controller_uses?(route, concern)
+        controller = route.defaults[:controller].to_s
+        return false if controller.empty?
+
+        controller_class = "#{controller}_controller".camelize.constantize
+        controller_class.ancestors.include?(concern)
+      rescue NameError
+        false
+      end
+
+      def hitch_engine_route?(route)
+        application = route.app
+        seen = {}
+        loop do
+          return true if application.equal?(Hitch::Engine)
+          return false if seen.key?(application.object_id) || !application.respond_to?(:app)
+
+          seen[application.object_id] = true
+          replacement = application.app
+          return false if replacement.equal?(application)
+
+          application = replacement
+        end
+      end
+    end
+
+    class << self
+      def call(system: System.new)
+        new(system:).call
+      end
+
+      def render(report, format: "human")
+        Renderer.call(report, format:)
+      end
+
+      private
+
+      def copy_json(value)
+        copy = case value
+        when Hash
+          value.each_with_object({}) do |(key, child), result|
+            result[key.to_s.freeze] = copy_json(child)
+          end
+        when Array
+          value.map { |child| copy_json(child) }
+        when String
+          value.dup
+        when Integer, Float, TrueClass, FalseClass, NilClass
+          value
+        else
+          value.to_s
+        end
+        copy.freeze
+      end
+    end
+
+    def initialize(system:)
+      @system = system
+      @redis_probe = nil
+      @redis_probe_error = nil
+    end
+
+    def call
+      checks = [
+        versions_check,
+        configuration_check,
+        resource_discovery_check,
+        route_order_check,
+        migrations_check,
+        registry_check,
+        hosts_check,
+        origins_check,
+        redis_connectivity_check,
+        redis_atomicity_expiry_check,
+        package_check,
+        legacy_endpoint_check
+      ]
+      raise "Hitch doctor check set drifted" unless checks.map(&:id) == CHECK_IDS
+
+      overall = if checks.any? { |check| check.status == "fail" }
+        "error"
+      elsif checks.any? { |check| check.status == "warn" }
+        "warning"
+      else
+        "ok"
+      end
+      Report.new(schema: SCHEMA, status: overall, checks:)
+    end
+
+    private
+
+    attr_reader :system
+
+    def versions_check
+      versions = system.versions
+      requirements = {
+        "ruby" => Gem::Requirement.new(">= 3.3", "< 4.1"),
+        "rails" => Gem::Requirement.new(">= 7.2", "< 8.2"),
+        "mcp" => Gem::Requirement.new(">= 1.1", "< 2")
+      }
+      unsupported = requirements.filter_map do |name, requirement|
+        value = versions[name]
+        name unless value && requirement.satisfied_by?(Gem::Version.new(value))
+      rescue ArgumentError
+        name
+      end
+      return pass("versions", "supported", "Runtime versions are in Hitch's supported window", versions) if
+        unsupported.empty?
+
+      fail_check(
+        "versions",
+        "unsupported",
+        "One or more runtime versions are outside Hitch's supported window",
+        versions.merge("unsupported" => unsupported)
+      )
+    rescue StandardError => error
+      probe_failure("versions", error)
+    end
+
+    def configuration_check
+      runtime = system.runtime_enabled?
+      system.validate_configuration!
+      code = runtime ? "valid_full_runtime" : "valid_auth_only"
+      summary = runtime ? "OAuth and MCP runtime configuration is valid" : "OAuth configuration is valid; MCP runtime is disabled"
+      pass("configuration", code, summary, "environment" => system.environment_name, "runtime_enabled" => runtime)
+    rescue StandardError => error
+      fail_check(
+        "configuration",
+        "invalid",
+        "Hitch configuration is invalid",
+        "environment" => safely { system.environment_name },
+        "error_class" => error.class.name
+      )
+    end
+
+    def resource_discovery_check
+      facts = system.discovery_facts
+      resource = URI.parse(facts.fetch("resource_uri"))
+      issuer = facts.fetch("issuer")
+      authorization = facts.fetch("authorization_document")
+      protected_resource = facts.fetch("resource_document")
+      coherent = facts.fetch("authorization_status") == 200 && facts.fetch("resource_status") == 200 &&
+        authorization["issuer"] == issuer &&
+        authorization["authorization_endpoint"] == "#{issuer}/oauth/authorize" &&
+        authorization["token_endpoint"] == "#{issuer}/oauth/token" &&
+        protected_resource["resource"] == facts.fetch("resource_uri") &&
+        protected_resource["authorization_servers"] == [ issuer ] &&
+        URI.parse(facts.fetch("resource_metadata_uri")).query == resource.query
+      details = facts.slice("resource_uri", "issuer", "resource_metadata_uri", "authorization_status", "resource_status")
+      return pass("resource_discovery", "coherent", "Canonical resource and discovery documents agree", details) if coherent
+
+      fail_check("resource_discovery", "mismatch", "Canonical resource and discovery documents do not agree", details)
+    rescue StandardError => error
+      probe_failure("resource_discovery", error)
+    end
+
+    def route_order_check
+      return skip(
+        "route_order",
+        "runtime_disabled",
+        "Modern MCP route order is not applicable while the runtime is disabled"
+      ) unless system.runtime_enabled?
+
+      facts = system.route_facts
+      endpoints = facts.fetch("endpoint_indexes")
+      mounts = facts.fetch("engine_mount_indexes")
+      details = facts
+      return fail_check("route_order", "missing_endpoint", "Exactly one modern MCP endpoint route is required", details) unless
+        endpoints.one?
+      return fail_check("route_order", "invalid_engine_mount", "Hitch::Engine must be mounted exactly once at root", details) unless
+        mounts.one? && facts.fetch("engine_mount_paths") == [ "/" ]
+      return fail_check("route_order", "wrong_verbs", "The modern MCP route must admit the endpoint's full method contract", details) unless
+        facts.fetch("endpoint_all_verbs")
+      return fail_check("route_order", "shadowed", "A host route shadows the canonical MCP endpoint", details) if
+        facts.fetch("same_path_predecessor_indexes").any?
+      return fail_check("route_order", "after_engine", "The modern MCP route must precede the Hitch engine mount", details) unless
+        endpoints.first < mounts.first
+
+      pass("route_order", "ordered", "The modern MCP endpoint precedes one root engine mount", details)
+    rescue StandardError => error
+      probe_failure("route_order", error)
+    end
+
+    def migrations_check
+      facts = system.migration_facts
+      missing = facts.fetch("missing_versions").any? || facts.fetch("missing_tables").any?
+      return fail_check("migrations", "missing", "Required Hitch migrations or tables are missing", facts) if missing
+      return fail_check(
+        "migrations",
+        "cutover_not_current",
+        "Redirect rows are not the authoritative version-2 schema",
+        facts
+      ) unless facts.fetch("redirect_cutover_version") == 2
+
+      pass("migrations", "current", "Hitch migrations and redirect cutover marker are current", facts)
+    rescue StandardError => error
+      probe_failure("migrations", error)
+    end
+
+    def registry_check
+      return skip("registry", "runtime_disabled", "MCP registry is not applicable while the runtime is disabled") unless
+        system.runtime_enabled?
+
+      facts = system.registry_facts
+      return warning("registry", "empty", "Registry is valid but exposes no tools", facts) if facts.fetch("tool_count").zero?
+
+      pass("registry", "valid", "Registry is valid and explicitly populated", facts)
+    rescue StandardError => error
+      fail_check("registry", "invalid", "Registry validation failed", "error_class" => error.class.name)
+    end
+
+    def hosts_check
+      facts = system.host_facts
+      return fail_check("hosts", "blocked", "Rails host authorization blocks a configured Hitch host", facts) if
+        facts.fetch("blocked_hosts").any?
+
+      pass("hosts", "accepted", "Canonical and configured Hitch hosts pass Rails host authorization", facts)
+    rescue StandardError => error
+      probe_failure("hosts", error)
+    end
+
+    def origins_check
+      facts = system.origin_facts
+      return warning(
+        "origins",
+        "insecure_http",
+        "Production browser origins include plain HTTP",
+        facts
+      ) if facts.fetch("insecure_production_origins").any?
+      if facts.fetch("deny_default")
+        return pass("origins", "deny_default", "Browser CORS remains deny-default", facts)
+      end
+
+      pass("origins", "exact", "Browser CORS uses exact configured origins", facts)
+    rescue StandardError => error
+      probe_failure("origins", error)
+    end
+
+    def redis_connectivity_check
+      return skip("redis_connectivity", "runtime_disabled", "Redis is not applicable while the MCP runtime is disabled") unless
+        system.runtime_enabled?
+      unless system.redis_url
+        return fail_check(
+          "redis_connectivity",
+          "required_missing",
+          "Production MCP runtime requires Redis",
+          "environment" => system.environment_name
+        ) if system.environment_name == "production"
+
+        return warning(
+          "redis_connectivity",
+          "memory_nonproduction",
+          "Nonproduction MCP runtime is using the private in-process rate store",
+          "environment" => system.environment_name
+        )
+      end
+
+      probe = load_redis_probe
+      return pass(
+        "redis_connectivity",
+        "connected",
+        "The isolated Redis diagnostic connected successfully",
+        "target" => system.redis_target
+      ) if probe && probe.fetch("connected")
+
+      fail_check(
+        "redis_connectivity",
+        "unavailable",
+        "The isolated Redis diagnostic could not connect",
+        "target" => system.redis_target,
+        "error_class" => @redis_probe_error&.class&.name
+      )
+    end
+
+    def redis_atomicity_expiry_check
+      return skip(
+        "redis_atomicity_expiry",
+        "runtime_disabled",
+        "Redis atomicity is not applicable while the MCP runtime is disabled"
+      ) unless system.runtime_enabled?
+      return skip(
+        "redis_atomicity_expiry",
+        "redis_not_configured",
+        "Redis atomicity is not applicable without a configured Redis URL"
+      ) unless system.redis_url
+
+      probe = load_redis_probe
+      return skip(
+        "redis_atomicity_expiry",
+        "connectivity_failed",
+        "Redis atomicity was not attempted because connectivity failed"
+      ) unless probe&.fetch("connected")
+
+      valid_expiry = probe.fetch("expiry_ms").is_a?(Integer) && probe.fetch("expiry_ms").between?(1, 5_000)
+      if probe.fetch("atomicity") && valid_expiry && probe.fetch("cleanup")
+        return pass(
+          "redis_atomicity_expiry",
+          "verified",
+          "An isolated Redis key incremented atomically, had expiry, and was removed",
+          "target" => system.redis_target,
+          "probe_namespace" => "hitch:doctor:v1"
+        )
+      end
+
+      fail_check(
+        "redis_atomicity_expiry",
+        "invalid",
+        "The isolated Redis atomicity, expiry, or cleanup contract failed",
+        "target" => system.redis_target
+      )
+    end
+
+    def package_check
+      facts = system.package_facts
+      incomplete = facts.fetch("missing_required_files").any? || facts.fetch("missing_on_disk_files").any? ||
+        facts.fetch("forbidden_files").any?
+      return fail_check("package", "incomplete", "Loaded Hitch package contents are incomplete or unsafe", facts) if incomplete
+
+      pass("package", "complete", "Loaded Hitch package contains the required runtime and operator files", facts)
+    rescue StandardError => error
+      probe_failure("package", error)
+    end
+
+    def legacy_endpoint_check
+      facts = system.legacy_facts
+      return fail_check(
+        "legacy_endpoint",
+        "canonical",
+        "The deprecated ServerEndpoint still owns the canonical MCP resource path",
+        facts
+      ) if facts.fetch("canonical_routes").any?
+      return warning(
+        "legacy_endpoint",
+        "present_noncanonical",
+        "Deprecated ServerEndpoint routes remain outside the canonical resource path",
+        facts
+      ) if facts.fetch("routes").any?
+
+      pass("legacy_endpoint", "absent", "No deprecated ServerEndpoint route remains", facts)
+    rescue StandardError => error
+      probe_failure("legacy_endpoint", error)
+    end
+
+    def load_redis_probe
+      return @redis_probe if @redis_probe || @redis_probe_error
+
+      @redis_probe = system.redis_probe
+    rescue StandardError => error
+      @redis_probe_error = error
+      nil
+    end
+
+    def pass(id, code, summary, details = {})
+      check(id, "pass", code, summary, details)
+    end
+
+    def warning(id, code, summary, details = {})
+      check(id, "warn", code, summary, details)
+    end
+
+    def fail_check(id, code, summary, details = {})
+      check(id, "fail", code, summary, details)
+    end
+
+    def skip(id, code, summary, details = {})
+      check(id, "skip", code, summary, details)
+    end
+
+    def probe_failure(id, error)
+      fail_check(id, "probe_error", "The #{id.tr('_', ' ')} diagnostic could not complete", "error_class" => error.class.name)
+    end
+
+    def check(id, status, code, summary, details)
+      raise "Unknown Hitch doctor check #{id}" unless CHECK_IDS.include?(id)
+      raise "Unknown Hitch doctor status #{status}" unless STATUS_ORDER.key?(status)
+
+      Check.new(id:, status:, code:, summary:, details:)
+    end
+
+    def safely
+      yield
+    rescue StandardError
+      "unavailable"
+    end
+
+    private_constant :Check, :Renderer, :Report, :System
+  end
+
+  private_constant :Doctor
+end

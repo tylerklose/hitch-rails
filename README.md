@@ -55,7 +55,10 @@ the host endpoint, empty explicit registry, deny-default settings, and ordered
 route with collision-safe rollback metadata. It does not discover or register
 tools automatically. The explicit tool generator and public integration-test
 helper are active too; generated tools remain unavailable and unregistered
-until the host reviews and opts them in.
+until the host reviews and opts them in. The read-only `hitch:doctor` task now
+checks the loaded versions, configuration, discovery, route order, migrations,
+Registry, host/origin posture, Redis, package contents, and legacy endpoint
+without exposing credentials or mutating application data.
 Existing integrations may keep using the
 deprecated `Hitch::ServerEndpoint` compatibility helper for bearer validation
 and response shaping while moving toward the 0.2 endpoint.
@@ -118,12 +121,20 @@ gem "hitch-rails",
 ```
 
 ```bash
+export HITCH_MCP_REDIS_URL=redis://127.0.0.1:6379/15
 bundle install
 bin/rails generate hitch:install       # adds auth initializer + mounts the engine
 bin/rails db:migrate                    # installs the Hitch auth schema
 bin/rails generate hitch:mcp:install   # adds host MCP controller, registry, config, and route
 bin/rails generate hitch:tool echo      # adds a deny-default tool + focused Minitest
+bin/rails hitch:doctor                  # diagnoses the current host; does not repair it
 ```
+
+The local Redis URL above is an example for the fresh-app sequence. Production
+must inject its own protected fleet-shared URL; see the
+[Redis operator guide](docs/operator/redis.md). Implement and review the Tool,
+then add the generator's one printed `register` line before treating an empty
+Registry warning as resolved.
 
 The MCP installer requires the auth initializer, all Hitch migrations, and
 exactly one `Hitch::Engine` mount. It creates
@@ -357,6 +368,26 @@ byte counts, and durations. They never contain credentials, bodies, arguments,
 results, `_meta`, exception messages, or backtraces. Subscriber failures are
 reported as sanitized Hitch observation failures and cannot change the MCP
 response.
+
+### Operator diagnosis
+
+Run the read-only doctor after installation and in the target deploy
+environment:
+
+```sh
+bin/rails hitch:doctor
+HITCH_DOCTOR_FORMAT=json bin/rails hitch:doctor
+```
+
+The JSON document is identified by `hitch.doctor.v1` and always reports twelve
+ordered categories. Failures exit one after the complete report; warnings do
+not. Auth-only installations skip modern-route, Registry, and Redis checks.
+Development/test without Redis warns about the private in-process store, while an enabled
+production MCP runtime without Redis fails. The Redis probe uses a random
+five-second `hitch:doctor:v1:*` key, deletes it, and never touches Hitch quota
+keys. Doctor never edits configuration, routes, Registry declarations,
+migrations, or application data. See the [doctor contract](docs/operator/doctor.md)
+for stable IDs, statuses, codes, and redaction rules.
 
 ### Client ID Metadata Documents
 

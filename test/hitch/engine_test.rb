@@ -166,6 +166,21 @@ class Hitch::EngineTest < ActiveSupport::TestCase
     Hitch.reset_configuration!
   end
 
+  test "doctor alone may bypass production DCR boot refusal so it can report it" do
+    Hitch.reset_configuration!
+    Hitch.configuration.dynamic_client_registration_enabled = true
+    production = ActiveSupport::EnvironmentInquirer.new("production")
+    original_arguments = ARGV.dup
+    ARGV.replace([ "hitch:doctor" ])
+
+    stub_class_method(Rails, :env, -> { production }) do
+      assert_nothing_raised { dynamic_registration_initializer.run(Rails.application) }
+    end
+  ensure
+    ARGV.replace(original_arguments) if original_arguments
+    Hitch.reset_configuration!
+  end
+
   test "boot refuses a missing canonical resource URI with an actionable error" do
     Hitch.reset_configuration!
 
@@ -204,7 +219,7 @@ class Hitch::EngineTest < ActiveSupport::TestCase
     Hitch.reset_configuration!
   end
 
-  test "only the install generator may boot before its initializer exists" do
+  test "only the install generator and doctor may boot before the initializer exists" do
     Hitch.reset_configuration!
     original_arguments = ARGV.dup
 
@@ -213,6 +228,12 @@ class Hitch::EngineTest < ActiveSupport::TestCase
 
     ARGV.replace([ "hitch:install" ])
     assert_nothing_raised { configuration_initializer.run(Rails.application) }
+
+    ARGV.replace([ "hitch:doctor" ])
+    assert_nothing_raised { configuration_initializer.run(Rails.application) }
+
+    ARGV.replace([ "hitch:doctor", "db:migrate" ])
+    assert_raises(ArgumentError) { configuration_initializer.run(Rails.application) }
 
     ARGV.replace([ "generate", "unrelated" ])
     assert_raises(ArgumentError) { configuration_initializer.run(Rails.application) }

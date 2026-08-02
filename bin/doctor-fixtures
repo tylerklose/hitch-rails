@@ -1,0 +1,56 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "bundler"
+require "json"
+require "open3"
+
+ROOT = File.expand_path("..", __dir__)
+SCHEMA = File.join(ROOT, "test/lattice/doctor.json")
+SCENARIOS = File.join(ROOT, "test/lattice/doctor_scenarios.json")
+TESTS = %w[
+  test/hitch/doctor_test.rb
+  test/hitch/doctor_task_test.rb
+  test/hitch/engine_test.rb
+  test/tooling/package_contract_test.rb
+].freeze
+
+def usage(status:, message: nil)
+  warn message if message
+  warn "Usage: bin/doctor-fixtures"
+  exit status
+end
+
+usage(status: 0) if %w[-h --help].include?(ARGV.first)
+usage(status: 64, message: "Unexpected arguments: #{ARGV.join(' ')}") if ARGV.any?
+
+generated, lattice_error, lattice_status = Bundler.with_unbundled_env do
+  Open3.capture3(
+    "lattice", "generate", SCHEMA, "--format", "json", "--seed", "42",
+    chdir: ROOT
+  )
+end
+abort lattice_error unless lattice_status.success?
+abort "Hitch doctor Lattice scenarios differ from the checked artifact" unless
+  JSON.parse(generated) == JSON.parse(File.read(SCENARIOS))
+
+command = [ File.join(ROOT, "bin/ci-test"), *TESTS ]
+output = +""
+status = nil
+Open3.popen2e(*command, chdir: ROOT) do |_stdin, stream, wait_thread|
+  stream.each do |chunk|
+    $stdout.write(chunk)
+    output << chunk
+  end
+  status = wait_thread.value
+end
+abort "Hitch doctor fixture suite failed" unless status.success?
+
+summary = output.scan(/(\d+) runs, (\d+) assertions, (\d+) failures, (\d+) errors, (\d+) skips/).last
+abort "Hitch doctor fixture suite has no unambiguous Minitest summary" unless summary
+abort "Hitch doctor fixture suite must have zero failures, errors, and skips" unless
+  summary.drop(2).map(&:to_i) == [ 0, 0, 0 ]
+
+scenarios = JSON.parse(File.read(SCENARIOS)).fetch("scenarios")
+puts "Hitch doctor verified: #{scenarios.length} pairwise rows, " \
+  "#{summary.fetch(0)} runs, #{summary.fetch(1)} assertions, zero skips"

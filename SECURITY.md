@@ -81,6 +81,8 @@ The authorization substrate the gem owns:
   duplicate-member rejection, reserved argument handling, callback isolation,
   fleet-shared authenticated admission, structural notification redaction, and
   stable error sanitization
+- `hitch:doctor` output redaction, Redis probe isolation/expiry/cleanup, and
+  its guarantee not to mutate application data or repair host configuration
 
 ### Out of scope
 

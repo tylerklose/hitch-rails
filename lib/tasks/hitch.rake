@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "hitch/doctor"
+
 module Hitch
   module ClientCredentialTask
     module_function
@@ -49,6 +51,17 @@ module Hitch
 end
 
 namespace :hitch do
+  desc "Diagnose Hitch configuration, routes, schema, registry, Redis, and package contents"
+  task doctor: :environment do
+    doctor = Hitch.const_get(:Doctor, false)
+    format = ENV.fetch("HITCH_DOCTOR_FORMAT", "human")
+    report = doctor.call
+    puts doctor.render(report, format:)
+    exit(1) if report.failure?
+  rescue ArgumentError => error
+    abort error.message
+  end
+
   namespace :clients do
     desc "Create a confidential OAuth client and disclose its one-time secret safely"
     task create_confidential: :environment do

@@ -240,7 +240,7 @@ entries:
     visibility: public
     introduced: M5.3
     inputs: Current host configuration and isolated diagnostic probes.
-    outputs: Stable human and machine diagnostic categories without secrets.
+    outputs: Twelve ordered human rows or hitch.doctor.v1 JSON checks with stable status and code fields, without secrets.
     errors: Nonzero status for actionable failures; never mutates application data/config.
     reload_behavior: Loads the current application environment for each invocation.
   - name: Hitch::MCP::SDKAdapter

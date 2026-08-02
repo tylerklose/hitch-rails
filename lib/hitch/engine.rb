@@ -4,6 +4,14 @@ module Hitch
   class Engine < ::Rails::Engine
     isolate_namespace Hitch
 
+    class << self
+      def doctor_command?
+        ARGV.reject { |argument| argument.start_with?("-") } == [ "hitch:doctor" ]
+      end
+
+      private :doctor_command?
+    end
+
     initializer "hitch.zeitwerk_inflections", before: :set_autoloaders do
       Rails.autoloaders.main.inflector.inflect(
         "mcp" => "MCP",
@@ -70,6 +78,7 @@ module Hitch
     initializer "hitch.validate_dynamic_client_registration", after: :load_config_initializers do
       configuration = Hitch.configuration
       next unless configuration.dynamic_client_registration_enabled
+      next if Hitch::Engine.__send__(:doctor_command?)
 
       unless configuration.dynamic_client_registration_enabled_configured?
         Rails.logger&.warn(
@@ -93,13 +102,14 @@ module Hitch
       # validate and fail closed.
       install_generator = ARGV.first == "hitch:install" ||
         (%w[generate g].include?(ARGV.first) && ARGV[1] == "hitch:install")
-      next if install_generator
+      next if install_generator || Hitch::Engine.__send__(:doctor_command?)
 
       Hitch.configuration.validate!
     end
 
     config.to_prepare do
       configuration = Hitch.configuration
+      next if Hitch::Engine.__send__(:doctor_command?)
       next unless configuration.resource_uri.present?
       next unless configuration.mcp.__send__(:runtime_configured?)
 

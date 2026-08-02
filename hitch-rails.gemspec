@@ -27,6 +27,9 @@ Gem::Specification.new do |spec|
     route with checksum-guarded rollback. A separate explicit generator creates
     deny-default tool/test pairs without editing the Registry, and a public
     test helper constructs the final authenticated Rails integration requests.
+    A read-only doctor reports stable versioned configuration, discovery,
+    routing, migration, Registry, ingress, Redis, package, and legacy-endpoint
+    findings without exposing credentials or repairing host state.
     A deprecated ServerEndpoint
     compatibility concern remains available through the 0.2 line for bearer
     validation and basic MCP Streamable HTTP response shaping. Principal lookup is
@@ -56,8 +59,11 @@ Gem::Specification.new do |spec|
       config/routes.rb
       docs/public_api/0.1.0.md
       docs/public_api/0.2.0.md
+      docs/operator/doctor.md
+      docs/operator/redis.md
       docs/removing.md
       docs/upgrading/0.1.0.md
+      docs/upgrading/0.2.0.md
       lib/generators/hitch/mcp/templates/controller.rb.tt
       lib/generators/hitch/mcp/templates/initializer.rb.tt
       lib/generators/hitch/mcp/templates/registry.rb.tt

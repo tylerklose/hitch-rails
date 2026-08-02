@@ -29,6 +29,18 @@ is not tagged, GitHub-released, or published to RubyGems.
   The helper produces modern authenticated headers and JSON-RPC envelopes from
   the current configured resource while rejecting malformed bearer, method,
   name, version, and non-JSON test inputs.
+- Added the read-only `hitch:doctor` operational task with stable human and
+  `hitch.doctor.v1` JSON output. Twelve ordered checks cover loaded versions,
+  configuration, internal discovery coherence, route ownership/order,
+  migrations and redirect authority, Registry validation, host/origin posture,
+  isolated Redis connectivity/atomicity/expiry/cleanup, package contents, and
+  deprecated endpoints. Actionable failures exit nonzero after the full report;
+  warnings preserve supported auth-only and nonproduction postures. Redis
+  diagnostics use a random short-lived namespace outside application quota keys
+  and all output omits credentials, exception messages, bodies, and userinfo.
+- Added production Redis, doctor, 0.2 adoption, and expanded removal guidance.
+  Production examples now require a protected fleet-shared Redis URL; the
+  private memory store is documented only for development/test.
 
 ## [0.2.0.pre.3] - 2026-08-02
 

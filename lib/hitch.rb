@@ -29,6 +29,9 @@ require "hitch/dynamic_registration_rate_limit"
 # Exactly-once request and post-schema invocation notifications expose only
 # frozen structural fields; subscriber and SDK callback failures cannot expose
 # request data or alter protocol responses.
+# The read-only doctor reports stable operator findings for configuration,
+# discovery, routes, schema, Registry, ingress, Redis, package contents, and
+# deprecated endpoint residue without repairing host state.
 #
 # Spec reference: https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization
 #

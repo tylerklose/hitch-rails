@@ -50,8 +50,11 @@ REQUIRED_PACKAGE_FILES = %w[
   config/routes.rb
   docs/public_api/0.1.0.md
   docs/public_api/0.2.0.md
+  docs/operator/doctor.md
+  docs/operator/redis.md
   docs/removing.md
   docs/upgrading/0.1.0.md
+  docs/upgrading/0.2.0.md
   app/controllers/concerns/hitch/mcp/endpoint.rb
   app/models/hitch/mcp/sdk_adapter.rb
   app/models/hitch/mcp/internal/sdk_adapter.rb
@@ -70,8 +73,10 @@ REQUIRED_PACKAGE_FILES = %w[
   lib/generators/hitch/tool_generator.rb
   lib/generators/hitch/tool/templates/tool.rb.tt
   lib/generators/hitch/tool/templates/tool_test.rb.tt
+  lib/hitch/doctor.rb
   lib/hitch/mcp/test_helper.rb
   lib/hitch/version.rb
+  lib/tasks/hitch.rake
 ].freeze
 
 def capture!(*command, environment: {}, chdir: ROOT)
@@ -141,6 +146,7 @@ def adoption_commands(profile)
     "bundle exec rails db:migrate",
     "bundle exec rails generate hitch:mcp:install",
     "bundle exec rails generate hitch:tool package_echo",
+    "HITCH_DOCTOR_FORMAT=json bundle exec rails hitch:doctor",
     "bundle exec rails runner <discovery-authorization-and-mcp-smoke>"
   ]
 end
@@ -506,6 +512,18 @@ Dir.mktmpdir("hitch-package-smoke-") do |directory|
       raise "tool generator edited the explicit registry" unless
         File.binread(registry_path) == registry_before_tool_generation
 
+      doctor_output = capture!(
+        "bundle", "exec", "rails", "hitch:doctor",
+        environment: database_environment.merge("HITCH_DOCTOR_FORMAT" => "json"),
+        chdir: app
+      )
+      doctor = JSON.parse(doctor_output)
+      raise "packaged doctor schema drifted" unless doctor.fetch("schema") == "hitch.doctor.v1"
+      raise "packaged doctor found an actionable failure" if
+        doctor.fetch("checks").any? { |check| check.fetch("status") == "fail" }
+      raise "packaged doctor did not validate package contents" unless
+        doctor.fetch("checks").find { |check| check.fetch("id") == "package" }&.fetch("code") == "complete"
+
       output = capture!(
         "bundle", "exec", "rails", "runner",
         smoke_runner(profile_name, profile.fetch(:adapter)),
@@ -516,6 +534,7 @@ Dir.mktmpdir("hitch-package-smoke-") do |directory|
       raise "disposable app did not report a smoke result\n#{output}" unless result_line
 
       JSON.parse(result_line.delete_prefix("HITCH_SMOKE_RESULT=")).merge(
+        "doctor" => "no_actionable_failures",
         "commands" => adoption_commands(profile)
       )
     ensure

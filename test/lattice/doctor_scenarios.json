@@ -1,0 +1,582 @@
+{
+  "meta": {
+    "model_name": "hitch_doctor",
+    "strength": 2,
+    "test_count": 27,
+    "exhaustive_count": 124416,
+    "reduction": "4608x",
+    "coverage": "100.0%",
+    "seed": 42
+  },
+  "coverage_curve": [
+    {
+      "scenario": 1,
+      "cumulative_pct": 12.6
+    },
+    {
+      "scenario": 2,
+      "cumulative_pct": 22.4
+    },
+    {
+      "scenario": 3,
+      "cumulative_pct": 34.9
+    },
+    {
+      "scenario": 4,
+      "cumulative_pct": 45.2
+    },
+    {
+      "scenario": 5,
+      "cumulative_pct": 52.1
+    },
+    {
+      "scenario": 6,
+      "cumulative_pct": 59.8
+    },
+    {
+      "scenario": 7,
+      "cumulative_pct": 65.5
+    },
+    {
+      "scenario": 8,
+      "cumulative_pct": 70.5
+    },
+    {
+      "scenario": 9,
+      "cumulative_pct": 74.9
+    },
+    {
+      "scenario": 10,
+      "cumulative_pct": 78.0
+    },
+    {
+      "scenario": 11,
+      "cumulative_pct": 81.2
+    },
+    {
+      "scenario": 12,
+      "cumulative_pct": 83.7
+    },
+    {
+      "scenario": 13,
+      "cumulative_pct": 86.4
+    },
+    {
+      "scenario": 14,
+      "cumulative_pct": 88.3
+    },
+    {
+      "scenario": 15,
+      "cumulative_pct": 89.8
+    },
+    {
+      "scenario": 16,
+      "cumulative_pct": 91.6
+    },
+    {
+      "scenario": 17,
+      "cumulative_pct": 93.7
+    },
+    {
+      "scenario": 18,
+      "cumulative_pct": 94.4
+    },
+    {
+      "scenario": 19,
+      "cumulative_pct": 95.4
+    },
+    {
+      "scenario": 20,
+      "cumulative_pct": 96.6
+    },
+    {
+      "scenario": 21,
+      "cumulative_pct": 97.1
+    },
+    {
+      "scenario": 22,
+      "cumulative_pct": 97.3
+    },
+    {
+      "scenario": 23,
+      "cumulative_pct": 98.1
+    },
+    {
+      "scenario": 24,
+      "cumulative_pct": 98.5
+    },
+    {
+      "scenario": 25,
+      "cumulative_pct": 99.0
+    },
+    {
+      "scenario": 26,
+      "cumulative_pct": 99.2
+    },
+    {
+      "scenario": 27,
+      "cumulative_pct": 100.0
+    }
+  ],
+  "scenarios": [
+    {
+      "id": 1,
+      "values": {
+        "runtime": "full",
+        "environment": "production",
+        "configuration": "valid",
+        "discovery": "coherent",
+        "route": "ordered",
+        "migrations": "current",
+        "registry": "populated",
+        "hosts": "accepted",
+        "origins": "exact",
+        "redis": "healthy",
+        "package": "complete",
+        "legacy": "absent"
+      }
+    },
+    {
+      "id": 2,
+      "values": {
+        "runtime": "auth_only",
+        "environment": "test",
+        "configuration": "valid",
+        "discovery": "coherent",
+        "route": "missing",
+        "migrations": "current",
+        "registry": "invalid",
+        "hosts": "accepted",
+        "origins": "deny_default",
+        "redis": "unreachable",
+        "package": "complete",
+        "legacy": "absent"
+      }
+    },
+    {
+      "id": 3,
+      "values": {
+        "runtime": "auth_only",
+        "environment": "production",
+        "configuration": "invalid",
+        "discovery": "mismatch",
+        "route": "invalid_mount",
+        "migrations": "missing",
+        "registry": "empty",
+        "hosts": "blocked",
+        "origins": "deny_default",
+        "redis": "absent",
+        "package": "missing",
+        "legacy": "canonical"
+      }
+    },
+    {
+      "id": 4,
+      "values": {
+        "runtime": "full",
+        "environment": "test",
+        "configuration": "invalid",
+        "discovery": "mismatch",
+        "route": "missing",
+        "migrations": "cutover_legacy",
+        "registry": "empty",
+        "hosts": "accepted",
+        "origins": "exact",
+        "redis": "non_atomic",
+        "package": "missing",
+        "legacy": "noncanonical"
+      }
+    },
+    {
+      "id": 5,
+      "values": {
+        "runtime": "full",
+        "environment": "production",
+        "configuration": "invalid",
+        "discovery": "coherent",
+        "route": "missing",
+        "migrations": "current",
+        "registry": "invalid",
+        "hosts": "blocked",
+        "origins": "http",
+        "redis": "unreachable",
+        "package": "missing",
+        "legacy": "noncanonical"
+      }
+    },
+    {
+      "id": 6,
+      "values": {
+        "runtime": "auth_only",
+        "environment": "test",
+        "configuration": "valid",
+        "discovery": "coherent",
+        "route": "shadowed",
+        "migrations": "missing",
+        "registry": "populated",
+        "hosts": "blocked",
+        "origins": "http",
+        "redis": "absent",
+        "package": "complete",
+        "legacy": "canonical"
+      }
+    },
+    {
+      "id": 7,
+      "values": {
+        "runtime": "full",
+        "environment": "production",
+        "configuration": "valid",
+        "discovery": "mismatch",
+        "route": "after_engine",
+        "migrations": "current",
+        "registry": "empty",
+        "hosts": "blocked",
+        "origins": "http",
+        "redis": "non_atomic",
+        "package": "complete",
+        "legacy": "absent"
+      }
+    },
+    {
+      "id": 8,
+      "values": {
+        "runtime": "full",
+        "environment": "test",
+        "configuration": "valid",
+        "discovery": "mismatch",
+        "route": "wrong_verbs",
+        "migrations": "missing",
+        "registry": "invalid",
+        "hosts": "accepted",
+        "origins": "exact",
+        "redis": "absent",
+        "package": "missing",
+        "legacy": "canonical"
+      }
+    },
+    {
+      "id": 9,
+      "values": {
+        "runtime": "auth_only",
+        "environment": "test",
+        "configuration": "valid",
+        "discovery": "coherent",
+        "route": "invalid_mount",
+        "migrations": "cutover_legacy",
+        "registry": "invalid",
+        "hosts": "accepted",
+        "origins": "deny_default",
+        "redis": "healthy",
+        "package": "missing",
+        "legacy": "noncanonical"
+      }
+    },
+    {
+      "id": 10,
+      "values": {
+        "runtime": "full",
+        "environment": "test",
+        "configuration": "invalid",
+        "discovery": "coherent",
+        "route": "wrong_verbs",
+        "migrations": "missing",
+        "registry": "populated",
+        "hosts": "blocked",
+        "origins": "deny_default",
+        "redis": "unreachable",
+        "package": "missing",
+        "legacy": "absent"
+      }
+    },
+    {
+      "id": 11,
+      "values": {
+        "runtime": "full",
+        "environment": "production",
+        "configuration": "invalid",
+        "discovery": "mismatch",
+        "route": "ordered",
+        "migrations": "cutover_legacy",
+        "registry": "invalid",
+        "hosts": "blocked",
+        "origins": "http",
+        "redis": "unreachable",
+        "package": "complete",
+        "legacy": "canonical"
+      }
+    },
+    {
+      "id": 12,
+      "values": {
+        "runtime": "full",
+        "environment": "production",
+        "configuration": "invalid",
+        "discovery": "coherent",
+        "route": "shadowed",
+        "migrations": "missing",
+        "registry": "invalid",
+        "hosts": "accepted",
+        "origins": "exact",
+        "redis": "non_atomic",
+        "package": "missing",
+        "legacy": "noncanonical"
+      }
+    },
+    {
+      "id": 13,
+      "values": {
+        "runtime": "auth_only",
+        "environment": "test",
+        "configuration": "invalid",
+        "discovery": "coherent",
+        "route": "after_engine",
+        "migrations": "cutover_legacy",
+        "registry": "populated",
+        "hosts": "blocked",
+        "origins": "exact",
+        "redis": "unreachable",
+        "package": "missing",
+        "legacy": "canonical"
+      }
+    },
+    {
+      "id": 14,
+      "values": {
+        "runtime": "full",
+        "environment": "production",
+        "configuration": "invalid",
+        "discovery": "mismatch",
+        "route": "wrong_verbs",
+        "migrations": "current",
+        "registry": "empty",
+        "hosts": "accepted",
+        "origins": "http",
+        "redis": "absent",
+        "package": "complete",
+        "legacy": "noncanonical"
+      }
+    },
+    {
+      "id": 15,
+      "values": {
+        "runtime": "full",
+        "environment": "test",
+        "configuration": "invalid",
+        "discovery": "mismatch",
+        "route": "shadowed",
+        "migrations": "cutover_legacy",
+        "registry": "empty",
+        "hosts": "accepted",
+        "origins": "deny_default",
+        "redis": "unreachable",
+        "package": "missing",
+        "legacy": "absent"
+      }
+    },
+    {
+      "id": 16,
+      "values": {
+        "runtime": "full",
+        "environment": "test",
+        "configuration": "invalid",
+        "discovery": "mismatch",
+        "route": "invalid_mount",
+        "migrations": "current",
+        "registry": "populated",
+        "hosts": "accepted",
+        "origins": "http",
+        "redis": "non_atomic",
+        "package": "missing",
+        "legacy": "canonical"
+      }
+    },
+    {
+      "id": 17,
+      "values": {
+        "runtime": "auth_only",
+        "environment": "test",
+        "configuration": "invalid",
+        "discovery": "mismatch",
+        "route": "ordered",
+        "migrations": "missing",
+        "registry": "populated",
+        "hosts": "blocked",
+        "origins": "deny_default",
+        "redis": "healthy",
+        "package": "missing",
+        "legacy": "noncanonical"
+      }
+    },
+    {
+      "id": 18,
+      "values": {
+        "runtime": "full",
+        "environment": "test",
+        "configuration": "invalid",
+        "discovery": "coherent",
+        "route": "shadowed",
+        "migrations": "current",
+        "registry": "invalid",
+        "hosts": "accepted",
+        "origins": "http",
+        "redis": "healthy",
+        "package": "missing",
+        "legacy": "canonical"
+      }
+    },
+    {
+      "id": 19,
+      "values": {
+        "runtime": "auth_only",
+        "environment": "test",
+        "configuration": "valid",
+        "discovery": "mismatch",
+        "route": "wrong_verbs",
+        "migrations": "cutover_legacy",
+        "registry": "populated",
+        "hosts": "accepted",
+        "origins": "deny_default",
+        "redis": "non_atomic",
+        "package": "missing",
+        "legacy": "noncanonical"
+      }
+    },
+    {
+      "id": 20,
+      "values": {
+        "runtime": "full",
+        "environment": "production",
+        "configuration": "valid",
+        "discovery": "coherent",
+        "route": "after_engine",
+        "migrations": "cutover_legacy",
+        "registry": "empty",
+        "hosts": "accepted",
+        "origins": "deny_default",
+        "redis": "absent",
+        "package": "missing",
+        "legacy": "noncanonical"
+      }
+    },
+    {
+      "id": 21,
+      "values": {
+        "runtime": "full",
+        "environment": "test",
+        "configuration": "valid",
+        "discovery": "coherent",
+        "route": "ordered",
+        "migrations": "current",
+        "registry": "empty",
+        "hosts": "accepted",
+        "origins": "deny_default",
+        "redis": "absent",
+        "package": "complete",
+        "legacy": "absent"
+      }
+    },
+    {
+      "id": 22,
+      "values": {
+        "runtime": "full",
+        "environment": "test",
+        "configuration": "valid",
+        "discovery": "coherent",
+        "route": "ordered",
+        "migrations": "current",
+        "registry": "populated",
+        "hosts": "accepted",
+        "origins": "deny_default",
+        "redis": "non_atomic",
+        "package": "complete",
+        "legacy": "absent"
+      }
+    },
+    {
+      "id": 23,
+      "values": {
+        "runtime": "full",
+        "environment": "test",
+        "configuration": "invalid",
+        "discovery": "coherent",
+        "route": "missing",
+        "migrations": "missing",
+        "registry": "empty",
+        "hosts": "accepted",
+        "origins": "deny_default",
+        "redis": "healthy",
+        "package": "complete",
+        "legacy": "canonical"
+      }
+    },
+    {
+      "id": 24,
+      "values": {
+        "runtime": "full",
+        "environment": "test",
+        "configuration": "valid",
+        "discovery": "coherent",
+        "route": "missing",
+        "migrations": "current",
+        "registry": "populated",
+        "hosts": "accepted",
+        "origins": "deny_default",
+        "redis": "absent",
+        "package": "complete",
+        "legacy": "absent"
+      }
+    },
+    {
+      "id": 25,
+      "values": {
+        "runtime": "full",
+        "environment": "test",
+        "configuration": "invalid",
+        "discovery": "mismatch",
+        "route": "after_engine",
+        "migrations": "missing",
+        "registry": "invalid",
+        "hosts": "accepted",
+        "origins": "http",
+        "redis": "healthy",
+        "package": "complete",
+        "legacy": "absent"
+      }
+    },
+    {
+      "id": 26,
+      "values": {
+        "runtime": "full",
+        "environment": "test",
+        "configuration": "valid",
+        "discovery": "coherent",
+        "route": "wrong_verbs",
+        "migrations": "current",
+        "registry": "populated",
+        "hosts": "accepted",
+        "origins": "deny_default",
+        "redis": "healthy",
+        "package": "complete",
+        "legacy": "absent"
+      }
+    },
+    {
+      "id": 27,
+      "values": {
+        "runtime": "full",
+        "environment": "production",
+        "configuration": "valid",
+        "discovery": "coherent",
+        "route": "invalid_mount",
+        "migrations": "missing",
+        "registry": "populated",
+        "hosts": "blocked",
+        "origins": "exact",
+        "redis": "unreachable",
+        "package": "complete",
+        "legacy": "absent"
+      }
+    }
+  ]
+}

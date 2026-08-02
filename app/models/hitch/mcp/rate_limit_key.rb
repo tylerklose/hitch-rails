@@ -12,9 +12,9 @@ module Hitch
 
       class << self
         def call(principal:, client_id:, key_generator: Rails.application.key_generator)
-          principal_class = principal.class.respond_to?(:base_class) ? principal.class.base_class : principal.class
+          record_class = principal.class.respond_to?(:base_class) ? principal.class.base_class : principal.class
           canonical = JSON.generate([
-            identity_component(principal_class.name),
+            identity_component(record_class.name),
             identity_component(principal.id.to_s),
             identity_component(client_id)
           ])

@@ -278,8 +278,8 @@ module Hitch
           end
 
           def identity_keys(principal:, client_id:, key_generator: Rails.application.key_generator)
-            principal_class = principal.class.respond_to?(:base_class) ? principal.class.base_class : principal.class
-            principal_type = principal_class.name
+            record_class = principal.class.respond_to?(:base_class) ? principal.class.base_class : principal.class
+            principal_type = record_class.name
             unless principal_type.is_a?(String) && PRINCIPAL_TYPE_PATTERN.match?(principal_type)
               raise ArgumentError, "MCP observation principal type is invalid"
             end

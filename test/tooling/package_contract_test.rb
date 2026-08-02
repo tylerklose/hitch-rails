@@ -36,13 +36,19 @@ class PackageContractTest < ActiveSupport::TestCase
       app/controllers/concerns/hitch/oauth_form_admission.rb
       app/controllers/concerns/hitch/registration_admission.rb
       app/controllers/concerns/hitch/request_admission.rb
+      app/controllers/concerns/hitch/mcp/endpoint.rb
       config/routes.rb
       docs/public_api/0.1.0.md
       docs/public_api/0.2.0.md
       docs/removing.md
       docs/upgrading/0.1.0.md
       app/models/hitch/mcp/sdk_adapter.rb
-      app/models/hitch/mcp/sdk_adapter/response_normalizer.rb
+      app/models/hitch/mcp/internal/sdk_adapter.rb
+      app/models/hitch/mcp/internal/sdk_adapter/response_normalizer.rb
+      app/models/hitch/mcp/internal/verified_request.rb
+      app/models/hitch/mcp/slice_context.rb
+      app/models/hitch/mcp/slice_tool.rb
+      app/models/hitch/mcp/verified_request.rb
       lib/generators/hitch/install/install_generator.rb
       lib/generators/hitch/install/templates/initializer.rb
       lib/hitch/mcp/configuration.rb

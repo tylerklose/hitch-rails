@@ -15,7 +15,8 @@ patterns = {
   "hard-coded origin constant" => /\bALLOWED_ORIGINS\b/,
   "unconditional DCR alongside CIMD" => /DCR (?:keeps working|continues to work unchanged)/i,
   "PostgreSQL-only code consumption" => /FOR UPDATE SKIP LOCKED/,
-  "blanket installation conformance claim" => /(?:new installations?|fresh install) (?:become|is|are) (?:spec-)?conformant/i
+  "blanket installation conformance claim" => /(?:new installations?|fresh install) (?:become|is|are) (?:spec-)?conformant/i,
+  "obsolete unimplemented MCP endpoint claim" => /authenticated endpoint (?:and registry )?remain(?:s)? (?:under construction|a later milestone)|while the 0\.2 endpoint is built|forthcoming authenticated MCP endpoint/i
 }.freeze
 
 release_patterns = {

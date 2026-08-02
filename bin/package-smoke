@@ -52,6 +52,14 @@ REQUIRED_PACKAGE_FILES = %w[
   docs/public_api/0.2.0.md
   docs/removing.md
   docs/upgrading/0.1.0.md
+  app/controllers/concerns/hitch/mcp/endpoint.rb
+  app/models/hitch/mcp/sdk_adapter.rb
+  app/models/hitch/mcp/internal/sdk_adapter.rb
+  app/models/hitch/mcp/internal/sdk_adapter/response_normalizer.rb
+  app/models/hitch/mcp/internal/verified_request.rb
+  app/models/hitch/mcp/slice_context.rb
+  app/models/hitch/mcp/slice_tool.rb
+  app/models/hitch/mcp/verified_request.rb
   lib/generators/hitch/install/install_generator.rb
   lib/generators/hitch/install/templates/initializer.rb
   lib/hitch/version.rb
@@ -107,6 +115,16 @@ def application_controller
   RUBY
 end
 
+def mcp_controller
+  <<~RUBY
+    # frozen_string_literal: true
+
+    class McpController < ActionController::API
+      include Hitch::MCP::Endpoint
+    end
+  RUBY
+end
+
 def adoption_commands(profile)
   rails_new_options = %w[
     --skip-bundle --skip-git --skip-keeps --skip-bootsnap
@@ -122,7 +140,7 @@ def adoption_commands(profile)
     "bundle exec rails generate hitch:install",
     "bundle exec rails db:create",
     "bundle exec rails db:migrate",
-    "bundle exec rails runner <discovery-and-authorization-code-smoke>"
+        "bundle exec rails runner <discovery-authorization-and-mcp-smoke>"
   ]
 end
 
@@ -150,7 +168,20 @@ def smoke_runner(profile_name, expected_adapter)
     sdk_adapter = Hitch::MCP.const_get(:SDKAdapter, false)
     adapter_source = File.expand_path(sdk_adapter.instance_method(:call).source_location.fetch(0))
     abort "SDK adapter did not load from the built artifact" unless
-      adapter_source == File.join(loaded_root, "app/models/hitch/mcp/sdk_adapter.rb")
+      adapter_source == File.join(loaded_root, "app/models/hitch/mcp/internal/sdk_adapter.rb")
+    endpoint_source = File.expand_path(Hitch::MCP::Endpoint.instance_method(:handle).source_location.fetch(0))
+    abort "MCP endpoint did not load from the built artifact" unless
+      endpoint_source == File.join(loaded_root, "app/controllers/concerns/hitch/mcp/endpoint.rb")
+
+    Hitch.configuration.mcp.server_info = ->(_context) {
+      {
+        name: "hitch-package-smoke",
+        version: loaded.version.to_s,
+        title: "Hitch Package Smoke",
+        instructions: "Exercise the packaged authenticated endpoint."
+      }
+    }
+    Hitch.configuration.mcp.max_request_bytes = 8_192
 
     redirect_uri = "https://client.example/callback"
     resource_uri = Hitch.configuration.resource_uri
@@ -210,6 +241,45 @@ def smoke_runner(profile_name, expected_adapter)
     abort "issued token was not usable" unless
       token&.accessible? && token.valid_for_resource?(resource_uri) && token.has_scope?("mcp")
 
+    mcp_headers = {
+      "Authorization" => "Bearer \#{token_body.fetch('access_token')}",
+      "Content-Type" => "application/json",
+      "Accept" => "application/json, text/event-stream",
+      "MCP-Protocol-Version" => "2026-07-28"
+    }
+    request_meta = {
+      "io.modelcontextprotocol/protocolVersion" => "2026-07-28",
+      "io.modelcontextprotocol/clientCapabilities" => {}
+    }
+
+    session.post "/mcp", params: JSON.generate(
+      jsonrpc: "2.0",
+      id: "package/discover",
+      method: "server/discover",
+      params: { "_meta" => request_meta }
+    ), headers: mcp_headers.merge("Mcp-Method" => "server/discover")
+    abort "packaged MCP discovery failed: \#{session.response.status} \#{session.response.body}" unless
+      session.response.status == 200
+    mcp_discovery = JSON.parse(session.response.body)
+    abort "packaged MCP discovery identity drifted" unless
+      mcp_discovery.dig("result", "_meta", "io.modelcontextprotocol/serverInfo", "name") == "hitch-package-smoke"
+
+    session.post "/mcp", params: JSON.generate(
+      jsonrpc: "2.0",
+      id: "package/call",
+      method: "tools/call",
+      params: {
+        "_meta" => request_meta,
+        "name" => "hitch.echo",
+        "arguments" => { "message" => "artifact endpoint ok" }
+      }
+    ), headers: mcp_headers.merge("Mcp-Method" => "tools/call", "Mcp-Name" => "hitch.echo")
+    abort "packaged MCP call failed: \#{session.response.status} \#{session.response.body}" unless
+      session.response.status == 200
+    mcp_call = JSON.parse(session.response.body)
+    abort "packaged MCP call result drifted" unless
+      mcp_call.dig("result", "content", 0, "text") == "artifact endpoint ok"
+
     puts "HITCH_SMOKE_RESULT=" + JSON.generate(
       profile: "#{profile_name}",
       ruby: RUBY_VERSION,
@@ -224,7 +294,8 @@ def smoke_runner(profile_name, expected_adapter)
       boot: "ok",
       discovery: "ok",
       authorization_code: "ok",
-      token_exchange: "ok"
+      token_exchange: "ok",
+      mcp_endpoint: "authenticated_discover_and_call_ok"
     )
   RUBY
 end
@@ -377,6 +448,16 @@ Dir.mktmpdir("hitch-package-smoke-") do |directory|
     run!("bundle", "config", "set", "--local", "path", "vendor/bundle", chdir: app)
     run!("bundle", "install", chdir: app)
     run!("bundle", "exec", "rails", "generate", "hitch:install", chdir: app)
+    File.write(File.join(app, "app/controllers/mcp_controller.rb"), mcp_controller)
+    routes_path = File.join(app, "config/routes.rb")
+    original_routes = File.read(routes_path)
+    abort "generated routes file lacks the Rails draw marker" unless
+      original_routes.include?("Rails.application.routes.draw do\n")
+    routes = original_routes.sub(
+      "Rails.application.routes.draw do\n",
+      "Rails.application.routes.draw do\n  match \"/mcp\", to: \"mcp#handle\", via: :all\n"
+    )
+    File.write(routes_path, routes)
 
     database_url = if profile.fetch(:adapter) == "sqlite3"
       "sqlite3:#{File.join(directory, "#{profile_name}.sqlite3")}"
@@ -424,8 +505,11 @@ Dir.mktmpdir("hitch-package-smoke-") do |directory|
   end
 
   report = {
-    "release" => specification.version.to_s,
-    "sealed_release" => artifact_policy.fetch("version"),
+    "artifact_version" => specification.version.to_s,
+    "target_checkpoint" => artifact_policy.fetch("version"),
+    "phase" => development ? "development" : "checkpoint",
+    "checkpoint_sealed" => !development,
+    "published" => false,
     "development" => development,
     "milestone" => policy_issue,
     "distribution" => artifact_policy.fetch("distribution"),

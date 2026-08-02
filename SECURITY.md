@@ -76,13 +76,18 @@ The authorization substrate the gem owns:
   boundaries on authorize, token, revoke, and registration requests
 - Consent-screen CSRF, clickjacking, or scope escalation
 - CORS policy in `Hitch::CorsSupport`
+- `Hitch::MCP::Endpoint` Host/Origin/method/authentication ordering, canonical
+  protected-resource challenge, media/header validation, raw body cap,
+  duplicate-member rejection, reserved argument handling, callback isolation,
+  and stable error sanitization
 
 ### Out of scope
 
 - **The host application's tool implementation and business policy.** Report
-  tool-level authorization bugs to the application. Bearer validation,
-  discovery challenge, and response shaping supplied by
-  `Hitch::ServerEndpoint` remain Hitch's responsibility and are in scope.
+  tool-level authorization bugs to the application. Authentication, admission,
+  discovery challenges, and response shaping supplied by
+  `Hitch::MCP::Endpoint` or the deprecated `Hitch::ServerEndpoint` remain
+  Hitch's responsibility and are in scope.
 - **Documented adopter misconfiguration.** The README's *Adopter security
   requirements* section lists the host settings the gem depends on
   (`allowed_hosts`, `allowed_origins`, CSRF on the consent path,

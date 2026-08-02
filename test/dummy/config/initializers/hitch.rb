@@ -10,4 +10,13 @@ Hitch.configure do |config|
   config.dynamic_client_registration_enabled = true
   config.client_id_metadata_enabled = ENV["HITCH_CONFORMANCE"] == "1"
   config.brand_name = "Dummy"
+  config.mcp.server_info = ->(_context) {
+    {
+      name: "hitch-dummy",
+      version: "0.2.0",
+      title: "Hitch Dummy",
+      instructions: "Use the private M2 transport slice."
+    }
+  }
+  config.mcp.max_request_bytes = 1_024
 end

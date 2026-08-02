@@ -14,5 +14,6 @@ Rails.application.routes.draw do
   # ::MCP::Server through the concern.
   post "mcp_test", to: "mcp_test#create"
   post "real_mcp", to: "real_mcp#create"
+  match "mcp", to: "mcp#handle", via: :all
   mount Hitch::Engine => "/"
 end

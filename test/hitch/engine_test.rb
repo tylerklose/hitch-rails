@@ -67,6 +67,32 @@ class Hitch::EngineTest < ActiveSupport::TestCase
     assert_nil captured.last
   end
 
+  test "form guard owns the host MCP route before Rack method override" do
+    Hitch.reset_configuration!
+    Hitch.configuration.resource_uri = "https://dummy.test/mcp"
+    captured = nil
+    downstream = lambda do |environment|
+      captured = environment
+      [ 200, {}, [] ]
+    end
+    guard = Hitch::RackFormGuard.new(downstream)
+    environment = Rack::MockRequest.env_for(
+      "https://dummy.test/mcp",
+      method: "POST",
+      input: "_method=OPTIONS&secret=body"
+    )
+    environment["HTTP_X_HTTP_METHOD_OVERRIDE"] = "OPTIONS"
+
+    guard.call(environment)
+
+    assert_equal({}, captured.fetch(Rack::RACK_REQUEST_FORM_HASH))
+    assert_equal [], captured.fetch(Rack::RACK_REQUEST_FORM_PAIRS)
+    refute captured.key?("HTTP_X_HTTP_METHOD_OVERRIDE")
+  ensure
+    Hitch.reset_configuration!
+    Hitch.configuration.resource_uri = "https://dummy.test/mcp"
+  end
+
   test "admission owns process_action before Rails instrumentation" do
     {
       Hitch::AuthorizationsController => Hitch::OauthFormAdmission,

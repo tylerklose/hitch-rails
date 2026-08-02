@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "json"
+require "mcp"
 require "mcp/server/transports/streamable_http_transport"
 
 class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
@@ -425,17 +426,74 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
     assert_equal "1.1.0", expected if lane == "min"
   end
 
+  test "verified request ids survive the SDK 1.1 validation subset" do
+    [ "a/b", "日本語", 1.5, 10**100 ].each do |request_id|
+      response = call_adapter(
+        method: "server/discover",
+        params: { "_meta" => REQUEST_META },
+        request_id: request_id
+      )
+
+      assert_nil response[:error]
+      assert_equal request_id, response[:id]
+    end
+  end
+
+  test "malformed SDK responses become a generic internal error" do
+    [ nil, {}, { result: nil }, { error: "secret-sdk-error" }, { error: {} },
+      { error: { code: "secret-sdk-code" } }, { result: {}, error: nil },
+      { result: {}, error: false }, { result: {}, "result" => {} },
+      { result: {}, error: { code: -32603, message: "secret-sdk-error" } } ].each do |sdk_response|
+      fake_server = Object.new
+      fake_server.define_singleton_method(:handle) { |_request| sdk_response }
+
+      stub_class_method(::MCP::Server, :new, ->(**) { fake_server }) do
+        response = call_adapter(method: "server/discover", request_id: "original-id")
+
+        assert_equal "2.0", response.fetch(:jsonrpc)
+        assert_equal "original-id", response.fetch(:id)
+        assert_equal(-32603, response.dig(:error, :code))
+        assert_equal "Internal error", response.dig(:error, :message)
+        refute_includes JSON.generate(response), "secret-sdk-error"
+        assert_deeply_frozen response
+      end
+    end
+  end
+
+  test "SDK envelope fields cannot override the Hitch wire contract" do
+    fake_server = Object.new
+    fake_server.define_singleton_method(:handle) do |_request|
+      {
+        "jsonrpc" => "1.0",
+        "id" => "sdk-id",
+        "result" => {},
+        "attacker-field" => "secret-sdk-field"
+      }
+    end
+
+    stub_class_method(::MCP::Server, :new, ->(**) { fake_server }) do
+      response = call_adapter(method: "server/discover", request_id: "original-id")
+
+      assert_equal "2.0", response.fetch(:jsonrpc)
+      assert_equal "original-id", response.fetch(:id)
+      refute response.key?("jsonrpc")
+      refute response.key?("id")
+      refute response.key?("attacker-field")
+      refute_includes JSON.generate(response), "secret-sdk-field"
+    end
+  end
+
   private
 
   def adapter_class
     Hitch::MCP.const_get(:SDKAdapter, false)
   end
 
-  def call_adapter(method:, params: {}, tools: [], context: Object.new, server_info: SERVER_INFO)
+  def call_adapter(method:, params: {}, tools: [], context: Object.new, server_info: SERVER_INFO, request_id: "sdk_contract_request")
     adapter_class.call(
       verified_request: {
         "jsonrpc" => "2.0",
-        "id" => "sdk_contract_request",
+        "id" => request_id,
         "method" => method,
         "params" => params
       },

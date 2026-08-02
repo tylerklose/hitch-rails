@@ -33,12 +33,17 @@ needs:
 - **`Hitch::ServerEndpoint` (deprecated compatibility helper)** — retained
   through the 0.2 line for existing host-owned `/mcp` controllers; it handles
   bearer validation, the discovery challenge, and basic response shaping, but
-  is not Hitch's forthcoming authenticated MCP endpoint (see below)
+  is not the final-profile endpoint below
+- **`Hitch::MCP::Endpoint` (0.2 development surface)** — an authenticated,
+  stateless POST/OPTIONS endpoint with strict canonical path/query and
+  Host/Origin admission, bounded duplicate-sensitive JSON, modern MCP headers,
+  and private Ruby SDK dispatch
 
 The accepted 0.1 checkpoint leaves the `/mcp` endpoint, SDK integration, and
-tool dispatch to the host. The 0.2 development line now owns a private SDK
-compatibility boundary; its authenticated endpoint and registry remain under
-construction. Existing integrations may keep using the
+tool dispatch to the host. The 0.2 development line now owns the private SDK
+compatibility boundary and authenticated endpoint. Its host-owned Registry,
+Context, authorization policy, production request store, and public observation
+events remain later roadmap milestones. Existing integrations may keep using the
 deprecated `Hitch::ServerEndpoint` compatibility helper for bearer validation
 and response shaping while moving toward the 0.2 endpoint.
 
@@ -54,7 +59,7 @@ server-side auth helpers, and no Ruby/Rails gem packaged the server-side
 OAuth 2.1 + PKCE plumbing an MCP server needs. Hitch fills that gap. It
 now directly depends on `mcp >= 1.1, < 2` and isolates it behind a private
 adapter. Hitch still provides the accepted auth substrate plus optional
-legacy response-shaping helpers while the 0.2 endpoint is built.
+legacy response-shaping helpers during the internal 0.2 migration.
 
 It is opinionated about **what** to implement (the [2026-07-28 MCP
 authorization spec](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization))
@@ -104,6 +109,15 @@ Hitch.configure do |config|
   config.brand_name = "Your App"
   config.supported_scopes = [ "mcp" ]
   config.dynamic_client_registration_enabled = false
+  config.mcp.server_info = ->(_context) {
+    {
+      name: "your-app",
+      version: "1.0.0",
+      title: "Your App",
+      instructions: "Use tools only for the signed-in account."
+    }
+  }
+  config.mcp.max_request_bytes = 1.megabyte
   # Optional:
   config.principal_method = :current_user  # method on controllers
   config.login_path = "/sign_in"           # where to redirect when unauth'd
@@ -123,8 +137,25 @@ unchanged.)
 
 ```ruby
 # config/routes.rb
+match "/mcp", to: "mcp#handle", via: :all
 mount Hitch::Engine => "/"  # exposes /oauth/* + /.well-known/*
 ```
+
+The MCP route must precede the engine mount so the concern can return its own
+`405` for unsupported methods:
+
+```ruby
+# app/controllers/mcp_controller.rb
+class McpController < ActionController::API
+  include Hitch::MCP::Endpoint
+end
+```
+
+This controller and route are manual in the current development build; the
+installer does not generate them until M5. The endpoint currently exposes one
+private, read-only `hitch.echo` transport-proof tool. It is checkpoint
+scaffolding, not a supported adopter tool API, and will be replaced when the
+host-owned Registry becomes authoritative in M3.
 
 ### Client ID Metadata Documents
 

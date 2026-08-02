@@ -1,14 +1,15 @@
 # frozen_string_literal: true
 
 require "stringio"
+require "uri"
 
 module Hitch
   # Rack::MethodOverride parses every form POST before Rails dispatches a
-  # controller. Hitch's OAuth endpoints own a stricter, much smaller raw-body
-  # parser, so pre-populate Rack's form cache only when Rails resolves the
-  # request to one of those engine actions. Resolving ownership matters: Rails
-  # accepts format/trailing-slash variants, and a host route may intentionally
-  # shadow a path before the engine mount.
+  # controller. Hitch's OAuth endpoints and final MCP endpoint own stricter raw
+  # body parsers, so pre-populate Rack's form cache only when Rails resolves the
+  # request to one of those actions. Resolving ownership matters: Rails accepts
+  # format/trailing-slash variants, host routes may shadow the engine, and the
+  # MCP controller/route remain host-owned.
   class RackFormGuard
     ENDPOINTS = {
       "hitch/authorizations" => "create",
@@ -16,7 +17,7 @@ module Hitch
       "hitch/revocations" => "create",
       "hitch/tokens" => "create"
     }.freeze
-    CANDIDATE_PATH = %r{/(?:oauth)/(?:authorize|register|revoke|token)(?:\.[^/]*)?/?\z}
+    OAUTH_CANDIDATE_PATH = %r{/(?:oauth)/(?:authorize|register|revoke|token)(?:\.[^/]*)?/?\z}
 
     def initialize(app, routes: -> { Rails.application.routes })
       @app = app
@@ -24,9 +25,14 @@ module Hitch
     end
 
     def call(environment)
-      if hitch_oauth_form_route?(environment)
+      route_type = hitch_strict_body_route(environment)
+      if route_type
         environment[Rack::RACK_REQUEST_FORM_HASH] = {}
         environment[Rack::RACK_REQUEST_FORM_PAIRS] = []
+        # The MCP route is permanently POST/OPTIONS. A generic Rack method
+        # override must neither parse its body nor turn authenticated POST
+        # traffic into an unauthenticated OPTIONS request.
+        environment.delete("HTTP_X_HTTP_METHOD_OVERRIDE") if route_type == :mcp
       end
 
       @app.call(environment)
@@ -34,7 +40,7 @@ module Hitch
 
     private
 
-    def hitch_oauth_form_route?(environment)
+    def hitch_strict_body_route(environment)
       return false unless environment[Rack::REQUEST_METHOD] == "POST"
 
       # Match RouteSet#call exactly before narrowing the ownership probe. Rails
@@ -42,7 +48,7 @@ module Hitch
       # segments; applying the candidate filter to raw PATH_INFO would miss
       # routes Rails later dispatches.
       normalized_path = ActionDispatch::Journey::Router::Utils.normalize_path(environment[Rack::PATH_INFO])
-      return false unless CANDIDATE_PATH.match?(normalized_path)
+      return false unless hitch_candidate_path?(normalized_path)
 
       # Route recognition must not share the credential-bearing input or
       # path-parameter cache with the request Rails will actually dispatch.
@@ -63,13 +69,41 @@ module Hitch
         {},
         raise_on_missing: false
       )
-      parameters && ENDPOINTS[parameters[:controller]] == parameters[:action]
+      return false unless parameters
+      return :oauth if hitch_oauth_endpoint?(parameters)
+      return :mcp if hitch_mcp_endpoint?(parameters)
+
+      false
     rescue ActionController::RoutingError
       false
     end
 
     def route_set
       @routes.respond_to?(:call) ? @routes.call : @routes
+    end
+
+    def hitch_oauth_endpoint?(parameters)
+      ENDPOINTS[parameters[:controller]] == parameters[:action]
+    end
+
+    def hitch_mcp_endpoint?(parameters)
+      return false unless parameters[:action] == "handle"
+
+      controller_name = parameters[:controller].to_s
+      return false if controller_name.empty?
+
+      controller = "#{controller_name.camelize}Controller".safe_constantize
+      controller && controller.ancestors.include?(Hitch::MCP::Endpoint)
+    end
+
+    def hitch_candidate_path?(path)
+      return true if OAUTH_CANDIDATE_PATH.match?(path)
+
+      resource_path = URI.parse(Hitch.configuration.resource_uri.to_s).path
+      resource_path = "/" if resource_path.empty?
+      %r{\A#{Regexp.escape(resource_path)}(?:\.[^/]*)?/?\z}.match?(path)
+    rescue URI::InvalidURIError
+      false
     end
   end
 end

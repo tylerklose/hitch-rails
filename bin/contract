@@ -84,4 +84,4 @@ run!(
   timeout_seconds: 180
 )
 
-puts "MCP contract verified: 12 exhaustive rows at default and strength 8; runtime remains pending M2"
+puts "MCP contract verified: 12 exhaustive rows at default and strength 8; authenticated runtime is covered by bin/ci-wire"

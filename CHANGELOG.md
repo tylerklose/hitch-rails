@@ -16,8 +16,14 @@ Internal development build only. The checkout version is
   `Hitch::Configuration#mcp` access, and a private per-request SDK adapter.
   The adapter owns only selective structural symbolization, callback isolation,
   output-validation enablement, tools-only dispatch, and documented SDK 1.1
-  response gaps. The authenticated endpoint and registry remain later
-  milestones.
+  response gaps.
+- Added the public `Hitch::MCP::Endpoint` concern, callable
+  `config.mcp.server_info`, and positive `config.mcp.max_request_bytes`.
+  The endpoint owns final-profile Host/Origin/method/authentication ordering,
+  exact media/header checks, bounded duplicate-sensitive parsing, one fresh SDK
+  dispatch, and stable HTTP/protocol errors. A private read-only `hitch.echo`
+  slice proves the transport; the public Registry, production Redis limit,
+  authorization policy, and observation events remain later milestones.
 
 ## [0.1.0] - 2026-08-01
 

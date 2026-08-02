@@ -105,6 +105,9 @@ jobs:
       - name: Run SDK boundary contracts
         run: bin/ci-sdk ${{ matrix.lane }}
 
+      - name: Run authenticated wire contracts
+        run: bin/ci-wire ${{ matrix.lane }}
+
   checkpoint-gates:
     name: Aggregate checkpoint and package gates
     runs-on: ubuntu-latest

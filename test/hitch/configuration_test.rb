@@ -21,6 +21,8 @@ class Hitch::ConfigurationTest < ActiveSupport::TestCase
     configuration.mcp.server_info = ->(_context) { { name: "example", version: "1" } }
     assert_raises(ArgumentError) { configuration.mcp.validate! }
     configuration.mcp.registry = "McpToolRegistry"
+    assert_raises(ArgumentError) { configuration.mcp.validate! }
+    configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { nil }
     assert configuration.mcp.validate!
   end
 
@@ -43,6 +45,7 @@ class Hitch::ConfigurationTest < ActiveSupport::TestCase
     assert_equal 1_048_576, Hitch.configuration.mcp.max_request_bytes
     assert_nil Hitch.configuration.mcp.registry
     assert_nil Hitch.configuration.mcp.server_info
+    assert_nil Hitch.configuration.mcp.scope_resolver
   end
 
   test "resource URI and supported scopes have explicit persistence-work bounds" do

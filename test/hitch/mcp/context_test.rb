@@ -155,11 +155,18 @@ class Hitch::MCP::ContextEndpointTest < ActionDispatch::IntegrationTest
       configuration.allowed_hosts = []
       configuration.allowed_origins = []
       configuration.supported_scopes = %w[mcp read]
+      configuration.mcp.registry = "McpToolRegistry"
       configuration.mcp.server_info = lambda { |context|
         @contexts << context
         { name: "hitch-context", version: "0.2.0" }
       }
+      configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { nil }
     end
+    Hitch.configuration.validate!
+    Hitch.configuration.mcp.__send__(
+      :prepare_registry!,
+      supported_scopes: Hitch.configuration.supported_scopes
+    )
   end
 
   teardown do

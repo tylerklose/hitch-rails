@@ -79,7 +79,8 @@ The authorization substrate the gem owns:
 - `Hitch::MCP::Endpoint` Host/Origin/method/authentication ordering, canonical
   protected-resource challenge, media/header validation, raw body cap,
   duplicate-member rejection, reserved argument handling, callback isolation,
-  and stable error sanitization
+  fleet-shared authenticated admission, structural notification redaction, and
+  stable error sanitization
 
 ### Out of scope
 

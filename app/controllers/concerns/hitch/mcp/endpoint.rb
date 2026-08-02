@@ -54,7 +54,9 @@ module Hitch
       def handle
         return unless hitch_mcp_media_admitted!
 
-        raw_body = hitch_read_bounded_request_body(Hitch.configuration.mcp.max_request_bytes)
+        max_request_bytes = Hitch.configuration.mcp.max_request_bytes
+        raw_body = hitch_read_bounded_request_body(max_request_bytes)
+        @hitch_mcp_observation&.request_bytes!(raw_body ? raw_body.bytesize : max_request_bytes + 1)
         return hitch_mcp_protocol_error!(413, -32600, "Invalid Request") unless raw_body
 
         hitch_mcp_body_parse_started!
@@ -66,6 +68,7 @@ module Hitch
             name: request.get_header("HTTP_MCP_NAME")
           }
         )
+        @hitch_mcp_observation&.verified!(verified_request)
 
         hitch_mcp_dispatch!(verified_request)
       rescue VerifiedRequest::Failure => error
@@ -98,9 +101,16 @@ module Hitch
       end
 
       def hitch_mcp_observe_request
+        activation = Internal::Observation.activate_request
+        @hitch_mcp_observation = activation.fetch(0)
         yield
       ensure
-        hitch_mcp_request_observed!
+        Internal::Observation.deactivate_request(activation) if activation
+        begin
+          hitch_mcp_request_observed!
+        ensure
+          @hitch_mcp_observation = nil
+        end
       end
 
       def hitch_mcp_host_gate!
@@ -151,6 +161,7 @@ module Hitch
         @hitch_mcp_client_id = client_id.dup.freeze
         @hitch_mcp_resource = resource.dup.freeze
         @hitch_mcp_granted_scopes = access_token.scopes.to_s.split.map { |scope| scope.dup.freeze }.freeze
+        @hitch_mcp_observation&.authenticated!(principal:, client_id:)
       rescue ActiveRecord::RecordNotFound, NameError
         hitch_mcp_unauthorized!
       rescue StandardError
@@ -277,6 +288,7 @@ module Hitch
       end
 
       def hitch_mcp_render_protocol!(protocol_response, status:)
+        @hitch_mcp_observation&.protocol_response!(protocol_response)
         render body: JSON.generate(protocol_response), status: status, content_type: "application/json"
       end
 
@@ -460,6 +472,9 @@ module Hitch
             name: verified_request.fetch("params").fetch("name"),
             context:
           )
+          if %i[available insufficient_scope].include?(resolution.status)
+            @hitch_mcp_observation&.tool_resolved!(verified_request.fetch("params").fetch("name"))
+          end
           if resolution.status == :insufficient_scope
             hitch_mcp_insufficient_scope!(resolution.required_scopes)
             return [].freeze
@@ -471,8 +486,9 @@ module Hitch
         Registry.__send__(:runtime_listing, snapshot:, context:)
       end
 
-      # Private test/observation seams. Admission is production-owned here;
-      # M4.4 replaces the no-op observation hooks with public safe events.
+      # Private test seams wrap production-owned admission and request
+      # observation. The invocation hook remains only for the sealed dummy wire
+      # fixture; final Tool calls emit through Internal::Observation directly.
 
       def hitch_mcp_admit_authenticated_request(principal:, client_id:)
         RequestRateLimiter.call(principal:, client_id:)
@@ -482,7 +498,9 @@ module Hitch
       def hitch_mcp_registry_resolved!; end
       def hitch_mcp_sdk_dispatch_started!; end
       def hitch_mcp_host_called!; end
-      def hitch_mcp_request_observed!; end
+      def hitch_mcp_request_observed!
+        @hitch_mcp_observation&.finish!(response:)
+      end
       def hitch_mcp_invocation_observed!; end
 
       private_constant :MAX_BEARER_TOKEN_BYTES,

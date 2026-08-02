@@ -74,27 +74,39 @@ module Hitch
         # normalization order.
         def call(server_context:, **sdk_arguments)
           phase = :context
+          invocation = nil
           reporting_tool_name = tool_name
           context = server_context.fetch(:hitch_context)
           phase = :arguments
           arguments = normalize_arguments(sdk_arguments)
+          invocation = Internal::Observation.start_invocation(tool_name: reporting_tool_name)
           phase = :authorization
           authorize!(context, arguments:)
+          invocation&.argument_policy_allowed!
           phase = :execution
+          invocation&.execution_started!
           result = perform(context, arguments:)
           phase = :result
-          Internal::ResultNormalizer.call(
+          normalized = Internal::ResultNormalizer.call(
             result:,
             output_schema: output_schema,
             max_bytes: Hitch.configuration.mcp.max_result_bytes
           )
+          invocation&.result_normalized!(kind: result.__send__(:kind))
+          normalized
         rescue StandardError, SystemStackError => error
+          invocation&.failed!(
+            phase:,
+            expected_denial: phase == :authorization && error.is_a?(Hitch::MCP::Forbidden)
+          )
           Internal::ErrorNormalizer.call(
             error:,
             phase:,
             context:,
             tool_name: reporting_tool_name
           )
+        ensure
+          invocation&.finish!
         end
 
         private

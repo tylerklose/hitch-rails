@@ -50,6 +50,7 @@ class PackageContractTest < ActiveSupport::TestCase
       app/models/hitch/mcp/internal/sdk_adapter.rb
       app/models/hitch/mcp/internal/sdk_adapter/response_normalizer.rb
       app/models/hitch/mcp/internal/error_normalizer.rb
+      app/models/hitch/mcp/internal/observation.rb
       app/models/hitch/mcp/internal/result_normalizer.rb
       app/models/hitch/mcp/internal/verified_request.rb
       app/models/hitch/mcp/context.rb

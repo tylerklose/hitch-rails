@@ -26,6 +26,9 @@ require "hitch/dynamic_registration_rate_limit"
 # Authenticated discovery, listing, and calls share one HMAC principal/client
 # fixed window backed by an atomic Redis Lua operation in production; store
 # ambiguity fails closed before protocol or host work.
+# Exactly-once request and post-schema invocation notifications expose only
+# frozen structural fields; subscriber and SDK callback failures cannot expose
+# request data or alter protocol responses.
 #
 # Spec reference: https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization
 #

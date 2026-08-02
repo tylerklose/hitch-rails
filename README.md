@@ -47,7 +47,9 @@ filtered listing, and deny-default argument policy are active; the closed Result
 channel with schema validation, an exact byte cap, and sanitized failure
 reporting is active too. The production request boundary is active as well: one
 Redis-backed authenticated fixed window spans discovery, listing, and calls for
-each principal/client. Public observation events remain later roadmap work.
+each principal/client. Versioned structural request and invocation events are
+active, with HMAC identities and subscriber-failure isolation. Integrated
+mutation/concurrency acceptance remains before the internal pre.3 checkpoint.
 Existing integrations may keep using the
 deprecated `Hitch::ServerEndpoint` compatibility helper for bearer validation
 and response shaping while moving toward the 0.2 endpoint.
@@ -254,6 +256,17 @@ reset quota and raw identifiers are not stored as keys. Hitch increments and
 assigns first expiry in one Lua call. The exact configured count is admitted;
 the next request receives `429` plus `Retry-After`. Redis nil/errors return
 `503` before body, Registry, SDK, or host work.
+
+Each non-OPTIONS endpoint request emits exactly one `request.hitch_mcp`
+ActiveSupport notification. A registered available tool emits exactly one
+`invocation.hitch_mcp` notification only after SDK input validation and Hitch
+argument normalization reach its final `.call`. Both payloads are version 1 and
+contain only structural fields: a framework request ID, validated method/tool
+name when available, HMAC principal/client identifiers, terminal categories,
+byte counts, and durations. They never contain credentials, bodies, arguments,
+results, `_meta`, exception messages, or backtraces. Subscriber failures are
+reported as sanitized Hitch observation failures and cannot change the MCP
+response.
 
 ### Client ID Metadata Documents
 

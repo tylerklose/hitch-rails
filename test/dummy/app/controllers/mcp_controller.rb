@@ -108,6 +108,7 @@ class McpController < ActionController::API
   end
 
   def hitch_mcp_request_observed!
+    super
     self.class.increment_wire_metric!(:request_events)
   end
 

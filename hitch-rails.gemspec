@@ -20,7 +20,9 @@ Gem::Specification.new do |spec|
     deterministic private listings. The final Tool call freezes string-keyed
     JSON arguments and runs deny-default argument policy before host execution.
     Its closed Result channel validates and caps output while preserving only
-    explicit safe error messages. A deprecated ServerEndpoint
+    explicit safe error messages. Fleet-shared Redis admission and
+    structural-only request/invocation notifications complete the runtime
+    boundary. A deprecated ServerEndpoint
     compatibility concern remains available through the 0.2 line for bearer
     validation and basic MCP Streamable HTTP response shaping. Principal lookup is
     host-configurable, browser origins are exact and default-deny, and both

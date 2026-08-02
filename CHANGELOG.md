@@ -33,6 +33,11 @@ GitHub-released, or published to RubyGems.
   over-limit requests return 429 with conservative `Retry-After`, and Redis
   nil/errors return 503 before body, Registry, SDK, or host work. Production
   requires Redis while development/test may use the private memory store.
+- Added version-1 `request.hitch_mcp` and `invocation.hitch_mcp` ActiveSupport
+  notifications. They expose only the frozen structural key sets in the public
+  API manifest, correlate through a framework-generated request ID, HMAC
+  principal/client identities, and isolate sanitized subscriber failures from
+  MCP responses. SDK callbacks remain explicitly non-forwarding.
 
 ## [0.2.0.pre.2] - 2026-08-02
 

@@ -53,7 +53,9 @@ mutation/concurrency acceptance is complete for the internal pre.3 checkpoint.
 The active pre.4 development line now adds the Rails MCP installer: it creates
 the host endpoint, empty explicit registry, deny-default settings, and ordered
 route with collision-safe rollback metadata. It does not discover or register
-tools automatically.
+tools automatically. The explicit tool generator and public integration-test
+helper are active too; generated tools remain unavailable and unregistered
+until the host reviews and opts them in.
 Existing integrations may keep using the
 deprecated `Hitch::ServerEndpoint` compatibility helper for bearer validation
 and response shaping while moving toward the 0.2 endpoint.
@@ -120,6 +122,7 @@ bundle install
 bin/rails generate hitch:install       # adds auth initializer + mounts the engine
 bin/rails db:migrate                    # installs the Hitch auth schema
 bin/rails generate hitch:mcp:install   # adds host MCP controller, registry, config, and route
+bin/rails generate hitch:tool echo      # adds a deny-default tool + focused Minitest
 ```
 
 The MCP installer requires the auth initializer, all Hitch migrations, and
@@ -140,6 +143,29 @@ rolled back with `bin/rails destroy hitch:mcp:install`. Rollback checks every
 recorded file checksum and the exact route block first; if anything changed, it
 refuses all deletion so the application owner can review the artifacts
 manually.
+
+`hitch:tool` accepts snake case, kebab case, or nested `/`/`::` names.
+`billing/customer_lookup` becomes
+`McpTools::Billing::CustomerLookup` with MCP name
+`billing.customer_lookup`. A different root namespace is explicit:
+
+```bash
+bin/rails generate hitch:tool billing/customer_lookup --namespace Admin::McpTools
+```
+
+The generator creates a tool, a matching Minitest, and a checksum manifest
+under `config/hitch_tools/`. It never creates or edits the Registry. After
+implementing and reviewing schema, availability, argument policy, execution,
+and annotations, copy the one printed line into `McpToolRegistry`, for example:
+
+```ruby
+register McpTools::Billing::CustomerLookup, scopes: [ "mcp" ]
+```
+
+`bin/rails destroy hitch:tool billing/customer_lookup` removes only unchanged
+generated tool/test bytes. Registry removal remains a manual reviewed edit; if
+the default Registry still contains the exact printed line, rollback refuses
+until that line is removed.
 
 ## Configuration
 
@@ -237,6 +263,45 @@ class McpToolRegistry < Hitch::MCP::Registry
   register McpTools::Echo, scopes: [ "mcp" ]
 end
 ```
+
+### MCP integration-test helper
+
+Require and include the public helper in an integration test. It reads the
+current `config.resource_uri`, supplies the canonical Host and modern MCP
+headers, and builds one JSON-RPC envelope without placing the bearer token in
+the body:
+
+```ruby
+require "hitch/mcp/test_helper"
+
+class AccountToolsTest < ActionDispatch::IntegrationTest
+  include Hitch::MCP::TestHelper
+
+  test "lists the signed-in account tools" do
+    post_mcp(method: "tools/list", token: access_token)
+
+    assert_response :success
+  end
+
+  test "calls a reviewed tool" do
+    post_mcp(
+      method: "tools/call",
+      token: access_token,
+      params: {
+        name: "echo",
+        arguments: { message: "hello" }
+      }
+    )
+
+    assert_response :success
+  end
+end
+```
+
+`mcp_headers(token:, method:, name: nil, protocol_version: "2026-07-28")` is available for
+tests that need to construct a request manually. Both helpers raise
+`ArgumentError` for malformed helper inputs; HTTP and protocol failures remain
+ordinary integration responses for the test to assert.
 
 `config.mcp.registry` is a String so Rails can resolve reloadable application
 classes afresh. Every prepare cycle validates the entire declaration and then

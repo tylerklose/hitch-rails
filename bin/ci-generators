@@ -6,7 +6,23 @@ require "open3"
 require "bundler"
 
 ROOT = File.expand_path("..", __dir__)
-TARGETS = %w[install tool].freeze
+TARGETS = {
+  "install" => {
+    schema: "test/lattice/mcp_install_generator.json",
+    scenarios: "test/lattice/mcp_install_generator_scenarios.json",
+    tests: [ "test/hitch/mcp_install_generator_test.rb" ],
+    label: "MCP install generator"
+  },
+  "tool" => {
+    schema: "test/lattice/tool_generator.json",
+    scenarios: "test/lattice/tool_generator_scenarios.json",
+    tests: [
+      "test/hitch/tool_generator_test.rb",
+      "test/hitch/mcp_test_helper_test.rb"
+    ],
+    label: "MCP tool generator"
+  }
+}.freeze
 
 def usage(status:, message: nil)
   warn message if message
@@ -17,16 +33,12 @@ end
 target = ARGV.shift
 usage(status: 0) if %w[-h --help].include?(target)
 usage(status: 64, message: "Missing generator target") unless target
-usage(status: 64, message: "Unknown generator target: #{target.inspect}") unless TARGETS.include?(target)
+usage(status: 64, message: "Unknown generator target: #{target.inspect}") unless TARGETS.key?(target)
 usage(status: 64, message: "Unexpected arguments: #{ARGV.join(' ')}") if ARGV.any?
 
-if target == "tool"
-  warn "Generator target #{target.inspect} is intentionally unavailable until M5.2"
-  exit 69
-end
-
-schema = File.join(ROOT, "test/lattice/mcp_install_generator.json")
-checked_path = File.join(ROOT, "test/lattice/mcp_install_generator_scenarios.json")
+configuration = TARGETS.fetch(target)
+schema = File.join(ROOT, configuration.fetch(:schema))
+checked_path = File.join(ROOT, configuration.fetch(:scenarios))
 generated, lattice_error, lattice_status = Bundler.with_unbundled_env do
   Open3.capture3(
     "lattice", "generate", schema, "--format", "json", "--seed", "42",
@@ -34,10 +46,10 @@ generated, lattice_error, lattice_status = Bundler.with_unbundled_env do
   )
 end
 abort lattice_error unless lattice_status.success?
-abort "MCP installer Lattice scenarios differ from the checked artifact" unless
+abort "#{configuration.fetch(:label)} Lattice scenarios differ from the checked artifact" unless
   JSON.parse(generated) == JSON.parse(File.read(checked_path))
 
-command = [ File.join(ROOT, "bin/ci-test"), "test/hitch/mcp_install_generator_test.rb" ]
+command = [ File.join(ROOT, "bin/ci-test"), *configuration.fetch(:tests) ]
 output = +""
 status = nil
 Open3.popen2e(*command, chdir: ROOT) do |_stdin, stream, wait_thread|
@@ -47,13 +59,13 @@ Open3.popen2e(*command, chdir: ROOT) do |_stdin, stream, wait_thread|
   end
   status = wait_thread.value
 end
-abort "MCP install generator suite failed" unless status.success?
+abort "#{configuration.fetch(:label)} suite failed" unless status.success?
 
 summary = output.scan(/(\d+) runs, (\d+) assertions, (\d+) failures, (\d+) errors, (\d+) skips/).last
-abort "MCP install generator suite has no unambiguous Minitest summary" unless summary
-abort "MCP install generator suite must have zero failures, errors, and skips" unless
+abort "#{configuration.fetch(:label)} suite has no unambiguous Minitest summary" unless summary
+abort "#{configuration.fetch(:label)} suite must have zero failures, errors, and skips" unless
   summary.drop(2).map(&:to_i) == [ 0, 0, 0 ]
 
 scenarios = JSON.parse(File.read(checked_path)).fetch("scenarios")
-puts "MCP install generator verified: #{scenarios.length} pairwise rows, " \
+puts "#{configuration.fetch(:label)} verified: #{scenarios.length} pairwise rows, " \
   "#{summary.fetch(0)} runs, #{summary.fetch(1)} assertions, zero skips"

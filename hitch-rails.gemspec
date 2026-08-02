@@ -24,7 +24,10 @@ Gem::Specification.new do |spec|
     structural-only request/invocation notifications complete the runtime
     boundary. A collision-safe Rails generator installs the host-owned MCP
     controller, empty explicit Registry, deny-default settings, and ordered
-    route with checksum-guarded rollback. A deprecated ServerEndpoint
+    route with checksum-guarded rollback. A separate explicit generator creates
+    deny-default tool/test pairs without editing the Registry, and a public
+    test helper constructs the final authenticated Rails integration requests.
+    A deprecated ServerEndpoint
     compatibility concern remains available through the 0.2 line for bearer
     validation and basic MCP Streamable HTTP response shaping. Principal lookup is
     host-configurable, browser origins are exact and default-deny, and both
@@ -58,6 +61,8 @@ Gem::Specification.new do |spec|
       lib/generators/hitch/mcp/templates/controller.rb.tt
       lib/generators/hitch/mcp/templates/initializer.rb.tt
       lib/generators/hitch/mcp/templates/registry.rb.tt
+      lib/generators/hitch/tool/templates/tool.rb.tt
+      lib/generators/hitch/tool/templates/tool_test.rb.tt
     ]
     files.concat(
       Dir[

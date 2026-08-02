@@ -19,6 +19,16 @@ is not tagged, GitHub-released, or published to RubyGems.
   file, constant, route, or manifest collision before writing anything,
   supports an explicit `--controller-name`, and records checksums for an exact
   non-destructive generator rollback that refuses customized artifacts.
+- Added the explicit `hitch:tool` generator and
+  `Hitch::MCP::TestHelper`. Tool names and optional namespaces normalize to
+  one deterministic class, MCP name, model path, and Minitest path. Generated
+  schemas are closed and empty, visibility and argument policy deny, execution
+  raises until implemented, and conservative annotations make no safety claim.
+  The generator refuses file/constant/manifest collisions, never edits the
+  Registry, prints one manual registration line, and checksum-guards rollback.
+  The helper produces modern authenticated headers and JSON-RPC envelopes from
+  the current configured resource while rejecting malformed bearer, method,
+  name, version, and non-JSON test inputs.
 
 ## [0.2.0.pre.3] - 2026-08-02
 

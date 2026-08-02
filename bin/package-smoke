@@ -67,6 +67,10 @@ REQUIRED_PACKAGE_FILES = %w[
   lib/generators/hitch/mcp/templates/controller.rb.tt
   lib/generators/hitch/mcp/templates/initializer.rb.tt
   lib/generators/hitch/mcp/templates/registry.rb.tt
+  lib/generators/hitch/tool_generator.rb
+  lib/generators/hitch/tool/templates/tool.rb.tt
+  lib/generators/hitch/tool/templates/tool_test.rb.tt
+  lib/hitch/mcp/test_helper.rb
   lib/hitch/version.rb
 ].freeze
 
@@ -136,6 +140,7 @@ def adoption_commands(profile)
     "bundle exec rails db:create",
     "bundle exec rails db:migrate",
     "bundle exec rails generate hitch:mcp:install",
+    "bundle exec rails generate hitch:tool package_echo",
     "bundle exec rails runner <discovery-authorization-and-mcp-smoke>"
   ]
 end
@@ -310,7 +315,7 @@ def smoke_runner(profile_name, expected_adapter)
       artifact_install: "local_gem_repository",
       mcp: MCP::VERSION,
       sdk_adapter: "private_artifact_code_loaded",
-      generator: "ok",
+      generators: "mcp_install_and_tool_ok",
       migrations: "ok",
       boot: "ok",
       discovery: "ok",
@@ -491,6 +496,15 @@ Dir.mktmpdir("hitch-package-smoke-") do |directory|
         environment: database_environment,
         chdir: app
       )
+      registry_path = File.join(app, "app/models/mcp_tool_registry.rb")
+      registry_before_tool_generation = File.binread(registry_path)
+      run!(
+        "bundle", "exec", "rails", "generate", "hitch:tool", "package_echo",
+        environment: database_environment,
+        chdir: app
+      )
+      raise "tool generator edited the explicit registry" unless
+        File.binread(registry_path) == registry_before_tool_generation
 
       output = capture!(
         "bundle", "exec", "rails", "runner",

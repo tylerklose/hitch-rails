@@ -69,7 +69,11 @@ class PackageContractTest < ActiveSupport::TestCase
       lib/generators/hitch/mcp/templates/controller.rb.tt
       lib/generators/hitch/mcp/templates/initializer.rb.tt
       lib/generators/hitch/mcp/templates/registry.rb.tt
+      lib/generators/hitch/tool_generator.rb
+      lib/generators/hitch/tool/templates/tool.rb.tt
+      lib/generators/hitch/tool/templates/tool_test.rb.tt
       lib/hitch/mcp/configuration.rb
+      lib/hitch/mcp/test_helper.rb
     ]
     required.concat(Dir.chdir(REPOSITORY_ROOT) { Dir["db/migrate/*.rb"] })
 

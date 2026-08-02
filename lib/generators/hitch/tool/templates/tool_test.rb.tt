@@ -1,0 +1,38 @@
+# frozen_string_literal: true
+
+require "test_helper"
+require "hitch/mcp/test_helper"
+
+class <%= @test_class_name %> < ActiveSupport::TestCase
+  include Hitch::MCP::TestHelper
+
+  test "declares a closed empty input schema" do
+    assert_equal "<%= @tool_name %>", <%= @class_name %>.tool_name
+    assert_equal(
+      {
+        type: "object",
+        properties: {},
+        additionalProperties: false
+      },
+      <%= @class_name %>.input_schema
+    )
+  end
+
+  test "starts unavailable and argument policy denies" do
+    context = Object.new.freeze
+    arguments = {}.freeze
+
+    assert_equal false, <%= @class_name %>.available_to?(context)
+    assert_raises(Hitch::MCP::Forbidden) do
+      <%= @class_name %>.authorize!(context, arguments:)
+    end
+  end
+
+  test "requires host execution before availability changes" do
+    error = assert_raises(RuntimeError) do
+      <%= @class_name %>.perform(Object.new.freeze, arguments: {}.freeze)
+    end
+
+    assert_includes error.message, "Implement <%= @class_name %>.perform"
+  end
+end

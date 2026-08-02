@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "digest"
 require "fileutils"
 require "open3"
 require "tmpdir"
@@ -12,7 +13,7 @@ class VerifyToolchainTest < ActiveSupport::TestCase
 
   setup do
     @root = Dir.mktmpdir("hitch-toolchain")
-    %w[ROADMAP.md test/lattice/mcp_tool_authorization.json test/lattice/mcp_tool_authorization_scenarios.json test/conformance/toolchain.lock.yml test/conformance/expected-failures.yml test/conformance/package.json test/conformance/package-lock.json test/conformance/harness.patch].each do |relative_path|
+    %w[ROADMAP.md test/lattice/mcp_tool_authorization.json test/lattice/mcp_tool_authorization_scenarios.json test/lattice/m5_automated_clients.json test/lattice/m5_automated_clients_scenarios.json test/conformance/toolchain.lock.yml test/conformance/expected-failures.yml test/conformance/package.json test/conformance/package-lock.json test/conformance/harness.patch test/checkpoint/automated_clients.rb test/checkpoint/pinned_redis.rb test/clients/typescript/package.json test/clients/typescript/package-lock.json test/clients/typescript/smoke.mjs test/clients/python/requirements.lock test/clients/python/smoke.py].each do |relative_path|
       destination = File.join(@root, relative_path)
       FileUtils.mkdir_p(File.dirname(destination))
       FileUtils.cp(REPOSITORY_ROOT.join(relative_path), destination)
@@ -77,6 +78,34 @@ class VerifyToolchainTest < ActiveSupport::TestCase
     _stdout, stderr, status = run_verifier
     assert_not status.success?
     assert_includes stderr, "checksum drift for test/conformance/harness.patch"
+  end
+
+  test "rejects automated client fixture, matrix, or package lock drift" do
+    File.write(File.join(@root, "test/clients/typescript/smoke.mjs"), "drift")
+    File.write(File.join(@root, "test/checkpoint/pinned_redis.rb"), "drift")
+    File.write(File.join(@root, "test/lattice/m5_automated_clients_scenarios.json"), "{}")
+
+    _stdout, stderr, status = run_verifier
+    assert_not status.success?
+    assert_includes stderr, "checksum drift for test/clients/typescript/smoke.mjs"
+    assert_includes stderr, "checksum drift for test/checkpoint/pinned_redis.rb"
+    assert_includes stderr, "checksum drift for test/lattice/m5_automated_clients_scenarios.json"
+    assert_includes stderr, "invalid generated scenarios"
+  end
+
+  test "rejects an exact Python dependency without a hash" do
+    path = File.join(@root, "test/clients/python/requirements.lock")
+    content = File.read(path)
+    content.sub!(/annotated-types==0\.8\.0 \\\n(?:    --hash=sha256:[0-9a-f]{64}(?: \\\n|\n))+/, "annotated-types==0.8.0\n")
+    File.write(path, content)
+    mutate_lock do |lock|
+      lock.dig("automated_clients", "python", "requirements_lock")["sha256"] =
+        Digest::SHA256.file(path).hexdigest
+    end
+
+    _stdout, stderr, status = run_verifier
+    assert_not status.success?
+    assert_includes stderr, "every exact dependency must carry at least one SHA-256 hash"
   end
 
   test "selected live binary version cannot be shadowed by an unrelated Ruby gem" do

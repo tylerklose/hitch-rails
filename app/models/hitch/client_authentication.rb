@@ -20,9 +20,13 @@ module Hitch
       authorization = request.headers["Authorization"].to_s
       return public_client_id(body_client_id, body_secret_present:) if authorization.blank?
 
-      raise Invalid.new("invalid_request", "client credentials must use exactly one authentication method") if body_client_id.present? || body_secret_present
+      raise Invalid.new("invalid_request", "client_secret is not accepted in the request body") if body_secret_present
 
       client_id, secret = decode_basic(authorization)
+      if body_client_id.present? && body_client_id != client_id
+        raise Invalid.new("invalid_client", "Client authentication failed", http_status: :unauthorized)
+      end
+
       client = Hitch::Client.find_by(client_id: client_id)
       unless client&.authenticates_secret?(secret)
         raise Invalid.new("invalid_client", "Client authentication failed", http_status: :unauthorized)

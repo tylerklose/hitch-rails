@@ -79,6 +79,146 @@ unless patch["authorization_input"] == "private_mode_0600_file" &&
   errors << "conformance.harness_patch: private-file credential input and unchanged scenario assertions are required"
 end
 
+automated_clients = lock["automated_clients"] || {}
+rails_server = automated_clients["rails_server"] || {}
+unless rails_server["package"] == "puma" && rails_server["version"].to_s == "8.0.2"
+  errors << "automated_clients.rails_server: exact puma 8.0.2 pin is required"
+end
+%w[harness redis_service].each do |key|
+  entry = automated_clients[key]
+  unless entry.is_a?(Hash) && entry["path"] && entry["sha256"].to_s.match?(/\A[0-9a-f]{64}\z/)
+    errors << "automated_clients.#{key}: path and SHA-256 pin are required"
+    next
+  end
+  target = File.join(root, entry.fetch("path"))
+  if !File.file?(target)
+    errors << "automated_clients.#{key}: missing #{entry.fetch('path')}"
+  elsif Digest::SHA256.file(target).hexdigest != entry.fetch("sha256")
+    errors << "automated_clients.#{key}: checksum drift for #{entry.fetch('path')}"
+  end
+end
+client_matrix = automated_clients["matrix"] || {}
+%w[schema scenarios].each do |key|
+  entry = client_matrix[key]
+  unless entry.is_a?(Hash) && entry["path"] && entry["sha256"].to_s.match?(/\A[0-9a-f]{64}\z/)
+    errors << "automated_clients.matrix.#{key}: path and SHA-256 pin are required"
+    next
+  end
+  target = File.join(root, entry.fetch("path"))
+  if !File.file?(target)
+    errors << "automated_clients.matrix.#{key}: missing #{entry.fetch('path')}"
+  elsif Digest::SHA256.file(target).hexdigest != entry.fetch("sha256")
+    errors << "automated_clients.matrix.#{key}: checksum drift for #{entry.fetch('path')}"
+  end
+end
+client_scenarios_pin = client_matrix["scenarios"] || {}
+unless client_scenarios_pin["seed"] == 42 && client_scenarios_pin["exhaustive_strength"] == 3 &&
+    client_scenarios_pin["expected_rows"] == 8
+  errors << "automated_clients.matrix: exhaustive strength 3, seed 42, and 8 rows are required"
+end
+
+%w[typescript python].each do |client|
+  entry = automated_clients[client] || {}
+  file_keys = client == "typescript" ? %w[package_manifest package_lock fixture] : %w[requirements_lock fixture]
+  file_keys.each do |key|
+    file_pin = entry[key]
+    unless file_pin.is_a?(Hash) && file_pin["path"] && file_pin["sha256"].to_s.match?(/\A[0-9a-f]{64}\z/)
+      errors << "automated_clients.#{client}.#{key}: path and SHA-256 pin are required"
+      next
+    end
+    target = File.join(root, file_pin.fetch("path"))
+    if !File.file?(target)
+      errors << "automated_clients.#{client}.#{key}: missing #{file_pin.fetch('path')}"
+    elsif Digest::SHA256.file(target).hexdigest != file_pin.fetch("sha256")
+      errors << "automated_clients.#{client}.#{key}: checksum drift for #{file_pin.fetch('path')}"
+    end
+  end
+end
+
+typescript = automated_clients["typescript"] || {}
+unless typescript["package"] == "@modelcontextprotocol/client" && typescript["version"].to_s == "2.0.0" &&
+    typescript["shasum"] == "4dc18c983c7acb40040f08442123e3c5b88d6074" &&
+    typescript["integrity"] == "sha512-8f1OghQ2rjzIOfqgUCP+8GiUWqRs89njoWLNqAe8kWmDePv3s1fZXseej+QXemssEuuOvLLmLO/kqM3IQHtISw==" &&
+    typescript["artifact"] == "https://registry.npmjs.org/@modelcontextprotocol/client/-/client-2.0.0.tgz"
+  errors << "automated_clients.typescript: exact official 2.0.0 artifact pins are required"
+end
+
+python_client = automated_clients["python"] || {}
+unless python_client["package"] == "mcp" && python_client["version"].to_s == "2.0.0" &&
+    python_client["lock_generator"] == "pip-tools" && python_client["lock_generator_version"].to_s == "7.5.3" &&
+    python_client["sha256"] == "1cb4c75d2d2c7b8c1d756355e5d82a39f2822cc7f13e22a2051d7ca3592349d6" &&
+    python_client["artifact"] == "https://files.pythonhosted.org/packages/67/72/7d7897418912c1d12e87556630dfb7bf0eac71160e9bef8b447960804ee3/mcp-2.0.0-py3-none-any.whl"
+  errors << "automated_clients.python: exact official 2.0.0 wheel and lock-generator pins are required"
+end
+
+begin
+  client_scenarios = JSON.parse(File.read(File.join(root, client_scenarios_pin["path"].to_s)))
+  expected_combinations = %w[rails_7_2_sqlite rails_8_1_postgresql].product(
+    %w[typescript python], %w[public confidential]
+  ).map { |database, client, oauth| [ database, client, oauth ] }.sort
+  actual_combinations = client_scenarios.fetch("scenarios").map do |scenario|
+    values = scenario.fetch("values")
+    [ values.fetch("database"), values.fetch("sdk"), values.fetch("oauth_client") ]
+  end.sort
+  meta = client_scenarios.fetch("meta")
+  unless meta.values_at("strength", "test_count", "exhaustive_count", "seed") == [ 3, 8, 8, 42 ] &&
+      actual_combinations == expected_combinations
+    errors << "automated_clients.matrix: generated rows must be the exact exhaustive 2x2x2 matrix"
+  end
+rescue Errno::ENOENT, JSON::ParserError, KeyError, TypeError => error
+  errors << "automated_clients.matrix: invalid generated scenarios: #{error.message}"
+end
+
+begin
+  package = JSON.parse(File.read(File.join(root, typescript.dig("package_manifest", "path").to_s)))
+  package_lock = JSON.parse(File.read(File.join(root, typescript.dig("package_lock", "path").to_s)))
+  locked = package_lock.dig("packages", "node_modules/@modelcontextprotocol/client") || {}
+  unless package.dig("dependencies", "@modelcontextprotocol/client") == "2.0.0" &&
+      package_lock.dig("packages", "", "dependencies", "@modelcontextprotocol/client") == "2.0.0" &&
+      locked["version"] == "2.0.0" && locked["resolved"] == typescript["artifact"] &&
+      locked["integrity"] == typescript["integrity"]
+    errors << "automated_clients.typescript: package lock disagrees with the exact official client pin"
+  end
+rescue Errno::ENOENT, JSON::ParserError => error
+  errors << "automated_clients.typescript: invalid package lock: #{error.message}"
+end
+
+begin
+  requirements_path = File.join(root, python_client.dig("requirements_lock", "path").to_s)
+  requirement_entries = []
+  current_requirement = nil
+  File.readlines(requirements_path, chomp: true).each do |line|
+    stripped = line.strip
+    next if stripped.empty? || stripped.start_with?("#")
+
+    if stripped.start_with?("--hash=")
+      if current_requirement.nil? || !stripped.match?(/\A--hash=sha256:[0-9a-f]{64}(?: \\)?\z/)
+        errors << "automated_clients.python: every continuation must be a SHA-256 hash"
+      else
+        current_requirement.fetch(:hashes) << stripped.delete_suffix(" \\").delete_prefix("--hash=sha256:")
+      end
+      next
+    end
+
+    requirement = stripped.delete_suffix(" \\")
+    unless requirement.match?(/\A[A-Za-z0-9_.-]+==[^=\s]+\z/)
+      errors << "automated_clients.python: requirements must pin every dependency exactly"
+      current_requirement = nil
+      next
+    end
+    current_requirement = { requirement:, hashes: [] }
+    requirement_entries << current_requirement
+  end
+  errors << "automated_clients.python: every exact dependency must carry at least one SHA-256 hash" unless
+    requirement_entries.any? && requirement_entries.all? { |entry| entry.fetch(:hashes).any? }
+  mcp_entries = requirement_entries.select { |entry| entry.fetch(:requirement) == "mcp==2.0.0" }
+  errors << "automated_clients.python: requirements must pin mcp==2.0.0 exactly once" unless mcp_entries.one?
+  errors << "automated_clients.python: requirements must include the pinned official MCP wheel hash" unless
+    mcp_entries.one? && mcp_entries.first.fetch(:hashes).include?(python_client["sha256"])
+rescue Errno::ENOENT => error
+  errors << "automated_clients.python: invalid requirements lock: #{error.message}"
+end
+
 begin
   package = JSON.parse(File.read(File.join(root, conformance.dig("package_manifest", "path").to_s)))
   package_lock = JSON.parse(File.read(File.join(root, conformance.dig("package_lock", "path").to_s)))

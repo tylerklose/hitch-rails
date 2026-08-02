@@ -15,6 +15,19 @@ require "yaml"
 
 ROOT = File.expand_path("..", __dir__)
 GEMSPEC_PATH = File.join(ROOT, "hitch-rails.gemspec")
+PACKAGE_APP_SERVER_VERSION = "8.0.2"
+PACKAGE_SMOKE_USAGE = "Usage: bin/package-smoke [--automated-clients]"
+unless ARGV.empty? || ARGV == [ "--automated-clients" ]
+  warn PACKAGE_SMOKE_USAGE
+  exit 64
+end
+
+automated_client_environment = ENV["HITCH_AUTOMATED_CLIENT_SMOKES"]
+unless automated_client_environment.nil? || automated_client_environment == "1"
+  raise "HITCH_AUTOMATED_CLIENT_SMOKES must be 1 when present"
+end
+AUTOMATED_CLIENT_SMOKES = ARGV == [ "--automated-clients" ] || automated_client_environment == "1"
+require_relative "../test/checkpoint/automated_clients" if AUTOMATED_CLIENT_SMOKES
 
 PROFILES = {
   "rails_7_2_sqlite" => {
@@ -110,6 +123,7 @@ def app_gemfile(local_repository, specification, profile)
 
     gem "rails", "#{profile.fetch(:rails)}"
     #{profile.fetch(:adapter_gem)}
+    gem "puma", "=#{PACKAGE_APP_SERVER_VERSION}"
 
     source "file://#{local_repository}" do
       gem "#{specification.name}", "=#{specification.version}"
@@ -335,8 +349,30 @@ end
 def package_input_snapshot
   specification = Gem::Specification.load(GEMSPEC_PATH) || raise("could not load #{GEMSPEC_PATH}")
   appraisal_files = PROFILES.values.map { |profile| Pathname(profile.fetch(:appraisal)).relative_path_from(Pathname(ROOT)).to_s }
-  relative_paths = (specification.files + appraisal_files +
-    %w[bin/package-smoke docs/work_packets/index.yml hitch-rails.gemspec]).uniq.sort
+  acceptance_files = if AUTOMATED_CLIENT_SMOKES
+    %w[
+      test/checkpoint/automated_clients.rb
+      test/checkpoint/pinned_redis.rb
+      test/clients/python/requirements.lock
+      test/clients/python/smoke.py
+      test/clients/typescript/package.json
+      test/clients/typescript/package-lock.json
+      test/clients/typescript/smoke.mjs
+      test/conformance/toolchain.lock.yml
+      test/lattice/m5_automated_clients.json
+      test/lattice/m5_automated_clients_scenarios.json
+    ]
+  else
+    []
+  end
+  relative_paths = (specification.files + appraisal_files + acceptance_files +
+    %w[
+      bin/client-smokes
+      bin/package-apps
+      bin/package-smoke
+      docs/work_packets/index.yml
+      hitch-rails.gemspec
+    ]).uniq.sort
 
   {
     "manifest" => specification.files.sort,
@@ -462,121 +498,158 @@ Dir.mktmpdir("hitch-package-smoke-") do |directory|
   FileUtils.cp(artifact, File.join(local_repository, "gems"))
   run!("gem", "generate_index", "--directory", local_repository)
 
-  applications = PROFILES.map do |profile_name, profile|
-    app = File.join(directory, profile_name)
-    run!(
-      "bundle", "exec", "rails", "new", app,
-      "--skip-bundle", "--skip-git", "--skip-keeps", "--skip-bootsnap",
-      "--skip-javascript", "--skip-hotwire", "--skip-asset-pipeline",
-      "--skip-action-mailer", "--skip-action-mailbox", "--skip-action-text",
-      "--skip-active-storage", "--skip-action-cable", "--skip-jbuilder",
-      "--skip-test", "--skip-system-test", "--database=#{profile.fetch(:adapter)}",
-      environment: { "BUNDLE_GEMFILE" => profile.fetch(:appraisal) },
-      chdir: directory
-    )
-
-    File.write(File.join(app, "Gemfile"), app_gemfile(local_repository, specification, profile))
-    File.write(File.join(app, "app/controllers/application_controller.rb"), application_controller)
-    run!("bundle", "config", "set", "--local", "path", "vendor/bundle", chdir: app)
-    run!("bundle", "install", chdir: app)
-    run!("bundle", "exec", "rails", "generate", "hitch:install", chdir: app)
-
-    database_url = if profile.fetch(:adapter) == "sqlite3"
-      "sqlite3:#{File.join(directory, "#{profile_name}.sqlite3")}"
-    else
-      postgresql_url
-    end
-    database_environment = {
-      "DATABASE_URL" => database_url,
-      "RAILS_ENV" => "test",
-      "SCHEMA" => File.join(directory, "#{profile_name}_schema.rb")
-    }
-    database_created = false
-
-    begin
-      run!("bundle", "exec", "rails", "db:create", environment: database_environment, chdir: app)
-      database_created = true
-      run!("bundle", "exec", "rails", "db:migrate", environment: database_environment, chdir: app)
+  run_acceptance = lambda do |automated_clients|
+    applications = PROFILES.map do |profile_name, profile|
+      app = File.join(directory, profile_name)
       run!(
-        "bundle", "exec", "rails", "generate", "hitch:mcp:install",
-        environment: database_environment,
-        chdir: app
+        "bundle", "exec", "rails", "new", app,
+        "--skip-bundle", "--skip-git", "--skip-keeps", "--skip-bootsnap",
+        "--skip-javascript", "--skip-hotwire", "--skip-asset-pipeline",
+        "--skip-action-mailer", "--skip-action-mailbox", "--skip-action-text",
+        "--skip-active-storage", "--skip-action-cable", "--skip-jbuilder",
+        "--skip-test", "--skip-system-test", "--database=#{profile.fetch(:adapter)}",
+        environment: { "BUNDLE_GEMFILE" => profile.fetch(:appraisal) },
+        chdir: directory
       )
-      registry_path = File.join(app, "app/models/mcp_tool_registry.rb")
-      registry_before_tool_generation = File.binread(registry_path)
-      run!(
-        "bundle", "exec", "rails", "generate", "hitch:tool", "package_echo",
-        environment: database_environment,
-        chdir: app
-      )
-      raise "tool generator edited the explicit registry" unless
-        File.binread(registry_path) == registry_before_tool_generation
 
-      doctor_output = capture!(
-        "bundle", "exec", "rails", "hitch:doctor",
-        environment: database_environment.merge("HITCH_DOCTOR_FORMAT" => "json"),
-        chdir: app
-      )
-      doctor = JSON.parse(doctor_output)
-      raise "packaged doctor schema drifted" unless doctor.fetch("schema") == "hitch.doctor.v1"
-      raise "packaged doctor found an actionable failure" if
-        doctor.fetch("checks").any? { |check| check.fetch("status") == "fail" }
-      raise "packaged doctor did not validate package contents" unless
-        doctor.fetch("checks").find { |check| check.fetch("id") == "package" }&.fetch("code") == "complete"
+      File.write(File.join(app, "Gemfile"), app_gemfile(local_repository, specification, profile))
+      File.write(File.join(app, "app/controllers/application_controller.rb"), application_controller)
+      run!("bundle", "config", "set", "--local", "path", "vendor/bundle", chdir: app)
+      run!("bundle", "install", chdir: app)
+      run!("bundle", "exec", "rails", "generate", "hitch:install", chdir: app)
 
-      output = capture!(
-        "bundle", "exec", "rails", "runner",
-        smoke_runner(profile_name, profile.fetch(:adapter)),
-        environment: database_environment.merge("HITCH_SOURCE_ROOT" => ROOT),
-        chdir: app
-      )
-      result_line = output.lines.reverse.find { |line| line.start_with?("HITCH_SMOKE_RESULT=") }
-      raise "disposable app did not report a smoke result\n#{output}" unless result_line
+      database_url = if profile.fetch(:adapter) == "sqlite3"
+        "sqlite3:#{File.join(directory, "#{profile_name}.sqlite3")}"
+      else
+        postgresql_url
+      end
+      database_environment = {
+        "DATABASE_URL" => database_url,
+        "RAILS_ENV" => "test",
+        "SCHEMA" => File.join(directory, "#{profile_name}_schema.rb")
+      }
+      database_created = false
 
-      JSON.parse(result_line.delete_prefix("HITCH_SMOKE_RESULT=")).merge(
-        "doctor" => "no_actionable_failures",
-        "commands" => adoption_commands(profile)
-      )
-    ensure
-      if profile.fetch(:adapter) == "postgresql" && database_created
-        system(database_environment, "bundle", "exec", "rails", "db:drop", chdir: app)
+      begin
+        run!("bundle", "exec", "rails", "db:create", environment: database_environment, chdir: app)
+        database_created = true
+        run!("bundle", "exec", "rails", "db:migrate", environment: database_environment, chdir: app)
+        run!(
+          "bundle", "exec", "rails", "generate", "hitch:mcp:install",
+          environment: database_environment,
+          chdir: app
+        )
+        registry_path = File.join(app, "app/models/mcp_tool_registry.rb")
+        registry_before_tool_generation = File.binread(registry_path)
+        run!(
+          "bundle", "exec", "rails", "generate", "hitch:tool", "package_echo",
+          environment: database_environment,
+          chdir: app
+        )
+        raise "tool generator edited the explicit registry" unless
+          File.binread(registry_path) == registry_before_tool_generation
+
+        doctor_output = capture!(
+          "bundle", "exec", "rails", "hitch:doctor",
+          environment: database_environment.merge("HITCH_DOCTOR_FORMAT" => "json"),
+          chdir: app
+        )
+        doctor = JSON.parse(doctor_output)
+        raise "packaged doctor schema drifted" unless doctor.fetch("schema") == "hitch.doctor.v1"
+        raise "packaged doctor found an actionable failure" if
+          doctor.fetch("checks").any? { |check| check.fetch("status") == "fail" }
+        raise "packaged doctor did not validate package contents" unless
+          doctor.fetch("checks").find { |check| check.fetch("id") == "package" }&.fetch("code") == "complete"
+
+        output = capture!(
+          "bundle", "exec", "rails", "runner",
+          smoke_runner(profile_name, profile.fetch(:adapter)),
+          environment: database_environment.merge("HITCH_SOURCE_ROOT" => ROOT),
+          chdir: app
+        )
+        result_line = output.lines.reverse.find { |line| line.start_with?("HITCH_SMOKE_RESULT=") }
+        raise "disposable app did not report a smoke result\n#{output}" unless result_line
+
+        application_result = JSON.parse(result_line.delete_prefix("HITCH_SMOKE_RESULT=")).merge(
+          "doctor" => "no_actionable_failures",
+          "commands" => adoption_commands(profile)
+        )
+        if automated_clients
+          application_result["automated_clients"] = automated_clients.run(
+            app:,
+            profile_name:,
+            environment: database_environment
+          )
+        end
+        application_result
+      ensure
+        if profile.fetch(:adapter) == "postgresql" && database_created
+          primary_failure = $!
+          cleanup_environment = database_environment
+          if automated_clients
+            cleanup_environment = cleanup_environment.merge(
+              automated_clients.host_environment(resource_uri: "http://127.0.0.1/mcp")
+            )
+          end
+          begin
+            run!(
+              "bundle", "exec", "rails", "db:drop",
+              environment: cleanup_environment,
+              chdir: app
+            )
+          rescue StandardError => cleanup_failure
+            raise cleanup_failure unless primary_failure
+
+            warn "PostgreSQL cleanup also failed: #{cleanup_failure.message}"
+          end
+        end
       end
     end
-  end
 
-  manifest = artifact_contents.map do |path|
-    source = File.join(extraction, path)
+    manifest = artifact_contents.map do |path|
+      source = File.join(extraction, path)
+      {
+        "path" => path,
+        "size" => File.size(source),
+        "sha256" => Digest::SHA256.file(source).hexdigest
+      }
+    end
+
     {
-      "path" => path,
-      "size" => File.size(source),
-      "sha256" => Digest::SHA256.file(source).hexdigest
+      "command_surface" => AUTOMATED_CLIENT_SMOKES ? "client-smokes --automated" : "package-apps",
+      "artifact_version" => specification.version.to_s,
+      "target_checkpoint" => artifact_policy.fetch("version"),
+      "phase" => development ? "development" : "checkpoint",
+      "checkpoint_sealed" => !development,
+      "published" => false,
+      "development" => development,
+      "milestone" => policy_issue,
+      "distribution" => artifact_policy.fetch("distribution"),
+      "artifact" => {
+        "name" => File.basename(artifact),
+        "sha256" => Digest::SHA256.file(artifact).hexdigest,
+        "source" => "locally_built_gem",
+        "checks" => {
+          "embedded_manifest" => "matches_explicit_allowlist",
+          "archive_contents" => "match_embedded_manifest",
+          "source_bytes" => "match_checkout",
+          "forbidden_paths" => "absent",
+          "checkpoint_contract" => "ready"
+        },
+        "manifest" => manifest
+      },
+      "automated_client_runtime" => automated_clients&.evidence,
+      "disposable_apps" => applications
     }
   end
 
-  report = {
-    "artifact_version" => specification.version.to_s,
-    "target_checkpoint" => artifact_policy.fetch("version"),
-    "phase" => development ? "development" : "checkpoint",
-    "checkpoint_sealed" => !development,
-    "published" => false,
-    "development" => development,
-    "milestone" => policy_issue,
-    "distribution" => artifact_policy.fetch("distribution"),
-    "artifact" => {
-      "name" => File.basename(artifact),
-      "sha256" => Digest::SHA256.file(artifact).hexdigest,
-      "source" => "locally_built_gem",
-      "checks" => {
-        "embedded_manifest" => "matches_explicit_allowlist",
-        "archive_contents" => "match_embedded_manifest",
-        "source_bytes" => "match_checkout",
-        "forbidden_paths" => "absent",
-        "checkpoint_contract" => "ready"
-      },
-      "manifest" => manifest
-    },
-    "disposable_apps" => applications
-  }
+  report = if AUTOMATED_CLIENT_SMOKES
+    HitchCheckpoint::AutomatedClients.open(root: ROOT, working_directory: directory) do |automated_clients|
+      run_acceptance.call(automated_clients)
+    end
+  else
+    run_acceptance.call(nil)
+  end
 end
 
 after_status = capture!("git", "status", "--porcelain=v1", "-z", "--untracked-files=all")
@@ -595,4 +668,8 @@ else
   puts json
 end
 
-puts "Package manifest and disposable Rails adoption smoke passed."
+if AUTOMATED_CLIENT_SMOKES
+  puts "Package, disposable Rails apps, and automated official client smokes passed."
+else
+  puts "Package manifest and disposable Rails adoption smoke passed."
+end

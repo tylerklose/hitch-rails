@@ -122,7 +122,6 @@ Dir.mktmpdir("hitch-release-check-") do |directory|
     CHANGELOG.md
     README.md
     SECURITY.md
-    bin/release-check
     docs/public_api/#{contract_version}.md
     docs/removing.md
     docs/upgrading/#{contract_version}.md

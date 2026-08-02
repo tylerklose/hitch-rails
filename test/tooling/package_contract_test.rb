@@ -89,6 +89,8 @@ class PackageContractTest < ActiveSupport::TestCase
     forbidden = @specification.files.grep(%r{\A(?:test|spec|tmp|log)/|\Adocs/(?:evidence|work_packets)/})
     assert_empty forbidden
     refute_includes @specification.files, "bin/ci"
+    refute_includes @specification.files, "bin/client-smokes"
+    refute_includes @specification.files, "bin/package-apps"
     refute_includes @specification.files, "bin/package-smoke"
     refute_includes @specification.files, "bin/release-check"
     refute_includes @specification.files, "Rakefile"
@@ -104,6 +106,12 @@ class PackageContractTest < ActiveSupport::TestCase
     assert_includes source, "package inputs changed during smoke"
     assert_includes source, "verify_package_contract!"
     assert_includes source, "artifact_policy_for"
+    assert_includes source, "bin/package-apps"
+    assert_includes source, "bin/client-smokes"
+    assert_includes source, 'gem "puma", "=#{PACKAGE_APP_SERVER_VERSION}"'
+    assert_includes source, "automated_clients.host_environment"
+    assert_match(/run!\([\s\S]*?"bundle", "exec", "rails", "db:drop"/, source)
+    refute_includes source, 'system(database_environment, "bundle", "exec", "rails", "db:drop"'
     refute_includes source, 'gem "hitch-rails", path:'
   end
 
@@ -143,6 +151,8 @@ class PackageContractTest < ActiveSupport::TestCase
     assert_includes source, "published_contents == published_files"
     assert_includes source, "FORBIDDEN_PACKAGE_PATHS"
     assert_includes source, "published gem contains forbidden paths"
+    required_payload = source.match(/required = %W\[(?<files>.*?)\n  \]/m)[:files]
+    refute_includes required_payload, "bin/release-check"
   end
 
   test "release check rejects internal and malformed versions before network access" do

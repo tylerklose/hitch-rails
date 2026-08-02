@@ -240,6 +240,17 @@ class MCPListingTest < ActionDispatch::IntegrationTest
     assert_equal 0, McpController.wire_metrics.fetch(:sdk, 0)
   end
 
+  test "the initial bearer challenge requests only the base scope" do
+    post_listing_mcp(method: "server/discover", token: nil)
+
+    assert_response :unauthorized
+    challenge = response.headers.fetch("WWW-Authenticate")
+    assert_includes challenge, 'scope="mcp"'
+    refute_includes challenge, "admin"
+    assert_includes challenge,
+      'resource_metadata="https://dummy.test/.well-known/oauth-protected-resource/mcp"'
+  end
+
   test "a missing or raising scope resolver fails closed before registry and sdk work" do
     [
       nil,

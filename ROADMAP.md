@@ -213,7 +213,10 @@ not be blank. The authorization-query set is `response_type`, `client_id`,
 `redirect_uri`, `scope`, `state`, `code_challenge`, `code_challenge_method`, and
 `resource`. The token-form set is `grant_type`, `code`, public `client_id`,
 `code_verifier`, `resource`, and a supplied legacy `redirect_uri`; Basic
-credentials are parsed separately and duplicate body credentials are rejected.
+credentials are parsed separately. A confidential client's Basic exchange may
+repeat the same scalar `client_id` in the form for official-SDK compatibility;
+body secrets and mismatched, duplicate, or structured body client IDs are
+rejected before code consumption.
 `response_type` must be `code`, `grant_type` must be `authorization_code`, and
 `code_challenge_method` must be `S256`. Token `redirect_uri` is shape-checked but
 ignored for binding. PKCE, client, resource, and confidential authentication

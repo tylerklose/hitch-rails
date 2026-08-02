@@ -3,7 +3,7 @@ contract:
   protocol_version: "2026-07-28"
   roadmap:
     path: ROADMAP.md
-    sha256: b654406348df458c4b44fc7ec1abd1f172309df5ef7d67661d6852d0089aaed8
+    sha256: 91a118def8caefcad47488234f32a5a1f5a10084ff7a999dd7b099201bc3d11e
   lattice_schema:
     path: test/lattice/mcp_tool_authorization.json
     sha256: 70aec37011d2be7a1b7ed8e72118cd7d4c2305848b645c6745cdf1ba385710e7
@@ -43,6 +43,54 @@ conformance:
     sha256: 495975758b1f42f08c91b46f4151529348d2c8e82e376f672b27d7018faaca8b
     authorization_input: private_mode_0600_file
     upstream_scenario_assertions_changed: false
+automated_clients:
+  rails_server:
+    package: puma
+    version: 8.0.2
+  harness:
+    path: test/checkpoint/automated_clients.rb
+    sha256: 553fd9d95ea83d2f097d25abe2df1525fd975ede67df14bb6bf8b2a17efbdf3b
+  redis_service:
+    path: test/checkpoint/pinned_redis.rb
+    sha256: 197e57b49c785b0ce1a8eecba41531206fc8c46089d5577a7d61c643ef803bae
+  matrix:
+    schema:
+      path: test/lattice/m5_automated_clients.json
+      sha256: 0cfd777295abaedbdb595df86b5861ef89e89e1e7ea4042755ecb5ad310903a3
+    scenarios:
+      path: test/lattice/m5_automated_clients_scenarios.json
+      sha256: 92ea37a048ead1ba1ef959956074266e7a65b7d989157844b1facbd40c2ab4a5
+      seed: 42
+      exhaustive_strength: 3
+      expected_rows: 8
+  typescript:
+    package: "@modelcontextprotocol/client"
+    version: 2.0.0
+    shasum: 4dc18c983c7acb40040f08442123e3c5b88d6074
+    integrity: sha512-8f1OghQ2rjzIOfqgUCP+8GiUWqRs89njoWLNqAe8kWmDePv3s1fZXseej+QXemssEuuOvLLmLO/kqM3IQHtISw==
+    artifact: https://registry.npmjs.org/@modelcontextprotocol/client/-/client-2.0.0.tgz
+    package_manifest:
+      path: test/clients/typescript/package.json
+      sha256: 016f1d27d48d711749dcc0b4f5ad74129c223be0274bdaa965e052874ec1190c
+    package_lock:
+      path: test/clients/typescript/package-lock.json
+      sha256: 8af64c115bfa39814622dc9a9b79ffa6766469c896cc898e4ee1445d0ada72b2
+    fixture:
+      path: test/clients/typescript/smoke.mjs
+      sha256: 0c78ce56d32e86c0e7bd607812b5960d03f787f252737cb2048b335b26ac0557
+  python:
+    package: mcp
+    version: 2.0.0
+    lock_generator: pip-tools
+    lock_generator_version: 7.5.3
+    artifact: https://files.pythonhosted.org/packages/67/72/7d7897418912c1d12e87556630dfb7bf0eac71160e9bef8b447960804ee3/mcp-2.0.0-py3-none-any.whl
+    sha256: 1cb4c75d2d2c7b8c1d756355e5d82a39f2822cc7f13e22a2051d7ca3592349d6
+    requirements_lock:
+      path: test/clients/python/requirements.lock
+      sha256: ae6a19492ee0c0c493ea66fd3bb2134c79a30eae2fe51257c7c43955e930fc63
+    fixture:
+      path: test/clients/python/smoke.py
+      sha256: 3fb86a2854c2a31f8c83fd36f46c555153cce1b046bdd404c8091d85895c3f96
 lattice:
   package: lattice-cli
   implementation: python

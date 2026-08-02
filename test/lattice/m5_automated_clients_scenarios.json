@@ -1,0 +1,111 @@
+{
+  "meta": {
+    "model_name": "hitch_m5_automated_clients",
+    "strength": 3,
+    "test_count": 8,
+    "exhaustive_count": 8,
+    "reduction": "1x",
+    "coverage": "100.0%",
+    "seed": 42
+  },
+  "coverage_curve": [
+    {
+      "scenario": 1,
+      "cumulative_pct": 12.5
+    },
+    {
+      "scenario": 2,
+      "cumulative_pct": 25.0
+    },
+    {
+      "scenario": 3,
+      "cumulative_pct": 37.5
+    },
+    {
+      "scenario": 4,
+      "cumulative_pct": 50.0
+    },
+    {
+      "scenario": 5,
+      "cumulative_pct": 62.5
+    },
+    {
+      "scenario": 6,
+      "cumulative_pct": 75.0
+    },
+    {
+      "scenario": 7,
+      "cumulative_pct": 87.5
+    },
+    {
+      "scenario": 8,
+      "cumulative_pct": 100.0
+    }
+  ],
+  "scenarios": [
+    {
+      "id": 1,
+      "values": {
+        "database": "rails_7_2_sqlite",
+        "sdk": "typescript",
+        "oauth_client": "public"
+      }
+    },
+    {
+      "id": 2,
+      "values": {
+        "database": "rails_7_2_sqlite",
+        "sdk": "typescript",
+        "oauth_client": "confidential"
+      }
+    },
+    {
+      "id": 3,
+      "values": {
+        "database": "rails_7_2_sqlite",
+        "sdk": "python",
+        "oauth_client": "public"
+      }
+    },
+    {
+      "id": 4,
+      "values": {
+        "database": "rails_7_2_sqlite",
+        "sdk": "python",
+        "oauth_client": "confidential"
+      }
+    },
+    {
+      "id": 5,
+      "values": {
+        "database": "rails_8_1_postgresql",
+        "sdk": "typescript",
+        "oauth_client": "public"
+      }
+    },
+    {
+      "id": 6,
+      "values": {
+        "database": "rails_8_1_postgresql",
+        "sdk": "typescript",
+        "oauth_client": "confidential"
+      }
+    },
+    {
+      "id": 7,
+      "values": {
+        "database": "rails_8_1_postgresql",
+        "sdk": "python",
+        "oauth_client": "public"
+      }
+    },
+    {
+      "id": 8,
+      "values": {
+        "database": "rails_8_1_postgresql",
+        "sdk": "python",
+        "oauth_client": "confidential"
+      }
+    }
+  ]
+}

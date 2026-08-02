@@ -446,7 +446,11 @@ module Hitch
       end
 
       def hitch_mcp_bearer_challenge
-        scope = Array.wrap(Hitch.configuration.supported_scopes).join(" ")
+        # A generic 401 starts the least-privilege authorization flow with the
+        # host's base/default scope. Protected-resource metadata still
+        # advertises the complete supported set, and a known available tool
+        # names its complete static requirement in a later 403 step-up.
+        scope = Hitch.configuration.supported_scopes.first
         %(Bearer resource_metadata="#{hitch_mcp_resource_metadata_url}", scope="#{scope}")
       end
 

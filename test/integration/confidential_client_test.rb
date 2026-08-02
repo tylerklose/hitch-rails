@@ -78,7 +78,7 @@ class ConfidentialClientTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
-  test "body secrets and multiple client authentication methods are rejected before consumption" do
+  test "body secrets are rejected but Basic may repeat its exact client id" do
     credentials = register_confidential("single-method")
     code = mint_code(credentials.client)
 
@@ -93,8 +93,37 @@ class ConfidentialClientTest < ActionDispatch::IntegrationTest
     post "/oauth/token",
       params: token_params(code, client_id: credentials.client.client_id),
       headers: basic_header(credentials.client.client_id, credentials.client_secret)
-    assert_oauth_error "invalid_request", /exactly one authentication method/
+    assert_response :success
+  end
+
+  test "a body client id that differs from Basic is rejected before consumption" do
+    credentials = register_confidential("body-id-binding")
+    code = mint_code(credentials.client)
+
+    post "/oauth/token",
+      params: token_params(code, client_id: "different-client"),
+      headers: basic_header(credentials.client.client_id, credentials.client_secret)
+
+    assert_invalid_client
     assert authorization_code_pending?(code)
+  end
+
+  test "duplicate and structured body client ids fail before confidential code consumption" do
+    credentials = register_confidential("body-id-shape")
+    code = mint_code(credentials.client)
+    base = URI.encode_www_form(token_params(code))
+    headers = basic_header(credentials.client.client_id, credentials.client_secret).merge(
+      "CONTENT_TYPE" => "application/x-www-form-urlencoded"
+    )
+
+    [
+      "#{base}&client_id=body-id-shape&client_id=body-id-shape",
+      "#{base}&client_id%5B%5D=body-id-shape"
+    ].each do |body|
+      post "/oauth/token", params: body, headers: headers
+      assert_oauth_error "invalid_request", /client_id must (?:not be repeated|be a scalar string)/
+      assert authorization_code_pending?(code)
+    end
   end
 
   test "rotating a confidential secret rejects the old value and accepts the new one" do

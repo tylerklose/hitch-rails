@@ -34,7 +34,9 @@ module Hitch
     # @return [String]
     attr_accessor :brand_name
 
-    # OAuth scopes the host app supports. Default: ["mcp"].
+    # OAuth scopes the host app supports. The first entry is the base/default
+    # scope requested by the generic MCP bearer challenge; later entries are
+    # available for tool-specific 403 step-up. Default: ["mcp"].
     # @return [Array<String>]
     attr_reader :supported_scopes
 

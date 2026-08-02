@@ -3,6 +3,7 @@
 
 require "json"
 require "optparse"
+require "time"
 require "yaml"
 
 EXPECTED_ARTIFACTS = {
@@ -23,6 +24,11 @@ EVIDENCE_PATHS = {
   "disposable_apps" => "#{EVIDENCE_ROOT}/disposable-apps.json",
   "publication_status" => "#{EVIDENCE_ROOT}/publication-status.json"
 }.freeze
+PRE4_DECISION_PATH = "docs/evidence/0.2.0/release/pre4-publication-decision.json"
+DOWNLOADED_PRE4_PATH = "docs/evidence/0.2.0/release/downloaded-pre4.json"
+PRE4_VERSION = "0.2.0.pre.4"
+PRE4_ARTIFACT = "hitch-rails-0.2.0.pre.4.gem"
+PRE4_GITHUB_RELEASE = "https://github.com/tylerklose/hitch-rails/releases/tag/v0.2.0.pre.4"
 
 Options = Data.define(:root, :acceptance)
 
@@ -52,8 +58,185 @@ rescue JSON::ParserError => error
   {}
 end
 
+def load_exact_json(root, relative_path, errors)
+  path = File.join(root, relative_path)
+  unless File.file?(path)
+    errors << "missing #{relative_path}"
+    return
+  end
+
+  JSON.parse(File.read(path), allow_duplicate_key: false)
+rescue JSON::ParserError => error
+  errors << "#{relative_path}: invalid JSON: #{error.message}"
+  nil
+end
+
 def forty_hex?(value)
   value.is_a?(String) && value.match?(/\A[0-9a-f]{40}\z/)
+end
+
+def sha256?(value)
+  value.is_a?(String) && value.match?(/\A[0-9a-f]{64}\z/)
+end
+
+def exact_object(value, label, keys, errors)
+  unless value.is_a?(Hash)
+    errors << "#{label} must be an object"
+    return {}
+  end
+
+  errors << "#{label} fields must be exactly #{keys.join(', ')}" unless value.keys.sort == keys.sort
+  value
+end
+
+def iso8601?(value)
+  return false unless value.is_a?(String)
+
+  Time.iso8601(value)
+  true
+rescue ArgumentError
+  false
+end
+
+def validate_checkpoint(decision, errors)
+  checkpoint = exact_object(
+    decision["checkpoint"], "pre4 checkpoint", %w[status version source artifact], errors
+  )
+  errors << "pre4 checkpoint must be accepted_internal_checkpoint" unless
+    checkpoint["status"] == "accepted_internal_checkpoint"
+  errors << "pre4 checkpoint version must be #{PRE4_VERSION}" unless checkpoint["version"] == PRE4_VERSION
+
+  source = exact_object(checkpoint["source"], "pre4 checkpoint source", %w[commit tree clean_worktree], errors)
+  errors << "pre4 checkpoint source commit must be 40-hex" unless forty_hex?(source["commit"])
+  errors << "pre4 checkpoint source tree must be 40-hex" unless forty_hex?(source["tree"])
+  errors << "pre4 checkpoint source must record a clean worktree" unless source["clean_worktree"] == true
+
+  artifact = exact_object(checkpoint["artifact"], "pre4 checkpoint artifact", %w[name sha256], errors)
+  errors << "pre4 checkpoint artifact must be #{PRE4_ARTIFACT}" unless artifact["name"] == PRE4_ARTIFACT
+  errors << "pre4 checkpoint artifact needs a SHA-256 pin" unless sha256?(artifact["sha256"])
+  artifact
+end
+
+def validate_m6_input(decision, artifact, expected_kind, errors)
+  input = exact_object(decision["m6_input"], "M6 input", %w[kind artifact sha256], errors)
+  errors << "M6 input kind must be #{expected_kind}" unless input["kind"] == expected_kind
+  errors << "M6 must consume the exact accepted pre4 artifact" unless
+    input["artifact"] == artifact["name"] && input["sha256"] == artifact["sha256"]
+end
+
+def validate_product_clients(decision, root, deferred:, errors:)
+  clients = exact_object(
+    decision["product_clients"], "product clients", %w[approval status evidence_path], errors
+  )
+  unapproved = clients == {
+    "approval" => "not_approved",
+    "status" => "not_run",
+    "evidence_path" => nil
+  }
+  if deferred
+    errors << "deferred pre4 product clients must be unapproved and not run" unless unapproved
+    return
+  end
+  return if unapproved
+
+  evidence_path = clients["evidence_path"]
+  approved = clients["approval"] == "approved" && clients["status"] == "passed" &&
+    evidence_path.is_a?(String) && evidence_path.match?(%r{\Adocs/evidence/0\.2\.0/clients/.+\.json\z}) &&
+    File.file?(File.join(root, evidence_path))
+  errors << "published pre4 product clients must be unapproved/not run or approved/passed with evidence" unless approved
+end
+
+def validate_deferred_pre4(decision, artifact, publication, downloaded, root, errors)
+  %w[tag_created github_release_created rubygems_publication_performed].each do |field|
+    errors << "deferred pre4 publication action #{field} must be false" unless publication[field] == false
+  end
+  %w[repository_tag github_release rubygems_artifact rubygems_sha256].each do |field|
+    errors << "deferred pre4 publication identifier #{field} must be null" unless
+      publication.key?(field) && publication[field].nil?
+  end
+  errors << "deferred pre4 downloaded verification must be not_applicable" unless downloaded == {
+    "status" => "not_applicable", "evidence_path" => nil
+  }
+  errors << "deferred pre4 must not contain #{DOWNLOADED_PRE4_PATH}" if
+    File.exist?(File.join(root, DOWNLOADED_PRE4_PATH))
+
+  validate_m6_input(decision, artifact, "accepted_internal_artifact", errors)
+  validate_product_clients(decision, root, deferred: true, errors:)
+end
+
+def validate_published_pre4(decision, artifact, publication, downloaded, root, errors)
+  %w[tag_created github_release_created rubygems_publication_performed].each do |field|
+    errors << "published pre4 publication action #{field} must be true" unless publication[field] == true
+  end
+  errors << "published pre4 repository tag must be v#{PRE4_VERSION}" unless
+    publication["repository_tag"] == "v#{PRE4_VERSION}"
+  errors << "published pre4 GitHub release identifier must name the exact release" unless
+    publication["github_release"] == PRE4_GITHUB_RELEASE
+  errors << "published pre4 RubyGems artifact must match the accepted checkpoint" unless
+    publication["rubygems_artifact"] == artifact["name"]
+  errors << "published pre4 RubyGems SHA-256 must match the accepted checkpoint" unless
+    publication["rubygems_sha256"] == artifact["sha256"]
+  errors << "published pre4 downloaded verification must name its exact evidence" unless downloaded == {
+    "status" => "verified_published_artifact", "evidence_path" => DOWNLOADED_PRE4_PATH
+  }
+
+  downloaded_evidence = load_exact_json(root, DOWNLOADED_PRE4_PATH, errors)
+  if downloaded_evidence
+    errors << "downloaded pre4 evidence release identity drifted" unless
+      downloaded_evidence["release"] == PRE4_VERSION &&
+        downloaded_evidence["status"] == "verified_published_artifact"
+    errors << "downloaded pre4 artifact identity differs from the accepted checkpoint" unless
+      downloaded_evidence.dig("rubygems", "artifact") == artifact["name"] &&
+        downloaded_evidence.dig("rubygems", "sha256") == artifact["sha256"]
+    errors << "downloaded pre4 tag differs from the publication decision" unless
+      downloaded_evidence.dig("repository", "tag") == publication["repository_tag"]
+  end
+
+  validate_m6_input(decision, artifact, "published_pre4", errors)
+  validate_product_clients(decision, root, deferred: false, errors:)
+end
+
+def validate_pre4_decision(decision, root, errors)
+  decision = exact_object(
+    decision,
+    "pre4 publication decision",
+    %w[schema milestone recorded_at decision checkpoint publication downloaded_pre4 m6_input product_clients],
+    errors
+  )
+  return if decision.empty?
+
+  errors << "pre4 publication decision schema drifted" unless
+    decision["schema"] == "hitch.m5.4-pre4-publication-decision.v1"
+  errors << "pre4 publication decision milestone must be M5.4" unless decision["milestone"] == "M5.4"
+  errors << "pre4 publication decision needs an ISO-8601 recorded_at" unless iso8601?(decision["recorded_at"])
+
+  artifact = validate_checkpoint(decision, errors)
+  publication = exact_object(
+    decision["publication"],
+    "pre4 publication",
+    %w[
+      tag_created
+      github_release_created
+      rubygems_publication_performed
+      repository_tag
+      github_release
+      rubygems_artifact
+      rubygems_sha256
+    ],
+    errors
+  )
+  downloaded = exact_object(
+    decision["downloaded_pre4"], "pre4 downloaded verification", %w[status evidence_path], errors
+  )
+
+  case decision["decision"]
+  when "deferred_to_final"
+    validate_deferred_pre4(decision, artifact, publication, downloaded, root, errors)
+  when "published_pre4"
+    validate_published_pre4(decision, artifact, publication, downloaded, root, errors)
+  else
+    errors << "pre4 decision must be exactly deferred_to_final or published_pre4"
+  end
 end
 
 options = parse_options(ARGV)
@@ -133,6 +316,9 @@ errors << "completion must identify M0/0.1.0" unless
 errors << "completion must record published false" unless completion["published"] == false
 errors << "completion evidence references drifted" unless completion["evidence"] == EVIDENCE_PATHS
 
+pre4_decision = load_exact_json(root, PRE4_DECISION_PATH, errors)
+validate_pre4_decision(pre4_decision, root, errors) if pre4_decision
+
 if options.acceptance
   errors << "M0 checkpoint is not accepted" unless
     completion["accepted"] == true && completion["status"] == "accepted_internal_checkpoint"
@@ -161,4 +347,4 @@ if errors.any?
 end
 
 state = completion["accepted"] ? "accepted" : "candidate; acceptance still pending"
-puts "Verified deferred publication policy and M0 #{state}."
+puts "Verified release policy, M0 #{state}, and M5.4 #{pre4_decision.fetch('decision')}."

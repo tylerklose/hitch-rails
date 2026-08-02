@@ -1,0 +1,9 @@
+{
+  "name": "hitch-m5-typescript-client-smoke",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.0.0"
+  }
+}

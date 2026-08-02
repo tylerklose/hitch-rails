@@ -4,6 +4,23 @@ require "test_helper"
 require "json"
 
 class Hitch::MCP::ToolTest < ActiveSupport::TestCase
+  test "base tool availability is exactly deny default" do
+    assert_equal false, Hitch::MCP::Tool.available_to?(Object.new)
+  end
+
+  test "base tool policy and execution are exact deny default boundaries" do
+    policy_error = assert_raises(Hitch::MCP::Forbidden) do
+      Hitch::MCP::Tool.authorize!(Object.new, arguments: {}.freeze)
+    end
+    assert_instance_of Hitch::MCP::Forbidden, policy_error
+
+    execution_error = assert_raises(RuntimeError) do
+      Hitch::MCP::Tool.perform(Object.new, arguments: {}.freeze)
+    end
+    assert_instance_of RuntimeError, execution_error
+    assert_equal "MCP tool perform must be implemented", execution_error.message
+  end
+
   RUNTIME_TEST_NAMES = %w[
     test_schema_precedes_argument_policy
     test_top_level_reserved_context_fails_before_argument_policy

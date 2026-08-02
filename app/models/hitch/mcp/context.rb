@@ -92,10 +92,10 @@ module Hitch
           value.map { |child| deep_copy_json(child) }
         when String
           value.dup
-        when Numeric, TrueClass, FalseClass, NilClass
+        when Numeric, TrueClass, FalseClass
           value
         else
-          raise ArgumentError, "meta must contain only JSON values"
+          raise ArgumentError, "meta must contain only JSON values" unless value.nil?
         end
         copy.freeze
       end

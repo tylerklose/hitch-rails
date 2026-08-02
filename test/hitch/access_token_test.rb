@@ -138,6 +138,20 @@ class Hitch::AccessTokenTest < ActiveSupport::TestCase
     refute record.valid_for_resource?(RESOURCE_A)
   end
 
+  test "audience loopback policy follows the exact local environment boundary" do
+    loopback = "http://127.0.0.1:4567/mcp"
+    record = mint(resource: loopback)
+    exchange_authorization_code(record, verifier: @verifier)
+
+    assert record.valid_for_resource?(loopback)
+    stub_class_method(Rails, :env, -> { ActiveSupport::EnvironmentInquirer.new("development") }) do
+      assert record.valid_for_resource?(loopback)
+    end
+    stub_class_method(Rails, :env, -> { ActiveSupport::EnvironmentInquirer.new("production") }) do
+      refute record.valid_for_resource?(loopback)
+    end
+  end
+
   # Substrate invariants outside the lattice matrix:
 
   test "authorization_code is hashed: DB stores SHA256, raw returned via attr_accessor" do

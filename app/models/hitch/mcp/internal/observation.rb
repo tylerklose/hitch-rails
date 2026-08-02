@@ -266,7 +266,6 @@ module Hitch
             previous = ActiveSupport::IsolatedExecutionState[CURRENT_REQUEST_KEY]
             ActiveSupport::IsolatedExecutionState.delete(CURRENT_REQUEST_KEY)
             ActiveSupport::Notifications.instrument(event_name, payload)
-            nil
           rescue StandardError, SystemStackError
             report_failure(event_name, "subscriber")
             nil

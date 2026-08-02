@@ -119,7 +119,7 @@ module Hitch
           return false unless request_method == "tools/call"
 
           arguments = read(read(request, "params"), "arguments")
-          arguments.is_a?(Hash) && (arguments.key?("server_context") || arguments.key?(:server_context))
+          arguments.instance_of?(Hash) && arguments.key?("server_context")
         end
 
         def method_not_found

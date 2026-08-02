@@ -234,6 +234,71 @@ class Hitch::MCP::RegistryTest < ActiveSupport::TestCase
     assert_raises(ArgumentError) { @configuration.scope_resolver = Object.new }
   end
 
+  test "runtime accepts only the exact internal snapshot type" do
+    snapshot_class = Hitch::MCP::Registry.const_get(:Snapshot, false)
+    snapshot = snapshot_class.new(registry_name: "McpToolRegistry", entries: [].freeze)
+
+    assert_nil Hitch::MCP::Registry.__send__(:validate_snapshot!, snapshot)
+    [ nil, Object.new, Struct.new(:registry_name, :entries).new("McpToolRegistry", []) ].each do |invalid|
+      error = assert_raises(ArgumentError) do
+        Hitch::MCP::Registry.__send__(:validate_snapshot!, invalid)
+      end
+      assert_equal "MCP registry is unavailable", error.message
+    end
+  end
+
+  test "runtime static scope comparison is exact and fails closed on corrupt context" do
+    context = Struct.new(:granted_scopes).new(%w[mcp read])
+
+    assert Hitch::MCP::Registry.__send__(:scopes_granted?, [], context)
+    assert Hitch::MCP::Registry.__send__(:scopes_granted?, [ "mcp" ], context)
+    assert Hitch::MCP::Registry.__send__(:scopes_granted?, %w[mcp read], context)
+    refute Hitch::MCP::Registry.__send__(:scopes_granted?, [ "write" ], context)
+    refute Hitch::MCP::Registry.__send__(:scopes_granted?, [ "MCP" ], context)
+
+    subclass = Class.new(String)
+    subclass_context = Struct.new(:granted_scopes).new([ subclass.new("mcp") ])
+    assert Hitch::MCP::Registry.__send__(:scopes_granted?, [ "mcp" ], subclass_context)
+
+    [ nil, "mcp", [ :mcp ], [ "mcp", nil ] ].each do |invalid|
+      error = assert_raises(ArgumentError) do
+        Hitch::MCP::Registry.__send__(:scopes_granted?, [ "mcp" ], Struct.new(:granted_scopes).new(invalid))
+      end
+      assert_equal "MCP context scopes are unavailable", error.message
+    end
+  end
+
+  test "schema contract fixes root type size and reserved input semantics" do
+    contract_class = Hitch::MCP::Registry.const_get(:SchemaContract, false)
+    hash_subclass = Class.new(Hash)
+    valid = hash_subclass.new.merge("type" => "object")
+    result = contract_class.new(valid, label: "schema", input: true).call
+    assert_equal({ "type" => "object" }, result)
+    assert_predicate result, :frozen?
+
+    error = assert_raises(ArgumentError) do
+      contract_class.new([], label: "schema", input: true).call
+    end
+    assert_equal "schema must be a JSON object", error.message
+
+    max_bytes = Hitch::MCP::Registry.const_get(:MAX_SCHEMA_BYTES, false)
+    error = assert_raises(ArgumentError) do
+      contract_class.new(
+        { "description" => "x" * max_bytes },
+        label: "schema",
+        input: true
+      ).call
+    end
+    assert_equal "schema exceeds #{max_bytes} serialized bytes", error.message
+
+    reserved = { "type" => "object", "properties" => { "server_context" => { "type" => "string" } } }
+    error = assert_raises(ArgumentError) do
+      contract_class.new(reserved, label: "schema", input: true).call
+    end
+    assert_equal "schema must not explicitly declare the top-level server_context property", error.message
+    assert_equal reserved, contract_class.new(reserved, label: "schema", input: false).call
+  end
+
   private
 
   def define_tool(

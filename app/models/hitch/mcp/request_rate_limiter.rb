@@ -13,8 +13,8 @@ module Hitch
             key:,
             window_ms: limit.fetch(:within) * 1_000
           )
-          unless count.is_a?(Integer) && count.positive? &&
-              ttl_ms.is_a?(Integer) && ttl_ms.positive?
+          unless count.instance_of?(Integer) && count.positive? &&
+              ttl_ms.instance_of?(Integer) && ttl_ms.positive?
             raise ArgumentError, "MCP request rate store returned an invalid response"
           end
 

@@ -46,6 +46,38 @@ class Hitch::MCP::RateLimitTest < ActiveSupport::TestCase
   end
   private_constant :RedisClient
 
+  class RecordingStore
+    attr_accessor :response
+    attr_reader :calls
+
+    def initialize(response)
+      @response = response
+      @calls = []
+    end
+
+    def increment(**arguments)
+      calls << arguments
+      response
+    end
+  end
+  private_constant :RecordingStore
+
+  class LimiterConfiguration
+    attr_reader :request_limit
+
+    def initialize(request_limit:, store:)
+      @request_limit = request_limit
+      @store = store
+    end
+
+    private
+
+    def rate_store!
+      @store
+    end
+  end
+  private_constant :LimiterConfiguration
+
   setup do
     Hitch.reset_configuration!
     @user = User.create!(email: "rate-key-#{SecureRandom.hex(4)}@example.test")
@@ -177,6 +209,55 @@ class Hitch::MCP::RateLimitTest < ActiveSupport::TestCase
       client_id: "client-one",
       configuration:
     ))
+  end
+
+  test "request limiter validates its store contract and exact retry calculation" do
+    missing = LimiterConfiguration.new(request_limit: nil, store: RecordingStore.new([ 1, 60_000 ]))
+    error = assert_raises(ArgumentError) do
+      REQUEST_RATE_LIMITER.call(principal: @user, client_id: "client-one", configuration: missing)
+    end
+    assert_equal "MCP request limit is unavailable", error.message
+
+    invalid_responses = [
+      nil,
+      [ 1 ],
+      [ "1", 60_000 ],
+      [ 0, 60_000 ],
+      [ -1, 60_000 ],
+      [ 1.0, 60_000 ],
+      [ 1, "60000" ],
+      [ 1, 0 ],
+      [ 1, -1 ],
+      [ 1, 60_000.0 ]
+    ]
+    invalid_responses.each do |response|
+      configuration = LimiterConfiguration.new(
+        request_limit: { to: 2, within: 60 },
+        store: RecordingStore.new(response)
+      )
+      error = assert_raises(ArgumentError, response.inspect) do
+        REQUEST_RATE_LIMITER.call(principal: @user, client_id: "client-one", configuration:)
+      end
+      assert_equal "MCP request rate store returned an invalid response", error.message
+    end
+
+    store = RecordingStore.new([ 3, 60_501 ])
+    configuration = LimiterConfiguration.new(request_limit: { to: 2, within: 60 }, store:)
+    expected_key = RATE_LIMIT_KEY.call(principal: @user, client_id: "client-one")
+    denial = REQUEST_RATE_LIMITER.call(principal: @user, client_id: "client-one", configuration:)
+    assert_equal [ { key: expected_key, window_ms: 60_000 } ], store.calls
+    assert_equal({ retry_after: 61 }, denial)
+    assert_predicate denial, :frozen?
+  end
+
+  test "request limiter default resolves the live Hitch MCP configuration" do
+    store = RecordingStore.new([ 1, 60_000 ])
+    configuration = LimiterConfiguration.new(request_limit: { to: 2, within: 60 }, store:)
+    outer_configuration = Struct.new(:mcp).new(configuration)
+
+    stub_class_method(Hitch, :configuration, -> { outer_configuration }) do
+      assert_equal :allow, REQUEST_RATE_LIMITER.call(principal: @user, client_id: "client-one")
+    end
   end
 
   test "rate store connection is reused across limit changes and replaced after URL reload" do

@@ -59,7 +59,7 @@ module Hitch
         # Argument-aware host policy is deny-default. Its return value is not an
         # authority signal: allowing means returning without raising.
         def authorize!(_context, arguments:)
-          raise Hitch::MCP::Forbidden
+          raise Forbidden
         end
 
         # Host behavior runs only after availability, static scope, SDK schema,

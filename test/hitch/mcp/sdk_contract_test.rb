@@ -380,6 +380,58 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
     assert_equal "valid nested data", observed.dig("nested", "server_context")
   end
 
+  test "reserved context predicate is exact for method shape and both key forms" do
+    assert_equal false, reserved_context_predicate(method: "server/discover", arguments: { "server_context" => true })
+    assert_equal false, reserved_context_predicate(method: "tools/list", arguments: { server_context: true })
+    [ nil, [], "value", {}, { "nested" => { "server_context" => true } } ].each do |arguments|
+      assert_equal false, reserved_context_predicate(method: "tools/call", arguments:)
+    end
+    assert_equal true, reserved_context_predicate(method: "tools/call", arguments: { "server_context" => nil })
+    assert_equal true, reserved_context_predicate(method: "tools/call", arguments: { server_context: nil })
+
+    hash_subclass = Class.new(Hash).new
+    hash_subclass[:server_context] = nil
+    assert_equal true, reserved_context_predicate(method: "tools/call", arguments: hash_subclass)
+  end
+
+  test "private SDK configuration installs every fixed validation and inert callback" do
+    configuration = raw_internal_adapter(method: "server/discover", arguments: nil)
+      .__send__(:sdk_configuration)
+
+    assert_equal PROTOCOL_VERSION, configuration.protocol_version
+    assert_equal true, configuration.protocol_version?
+    assert_equal true, configuration.validate_tool_call_arguments
+    assert_equal true, configuration.validate_tool_call_results
+    assert_equal true, configuration.exception_reporter?
+    assert_equal true, configuration.around_request?
+    assert_equal true, configuration.instrumentation_callback?
+    assert_nil configuration.exception_reporter.call(RuntimeError.new("callback-canary"), { "secret" => true })
+    calls = 0
+    assert_equal :handled, configuration.around_request.call({ "secret" => true }) { calls += 1; :handled }
+    assert_equal 1, calls
+    assert_nil configuration.instrumentation_callback.call({ "secret" => true })
+
+    captured = nil
+    sentinel = Object.new
+    stub_class_method(::MCP::Configuration, :new, lambda { |**keywords|
+      captured = keywords
+      sentinel
+    }) do
+      assert_same sentinel, raw_internal_adapter(method: "server/discover", arguments: nil)
+        .__send__(:sdk_configuration)
+    end
+    assert_equal %i[
+      around_request exception_reporter instrumentation_callback protocol_version
+      validate_tool_call_arguments validate_tool_call_results
+    ], captured.keys.sort
+    assert_equal PROTOCOL_VERSION, captured.fetch(:protocol_version)
+    assert_equal true, captured.fetch(:validate_tool_call_arguments)
+    assert_equal true, captured.fetch(:validate_tool_call_results)
+    assert_nil captured.fetch(:exception_reporter).call(RuntimeError.new, {})
+    assert_equal :handled, captured.fetch(:around_request).call({}) { :handled }
+    assert_nil captured.fetch(:instrumentation_callback).call({})
+  end
+
   test "context is retrieved from Hitch context wrapper" do
     context = Hitch::MCP::Context.new(
       principal: Object.new,
@@ -539,6 +591,25 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
 
   def adapter_class
     Hitch::MCP.const_get(:SDKAdapter, false)
+  end
+
+  def reserved_context_predicate(method:, arguments:)
+    raw_internal_adapter(method:, arguments:).__send__(:reserved_server_context?)
+  end
+
+  def raw_internal_adapter(method:, arguments:)
+    internal = Hitch::MCP.const_get(:Internal, false).const_get(:SDKAdapter, false)
+    internal.new(
+      verified_request: {
+        "jsonrpc" => "2.0",
+        "id" => "reserved-predicate",
+        "method" => method,
+        "params" => { "arguments" => arguments }
+      },
+      tools: [],
+      context: Object.new,
+      server_info: SERVER_INFO
+    )
   end
 
   def call_adapter(method:, params: {}, tools: [], context: Object.new, server_info: SERVER_INFO, request_id: "sdk_contract_request")

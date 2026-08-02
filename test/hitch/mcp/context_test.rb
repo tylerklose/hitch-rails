@@ -15,6 +15,10 @@ class Hitch::MCP::ContextTest < ActiveSupport::TestCase
     mutable_key = +"nested"
     metadata = {
       mutable_key => [ { "value" => nested_value } ],
+      "number" => 7.5,
+      "true" => true,
+      "false" => false,
+      "null" => nil,
       "principal" => "attacker-principal",
       "access_token" => "attacker-token",
       "scope" => "attacker-scope",
@@ -30,6 +34,8 @@ class Hitch::MCP::ContextTest < ActiveSupport::TestCase
       granted_scopes: scopes,
       meta: metadata
     )
+    source_nested_key = metadata.keys.find { |key| key == "nested" }
+    copied_nested_key = context.meta.keys.find { |key| key == "nested" }
 
     mutable_key.replace("changed-key")
     nested_value.replace("changed-value")
@@ -42,6 +48,8 @@ class Hitch::MCP::ContextTest < ActiveSupport::TestCase
     assert_same scope, context.scope
     assert_equal %w[mcp read], context.granted_scopes
     assert_equal "original", context.meta.dig("nested", 0, "value")
+    assert_equal [ 7.5, true, false, nil ], context.meta.values_at("number", "true", "false", "null")
+    refute_same source_nested_key, copied_nested_key
     refute context.meta.key?("new")
     assert_deeply_frozen context.granted_scopes
     assert_deeply_frozen context.meta
@@ -104,8 +112,21 @@ class Hitch::MCP::ContextTest < ActiveSupport::TestCase
     assert_raises(ArgumentError) { build_context(client_id: "") }
     assert_raises(ArgumentError) { build_context(request_id: nil) }
     assert_raises(ArgumentError) { build_context(user_agent: 7) }
-    assert_raises(ArgumentError) { build_context(meta: []) }
-    assert_raises(ArgumentError) { build_context(meta: { "unsupported" => Object.new }) }
+    assert_context_error("meta must be a Hash") { build_context(meta: []) }
+    assert_context_error("meta keys must be Strings") { build_context(meta: { 7 => "unsupported" }) }
+    assert_context_error("meta must contain only JSON values") do
+      build_context(meta: { "unsupported" => Object.new })
+    end
+
+    string_subclass = Class.new(String)
+    subclass_key = string_subclass.new("subclass")
+    subclass_value = string_subclass.new("value")
+    identity_hash = {}.compare_by_identity
+    identity_hash[subclass_key] = subclass_value
+    context = build_context(meta: identity_hash)
+    assert_equal({ "subclass" => "value" }, context.meta)
+    assert_instance_of string_subclass, context.meta.keys.fetch(0)
+    assert_instance_of string_subclass, context.meta.fetch("subclass")
   end
 
   private
@@ -137,6 +158,11 @@ class Hitch::MCP::ContextTest < ActiveSupport::TestCase
     when Array
       value.each { |child| assert_deeply_frozen(child) }
     end
+  end
+
+  def assert_context_error(message)
+    error = assert_raises(ArgumentError) { yield }
+    assert_equal message, error.message
   end
 end
 

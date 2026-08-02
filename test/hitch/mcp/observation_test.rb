@@ -305,6 +305,46 @@ class Hitch::MCP::ObservationTest < ActionDispatch::IntegrationTest
     refute_includes public_bytes, "result-canary"
   end
 
+  test "publisher detaches and restores request state on success absence and subscriber failure" do
+    observation = Hitch::MCP.const_get(:Internal, false).const_get(:Observation, false)
+    current_key = observation.const_get(:CURRENT_REQUEST_KEY, false)
+    execution_state = ActiveSupport::IsolatedExecutionState
+    previous = Object.new
+    payload = { schema_version: 1, request_id: "direct-observation" }.freeze
+    event_name = "direct.hitch_mcp"
+    observed = []
+    subscription = ActiveSupport::Notifications.subscribe(event_name) do |event|
+      observed << [ execution_state.key?(current_key), event.name, event.payload ]
+      execution_state[current_key] = Object.new
+    end
+
+    execution_state[current_key] = previous
+    assert_nil observation.__send__(:publish, event_name, payload)
+    assert_equal [ [ false, event_name, payload ] ], observed
+    assert_same previous, execution_state[current_key]
+
+    execution_state.delete(current_key)
+    assert_nil observation.__send__(:publish, event_name, payload)
+    assert_equal false, execution_state.key?(current_key)
+    assert_equal 2, observed.length
+
+    reports = []
+    failing_event = "direct-failure.hitch_mcp"
+    failing_subscription = ActiveSupport::Notifications.subscribe(failing_event) do
+      raise SystemStackError, "direct-subscriber-canary"
+    end
+    execution_state[current_key] = previous
+    stub_class_method(observation, :report_failure, ->(*arguments) { reports << arguments }) do
+      assert_nil observation.__send__(:publish, failing_event, payload)
+    end
+    assert_equal [ [ failing_event, "subscriber" ] ], reports
+    assert_same previous, execution_state[current_key]
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscription) if subscription
+    ActiveSupport::Notifications.unsubscribe(failing_subscription) if failing_subscription
+    execution_state&.delete(current_key) if current_key
+  end
+
   private
 
   def configure_runtime

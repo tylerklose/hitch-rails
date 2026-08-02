@@ -373,6 +373,74 @@ class Hitch::MCP::ResultTest < ActiveSupport::TestCase
     canaries.each { |canary| refute_includes observed, canary }
   end
 
+  test "direct result normalizer fixes type limit cap and explicit error marker" do
+    normalizer = result_normalizer_class
+    invalid_results = [ Object.new, {}, Class.new(Hitch::MCP::Result).__send__(:allocate) ]
+    invalid_results.each do |value|
+      assert_normalizer_failure(:invalid_result_type) do
+        normalizer.call(result: value, output_schema: nil, max_bytes: 1_000)
+      end
+    end
+    [ nil, "1000", 0, -1, 1.0 ].each do |limit|
+      assert_normalizer_failure(:invalid_result_limit) do
+        normalizer.call(result: Hitch::MCP::Result.text("ok"), output_schema: nil, max_bytes: limit)
+      end
+    end
+
+    text_result = Hitch::MCP::Result.text("direct text")
+    canonical = { content: [ { type: "text", text: "direct text" } ], isError: false }
+    exact_bytes = JSON.generate(canonical, max_nesting: false).bytesize
+    response = normalizer.call(result: text_result, output_schema: nil, max_bytes: exact_bytes)
+    assert_instance_of normalizer.const_get(:SDKResponse, false), response
+    assert_equal canonical, response.to_h
+    assert_equal true, response.content_provided?
+    assert_nil normalizer.explicit_error_text(response.to_h)
+    assert_normalizer_failure(:result_too_large) do
+      normalizer.call(result: text_result, output_schema: nil, max_bytes: exact_bytes - 1)
+    end
+
+    public_error = "approved direct error"
+    error_response = normalizer.call(
+      result: Hitch::MCP::Result.error(public_error),
+      output_schema: nil,
+      max_bytes: 1_000
+    )
+    internal_result = error_response.instance_variable_get(:@hitch_result)
+    assert_predicate internal_result, :frozen?
+    assert_predicate internal_result.fetch(:_meta), :frozen?
+    assert_equal public_error, normalizer.explicit_error_text(error_response.to_h)
+    assert_equal true, error_response.content_provided?
+  end
+
+  test "direct result normalizer translates system stack failure to one category" do
+    normalizer = result_normalizer_class
+    instance = normalizer.new(Hitch::MCP::Result.text("ok"), nil, 1_000)
+    instance.define_singleton_method(:canonical_result) { raise SystemStackError, "direct-stack-canary" }
+
+    assert_normalizer_failure(:serialization_failure) { instance.call }
+  end
+
+  test "direct error normalizer fixes the generic response and denial classification" do
+    normalizer = error_normalizer_class
+    response = normalizer.__send__(:generic_response)
+    assert_instance_of ::MCP::Tool::Response, response
+    assert_equal({
+      content: [ { type: "text", text: "Tool execution failed" } ],
+      isError: true
+    }, response.to_h)
+    assert_equal true, response.content_provided?
+
+    forbidden_subclass = Class.new(Hitch::MCP::Forbidden)
+    [ Hitch::MCP::Forbidden.new, forbidden_subclass.new ].each do |error|
+      assert_equal true, normalizer.__send__(:expected_denial?, error, :authorization)
+      %i[context arguments execution result].each do |phase|
+        assert_equal false, normalizer.__send__(:expected_denial?, error, phase)
+      end
+    end
+    assert_equal false, normalizer.__send__(:expected_denial?, RuntimeError.new, :authorization)
+    assert_equal false, normalizer.__send__(:expected_denial?, Object.new, :authorization)
+  end
+
   private
 
   def call_result(
@@ -407,6 +475,14 @@ class Hitch::MCP::ResultTest < ActiveSupport::TestCase
 
   def adapter_class
     Hitch::MCP.const_get(:SDKAdapter, false)
+  end
+
+  def result_normalizer_class
+    Hitch::MCP.const_get(:Internal, false).const_get(:ResultNormalizer, false)
+  end
+
+  def error_normalizer_class
+    Hitch::MCP.const_get(:Internal, false).const_get(:ErrorNormalizer, false)
   end
 
   def result_context(
@@ -449,5 +525,11 @@ class Hitch::MCP::ResultTest < ActiveSupport::TestCase
 
   def assert_report_category(report, category)
     assert_equal category, report.dig(:context, :hitch_mcp_category)
+  end
+
+  def assert_normalizer_failure(category)
+    error = assert_raises(StandardError) { yield }
+    assert_equal category, result_normalizer_class.failure_category(error)
+    assert_equal "Hitch MCP result normalization failed", error.message
   end
 end

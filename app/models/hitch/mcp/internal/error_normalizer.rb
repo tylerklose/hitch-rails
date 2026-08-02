@@ -37,7 +37,7 @@ module Hitch
           private
 
           def expected_denial?(error, phase)
-            phase == :authorization && error.is_a?(Hitch::MCP::Forbidden)
+            phase == :authorization && error.is_a?(Forbidden)
           end
 
           def report(error:, phase:, context:, tool_name:)

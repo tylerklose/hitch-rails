@@ -68,7 +68,7 @@ module Hitch
         end
 
         def call
-          invalid!("must be a JSON object") unless @schema.is_a?(Hash)
+          invalid!("must be a JSON object") unless @schema.instance_of?(Hash)
           invalid!("exceeds #{MAX_SCHEMA_BYTES} serialized bytes") if serialized_bytes > MAX_SCHEMA_BYTES
 
           validate_dialects_and_references!
@@ -358,7 +358,7 @@ module Hitch
 
         def scopes_granted?(required_scopes, context)
           granted_scopes = context.granted_scopes
-          unless granted_scopes.is_a?(Array) && granted_scopes.all?(String)
+          unless granted_scopes.instance_of?(Array) && granted_scopes.all?(String)
             raise ArgumentError, "MCP context scopes are unavailable"
           end
 
@@ -370,7 +370,7 @@ module Hitch
         end
 
         def validate_snapshot!(snapshot)
-          raise ArgumentError, "MCP registry is unavailable" unless snapshot.is_a?(Snapshot)
+          raise ArgumentError, "MCP registry is unavailable" unless snapshot.instance_of?(Snapshot)
         end
 
         def build_entry(declaration, index:, supported_scopes:)

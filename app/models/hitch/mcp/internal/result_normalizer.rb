@@ -93,8 +93,8 @@ module Hitch
         end
 
         def call
-          invalid!(:invalid_result_type) unless result.instance_of?(Hitch::MCP::Result)
-          invalid!(:invalid_result_limit) unless max_bytes.is_a?(Integer) && max_bytes.positive?
+          invalid!(:invalid_result_type) unless result.instance_of?(Result)
+          invalid!(:invalid_result_limit) unless max_bytes.instance_of?(Integer) && max_bytes.positive?
 
           canonical, content_provided, explicit_error = canonical_result
           serialized = generate(canonical)

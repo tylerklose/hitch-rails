@@ -1,0 +1,22 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+TARGETS = {
+  "install" => "M5.1",
+  "tool" => "M5.2"
+}.freeze
+
+def usage(status:, message: nil)
+  warn message if message
+  warn "Usage: bin/ci-generators (install|tool)"
+  exit status
+end
+
+target = ARGV.shift
+usage(status: 0) if %w[-h --help].include?(target)
+usage(status: 64, message: "Missing generator target") unless target
+usage(status: 64, message: "Unknown generator target: #{target.inspect}") unless TARGETS.key?(target)
+usage(status: 64, message: "Unexpected arguments: #{ARGV.join(' ')}") if ARGV.any?
+
+warn "Generator target #{target.inspect} is intentionally unavailable until #{TARGETS.fetch(target)}"
+exit 69

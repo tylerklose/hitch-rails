@@ -104,9 +104,9 @@ class McpContractArtifactsTest < ActiveSupport::TestCase
     ], rows
   end
 
-  test "runtime contract tracks active boundaries and pending M4.5 without misleading skips" do
+  test "runtime contract tracks active boundaries through M4.5 without misleading skips" do
     pending = load_yaml("test/contracts/pending_runtime_tests.yml")
-    assert_equal "m2_m4_4_active_m4_5_pending", pending.fetch("runtime_status")
+    assert_equal "m2_m4_5_active", pending.fetch("runtime_status")
     probes = load_yaml("docs/contracts/sdk_probes.yml").fetch("probes")
     sdk_tests = pending.fetch("tests").find { |entry| entry.fetch("owner_issue") == "M2.1" }
     assert_equal probes.map { |probe| probe.fetch("runtime_test") }.sort,
@@ -120,6 +120,58 @@ class McpContractArtifactsTest < ActiveSupport::TestCase
       entry.fetch("test_names").each { |name| assert_includes content, name }
       refute_match(/^\s*(?:skip|flunk)\b/, content)
     end
+  end
+
+  test "forced suite manifest owns every M4 boundary and names executable tests" do
+    manifest = load_yaml("test/contracts/mcp_m4_forced_suites.yml")
+    suites = manifest.fetch("suites")
+    required_boundaries = manifest.fetch("required_boundaries")
+
+    assert_equal 1, manifest.fetch("schema_version")
+    assert_equal "m2_m4_5_active", manifest.fetch("runtime_status")
+    assert_equal suites.map { |suite| suite.fetch("id") }.uniq, suites.map { |suite| suite.fetch("id") }
+    assert_equal suites.map { |suite| suite.fetch("path") }.uniq, suites.map { |suite| suite.fetch("path") }
+    assert_empty required_boundaries - suites.flat_map { |suite| suite.fetch("boundaries") }.uniq
+
+    suites.each do |suite|
+      path = REPOSITORY_ROOT.join(suite.fetch("path"))
+      assert_predicate path, :file?, suite.fetch("id")
+      source = path.read
+      assert_includes source, "class #{suite.fetch('test_class')} <", suite.fetch("id")
+      suite.fetch("required_tests").each do |test_name|
+        assert_includes source, %(test "#{test_name}"), "#{suite.fetch('id')}: #{test_name}"
+      end
+      refute_match(/^\s*(?:skip|flunk)\b/, source, suite.fetch("id"))
+    end
+
+    assert_equal [
+      [ "generator_install_collisions", "M5.1", "bin/ci-generators install" ],
+      [ "generator_tool_collisions", "M5.2", "bin/ci-generators tool" ]
+    ], manifest.fetch("deferred_forced_boundaries").map { |entry| entry.values_at("id", "owner_issue", "gate") }
+  end
+
+  test "mutation gate owns one exact executable subject map" do
+    command = REPOSITORY_ROOT.join("bin/mutation-mcp")
+    coverage = REPOSITORY_ROOT.join("test/mutation/mcp_coverage_test.rb")
+    manifest = load_yaml("test/contracts/mcp_m4_mutation_subjects.yml")
+
+    assert_predicate command, :executable?
+    assert_predicate coverage, :file?
+    source = command.read
+    declarations = coverage.read.scan(/cover "([^"]+)"/).flatten.uniq
+    subjects = manifest.fetch("subjects")
+    expressions = subjects.map { |subject| subject.fetch("expression") }
+    domains = subjects.map { |subject| subject.fetch("domain") }.uniq
+
+    assert_equal 1, manifest.fetch("schema_version")
+    assert_equal 15, expressions.length
+    assert_equal expressions.uniq, expressions
+    assert_equal manifest.fetch("required_domains"), domains
+    assert_empty expressions - declarations
+    assert_includes source, "test/contracts/mcp_m4_mutation_subjects.yml"
+    assert_includes source, '"--usage", "opensource"'
+    assert_includes source, '"--mutation-timeout", timeout_seconds.to_s'
+    assert_includes source, '"--jobs", jobs.to_s'
   end
 
   test "SDK gap ledger covers every reproduced probe and both locked lanes" do

@@ -167,14 +167,12 @@ module Hitch
     # validate that access tokens were issued specifically for them
     # as the intended audience."
     # Spec URL: https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization
-    def valid_for_resource?(resource_uri)
-      return false if resource_uri.blank?
-
-      allow_loopback = Rails.env.development? || Rails.env.test?
-      stored = Hitch::ResourceUri.canonicalize!(self.resource_uri, allow_loopback_http: allow_loopback)
-      requested = Hitch::ResourceUri.canonicalize!(resource_uri, allow_loopback_http: allow_loopback)
+    def valid_for_resource?(requested_resource_uri)
+      allow_loopback = Rails.env.local?
+      stored = ResourceUri.canonicalize!(resource_uri, allow_loopback_http: allow_loopback)
+      requested = ResourceUri.canonicalize!(requested_resource_uri, allow_loopback_http: allow_loopback)
       stored == requested
-    rescue Hitch::ResourceUri::Invalid
+    rescue ResourceUri::Invalid
       false
     end
 

@@ -1,0 +1,46 @@
+schema_version: 1
+required_domains:
+  - audience
+  - admission
+  - registration
+  - availability
+  - scope
+  - schema
+  - policy
+  - execution
+  - result
+  - redaction
+  - context
+  - callbacks
+  - observation
+subjects:
+  - domain: audience
+    expression: Hitch::AccessToken#valid_for_resource?
+  - domain: admission
+    expression: Hitch::MCP::RequestRateLimiter.call
+  - domain: registration
+    expression: Hitch::MCP::Registry.validate_snapshot!
+  - domain: availability
+    expression: Hitch::MCP::Tool.available_to?
+  - domain: scope
+    expression: Hitch::MCP::Registry.scopes_granted?
+  - domain: schema
+    expression: Hitch::MCP::Registry::SchemaContract#call
+  - domain: schema
+    expression: Hitch::MCP::Internal::SDKAdapter#reserved_server_context?
+  - domain: policy
+    expression: Hitch::MCP::Tool.authorize!
+  - domain: execution
+    expression: Hitch::MCP::Tool.perform
+  - domain: result
+    expression: Hitch::MCP::Internal::ResultNormalizer#call
+  - domain: redaction
+    expression: Hitch::MCP::Internal::ErrorNormalizer.generic_response
+  - domain: redaction
+    expression: Hitch::MCP::Internal::ErrorNormalizer.expected_denial?
+  - domain: context
+    expression: Hitch::MCP::Context#deep_copy_json
+  - domain: callbacks
+    expression: Hitch::MCP::Internal::SDKAdapter#sdk_configuration
+  - domain: observation
+    expression: Hitch::MCP::Internal::Observation.publish

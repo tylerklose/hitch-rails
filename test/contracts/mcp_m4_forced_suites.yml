@@ -1,0 +1,122 @@
+schema_version: 1
+runtime_status: m2_m4_5_active
+required_boundaries:
+  - audience
+  - admission
+  - registration
+  - availability
+  - scope
+  - schema
+  - policy
+  - execution
+  - result_redaction
+  - context
+  - callbacks
+  - observation
+  - concurrency
+  - code_exchange
+suites:
+  - id: authorization_code_single_use
+    path: test/integration/oauth_security_poc_test.rb
+    test_class: OAuthSecurityPocTest
+    boundaries: [code_exchange]
+    required_tests:
+      - "L1: an authorization code cannot be redeemed twice"
+  - id: wire_and_audience
+    path: test/integration/mcp_wire_contract_test.rb
+    test_class: MCPWireContractTest
+    boundaries: [audience, admission, schema, callbacks]
+    required_tests:
+      - exact http and protocol mapping
+      - callback chain and zero work
+      - invalid utf8 and typed client info fail before dispatch
+      - non-finite numbers and malformed unicode fail before dispatch
+  - id: sdk_boundary
+    path: test/hitch/mcp/sdk_contract_test.rb
+    test_class: Hitch::MCP::SDKContractTest
+    boundaries: [schema, context, callbacks, result_redaction]
+    required_tests:
+      - hostile global callbacks receive no Hitch request data
+      - SDK callbacks cannot observe arguments or body
+      - reserved server context forms fail before SDK dispatch
+      - malformed SDK responses become a generic internal error
+  - id: immutable_context
+    path: test/hitch/mcp/context_test.rb
+    test_class: Hitch::MCP::ContextTest
+    boundaries: [context]
+    required_tests:
+      - untrusted meta is recursively copied and frozen
+      - construction rejects values outside the framework envelope
+  - id: registry_validation
+    path: test/hitch/mcp/registry_test.rb
+    test_class: Hitch::MCP::RegistryTest
+    boundaries: [registration, schema, scope]
+    required_tests:
+      - registry rejects the complete invalid class and descriptor set
+      - duplicate MCP names reject the entire registry
+  - id: registry_reload
+    path: test/hitch/mcp/registry_reload_test.rb
+    test_class: Hitch::MCP::RegistryReloadTest
+    boundaries: [registration, concurrency]
+    required_tests:
+      - concurrent readers wait for one complete replacement snapshot
+      - concurrent readers receive unavailable after a failed replacement
+  - id: listing_and_principal_isolation
+    path: test/integration/mcp_listing_test.rb
+    test_class: MCPListingTest
+    boundaries: [availability, scope, context, concurrency]
+    required_tests:
+      - simultaneous principals do not share scope or availability
+      - a request overlapping reload waits and uses only the new current class
+      - a missing or raising scope resolver fails closed before registry and sdk work
+  - id: tool_authorization
+    path: test/hitch/mcp/tool_test.rb
+    test_class: Hitch::MCP::ToolTest
+    boundaries: [schema, policy, execution]
+    required_tests:
+      - schema precedes argument policy
+      - default policy denies without execution
+      - host exceptions become generic tool errors after one execution attempt
+  - id: result_boundary
+    path: test/hitch/mcp/result_test.rb
+    test_class: Hitch::MCP::ResultTest
+    boundaries: [result_redaction]
+    required_tests:
+      - output schema and exact wire cap
+      - failure canaries never cross Hitch boundaries
+  - id: structural_observation
+    path: test/hitch/mcp/observation_test.rb
+    test_class: Hitch::MCP::ObservationTest
+    boundaries: [observation, callbacks, result_redaction]
+    required_tests:
+      - request event once on every terminal path
+      - sensitive canaries and subscriber failure are isolated
+  - id: admission_store
+    path: test/hitch/mcp/rate_limit_test.rb
+    test_class: Hitch::MCP::RateLimitTest
+    boundaries: [admission, concurrency]
+    required_tests:
+      - memory store increment is exact under simultaneous callers
+      - Redis store rejects nil, malformed, and missing-expiry responses
+  - id: admission_integration
+    path: test/integration/mcp_rate_limit_test.rb
+    test_class: MCPRateLimitTest
+    boundaries: [admission, audience]
+    required_tests:
+      - Redis connection failure is 503 before body registry SDK or host work
+      - rotating a token does not reset the principal-client quota
+  - id: exhaustive_authorization_lattice
+    path: test/integration/mcp_tool_authorization_lattice_test.rb
+    test_class: MCPToolAuthorizationLatticeTest
+    boundaries: [audience, admission, registration, availability, scope, schema, policy, execution, result_redaction, context, callbacks, observation]
+    required_tests:
+      - exhaustive terminal paths
+      - expired and revoked concrete variants
+      - event and host work counts
+deferred_forced_boundaries:
+  - id: generator_install_collisions
+    owner_issue: M5.1
+    gate: bin/ci-generators install
+  - id: generator_tool_collisions
+    owner_issue: M5.2
+    gate: bin/ci-generators tool

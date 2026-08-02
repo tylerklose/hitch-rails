@@ -24,10 +24,12 @@ class PackageContractTest < ActiveSupport::TestCase
 
     rails = @specification.runtime_dependencies.find { |dependency| dependency.name == "rails" }
     json = @specification.runtime_dependencies.find { |dependency| dependency.name == "json" }
+    json_schemer = @specification.runtime_dependencies.find { |dependency| dependency.name == "json_schemer" }
     mcp = @specification.runtime_dependencies.find { |dependency| dependency.name == "mcp" }
 
     assert_equal ">= 7.2, < 8.2", rails.requirement.to_s
     assert_equal ">= 2.13, < 3", json.requirement.to_s
+    assert_equal ">= 2.4, < 3", json_schemer.requirement.to_s
     assert_equal ">= 1.1, < 2", mcp.requirement.to_s
   end
 
@@ -47,7 +49,9 @@ class PackageContractTest < ActiveSupport::TestCase
       app/models/hitch/mcp/internal/sdk_adapter/response_normalizer.rb
       app/models/hitch/mcp/internal/verified_request.rb
       app/models/hitch/mcp/context.rb
+      app/models/hitch/mcp/registry.rb
       app/models/hitch/mcp/slice_tool.rb
+      app/models/hitch/mcp/tool.rb
       app/models/hitch/mcp/verified_request.rb
       lib/generators/hitch/install/install_generator.rb
       lib/generators/hitch/install/templates/initializer.rb

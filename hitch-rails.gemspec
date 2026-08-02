@@ -14,8 +14,9 @@ Gem::Specification.new do |spec|
     discovery metadata (RFC 8414 + RFC 9728), token revocation (RFC 7009),
     and CORS for browser-based MCP clients. The 0.2 development line directly
     integrates the Ruby MCP SDK behind a private compatibility boundary and
-    provides a strict authenticated endpoint with a public request-local Context
-    around one private read-only transport slice; the host-owned registry remains
+    provides a strict authenticated endpoint, a public request-local Context,
+    and an atomically validated host Registry descriptor surface around one
+    private read-only transport slice; per-principal registry resolution remains
     milestone-gated. A deprecated ServerEndpoint
     compatibility concern remains available through the 0.2 line for bearer
     validation and basic MCP Streamable HTTP response shaping. Principal lookup is
@@ -62,6 +63,7 @@ Gem::Specification.new do |spec|
   end
 
   spec.add_dependency "json", ">= 2.13", "< 3"
+  spec.add_dependency "json_schemer", ">= 2.4", "< 3"
   spec.add_dependency "mcp", ">= 1.1", "< 2"
   spec.add_dependency "rails", ">= 7.2", "< 8.2"
 end

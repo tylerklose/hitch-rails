@@ -41,9 +41,10 @@ needs:
 
 The accepted 0.1 checkpoint leaves the `/mcp` endpoint, SDK integration, and
 tool dispatch to the host. The 0.2 development line now owns the private SDK
-compatibility boundary and authenticated endpoint. Its host-owned Registry,
-Context, authorization policy, production request store, and public observation
-events remain later roadmap milestones. Existing integrations may keep using the
+compatibility boundary, authenticated endpoint, public request Context, and
+validated host Registry descriptors. Per-principal registry resolution,
+authorization policy, production request store, and public observation events
+remain later roadmap milestones. Existing integrations may keep using the
 deprecated `Hitch::ServerEndpoint` compatibility helper for bearer validation
 and response shaping while moving toward the 0.2 endpoint.
 
@@ -118,6 +119,7 @@ Hitch.configure do |config|
   config.brand_name = "Your App"
   config.supported_scopes = [ "mcp" ]
   config.dynamic_client_registration_enabled = false
+  config.mcp.registry = "McpToolRegistry"
   config.mcp.server_info = ->(_context) {
     {
       name: "your-app",
@@ -161,10 +163,40 @@ end
 ```
 
 This controller and route are manual in the current development build; the
-installer does not generate them until M5. The endpoint currently exposes one
-private, read-only `hitch.echo` transport-proof tool. It is checkpoint
-scaffolding, not a supported adopter tool API, and will be replaced when the
-host-owned Registry becomes authoritative in M3.
+installer does not generate them until M5.
+
+The Registry declaration surface is available now:
+
+```ruby
+module McpTools
+  class Echo < Hitch::MCP::Tool
+    tool_name "echo"
+    description "Describe one signed-in account"
+    input_schema type: "object", properties: {}, additionalProperties: false
+    annotations read_only_hint: true, destructive_hint: false
+  end
+end
+
+class McpToolRegistry < Hitch::MCP::Registry
+  register McpTools::Echo, scopes: [ "mcp" ]
+end
+```
+
+`config.mcp.registry` is a String so Rails can resolve reloadable application
+classes afresh. Every prepare cycle validates the entire declaration and then
+publishes one immutable, MCP-name-sorted snapshot containing only class names,
+schemas, annotations, and OAuth scopes. A failed reload leaves no stale or
+partially valid snapshot. Schemas use JSON Schema 2020-12, same-document
+references only, and explicit depth/object/byte caps; registered tool classes
+cannot replace framework-owned `.call`.
+
+Auth-only 0.1 adopters that configure neither MCP runtime setting keep booting
+unchanged during this staged line. Once `config.mcp.server_info` activates the
+new endpoint runtime, `config.mcp.registry` is mandatory and validated at boot.
+
+The endpoint still exposes one private, read-only `hitch.echo` transport-proof
+tool during M3.2. It is checkpoint scaffolding, not an adopter extension point;
+M3.3 makes the validated Registry authoritative for listing and call admission.
 
 ### Client ID Metadata Documents
 

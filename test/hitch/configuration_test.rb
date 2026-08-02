@@ -18,6 +18,10 @@ class Hitch::ConfigurationTest < ActiveSupport::TestCase
     assert_instance_of Hitch::MCP::Configuration, configuration.mcp
     assert_same configuration.mcp, Hitch.configuration.mcp
     assert configuration.mcp.validate!
+    configuration.mcp.server_info = ->(_context) { { name: "example", version: "1" } }
+    assert_raises(ArgumentError) { configuration.mcp.validate! }
+    configuration.mcp.registry = "McpToolRegistry"
+    assert configuration.mcp.validate!
   end
 
   test "MCP endpoint configuration validates callable server info and an integer byte cap" do
@@ -37,6 +41,7 @@ class Hitch::ConfigurationTest < ActiveSupport::TestCase
 
   test "MCP request byte cap has one explicit development default" do
     assert_equal 1_048_576, Hitch.configuration.mcp.max_request_bytes
+    assert_nil Hitch.configuration.mcp.registry
     assert_nil Hitch.configuration.mcp.server_info
   end
 

@@ -3,6 +3,7 @@ PATH
   specs:
     hitch-rails (0.2.0.pre.2.dev)
       json (>= 2.13, < 3)
+      json_schemer (>= 2.4, < 3)
       mcp (>= 1.1, < 2)
       rails (>= 7.2, < 8.2)
 

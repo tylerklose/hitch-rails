@@ -98,6 +98,17 @@ module Hitch
       Hitch.configuration.validate!
     end
 
+    config.to_prepare do
+      configuration = Hitch.configuration
+      next unless configuration.resource_uri.present?
+      next if configuration.mcp.registry.nil? && configuration.mcp.server_info.nil?
+
+      configuration.mcp.__send__(
+        :prepare_registry!,
+        supported_scopes: configuration.supported_scopes
+      )
+    end
+
     # Filter OAuth secrets out of Rails request logs. Without this, a
     # crash on /oauth/token would log the raw code + code_verifier
     # (both lookup credentials), and a successful response would log

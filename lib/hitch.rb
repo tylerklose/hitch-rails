@@ -15,9 +15,10 @@ require "hitch/dynamic_registration_rate_limit"
 # metadata (RFC 8414 + RFC 9728), token revocation (RFC 7009), and CORS
 # for browser-based MCP clients. The 0.2 development line owns an authenticated
 # host-mounted MCP endpoint, a public request-local Context, and a private Ruby
-# SDK compatibility boundary. The
+# SDK compatibility boundary. The explicit Registry descriptor surface is also
+# active and stores only reload-safe names and frozen data. The
 # accepted auth substrate remains the authority the endpoint validates tokens
-# against; the host Registry and policy APIs remain later milestones.
+# against; per-principal registry resolution and policy remain later milestones.
 #
 # Spec reference: https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization
 #

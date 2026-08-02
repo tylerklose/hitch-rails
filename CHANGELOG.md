@@ -17,6 +17,12 @@ GitHub-released, or published to RubyGems.
   request-local values while copying and freezing granted scopes, request
   values, and untrusted MCP metadata. The SDK handoff remains exactly one
   private `{ hitch_context: context }` wrapper.
+- Added the string-configured `Hitch::MCP::Registry` and descriptor-only
+  `Hitch::MCP::Tool` DSL. Rails prepare cycles now rebuild one immutable,
+  MCP-name-sorted snapshot containing only class names and frozen descriptor
+  data. Invalid names, classes, schemas, annotations, scopes, reserved
+  `server_context` declarations, or `.call` overrides clear the prior snapshot
+  and fail the entire reload. Registry-backed request filtering remains M3.3.
 
 ## [0.2.0.pre.1] - 2026-08-02
 

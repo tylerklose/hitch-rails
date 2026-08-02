@@ -16,8 +16,9 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     Hitch::Client.delete_all
     Hitch.reset_configuration!
     Hitch.configure do |c|
-      c.principal_model = "User"
       c.resource_uri = RESOURCE_A
+      c.allowed_hosts = [ "www.example.com", "mcp.example.com" ]
+      c.allowed_origins = [ "https://claude.ai" ]
       c.brand_name = "Dummy"
     end
     @user = User.create!(email: "tester@test")
@@ -31,7 +32,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
   end
 
   def register_client(name: "Claude Code", redirect_uris: [ CLIENT_REDIRECT ])
-    post "/oauth/register", params: { client_name: name, redirect_uris: redirect_uris }
+    post "/oauth/register", params: { client_name: name, redirect_uris: redirect_uris }, as: :json
     assert_response :created
     JSON.parse(response.body)
   end
@@ -43,26 +44,25 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     # be the URL the metadata is served from, and clients validate that;
     # asserting only presence would let any wrong-but-self-consistent
     # issuer through, including one carrying a stray path suffix.
-    assert_equal "http://www.example.com", body["issuer"]
-    assert_equal "http://www.example.com/oauth/authorize", body["authorization_endpoint"]
+    assert_equal "https://dummy.test", body["issuer"]
+    assert_equal "https://dummy.test/oauth/authorize", body["authorization_endpoint"]
+    assert_equal "https://dummy.test/oauth/token", body["token_endpoint"]
+    assert_equal "https://dummy.test/oauth/register", body["registration_endpoint"]
     assert_equal [ "S256" ], body["code_challenge_methods_supported"]
     assert_equal [ "mcp" ], body["scopes_supported"]
-    # Only "none" — gem doesn't authenticate client secrets so it
-    # must not advertise client_secret_post.
-    assert_equal [ "none" ], body["token_endpoint_auth_methods_supported"]
-    # Not advertised over plain http — RFC 9207 §2 requires the `iss`
-    # VALUE be an https URL, so over http the promise could not be kept.
-    # See the dedicated pair of tests below.
-    assert_equal false, body["authorization_response_iss_parameter_supported"]
+    # Advertise exactly the two implemented methods; client_secret_post
+    # remains unsupported because secrets never belong in the form body.
+    assert_equal %w[none client_secret_basic], body["token_endpoint_auth_methods_supported"]
+    assert_equal true, body["authorization_response_iss_parameter_supported"]
 
     get "/.well-known/oauth-protected-resource"
     body = JSON.parse(response.body)
     assert_equal RESOURCE_A, body["resource"]
     # Also derived from Hitch::IssuerUrl — pinned so the helper can't
     # drift here unnoticed either.
-    assert_equal [ "http://www.example.com" ], body["authorization_servers"]
+    assert_equal [ "https://dummy.test" ], body["authorization_servers"]
     assert_equal [ "header" ], body["bearer_methods_supported"]
-    # PRM SHOULD include scopes_supported (2025-11-25 spec) so RSes
+    # PRM SHOULD include scopes_supported (2026-07-28 spec) so RSes
     # can echo per-tool required scopes in 403 challenges.
     assert_equal [ "mcp" ], body["scopes_supported"]
   end
@@ -74,16 +74,16 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
   # makes a conformant client hard-fail.
   test "the RFC 9207 capability is advertised only when the issuer is https" do
     get "/.well-known/oauth-authorization-server"
-    assert_equal "http://www.example.com", JSON.parse(response.body)["issuer"]
-    assert_equal false, JSON.parse(response.body)["authorization_response_iss_parameter_supported"]
+    assert_equal "https://dummy.test", JSON.parse(response.body)["issuer"]
+    assert_equal true, JSON.parse(response.body)["authorization_response_iss_parameter_supported"]
 
-    https!
+    Hitch.configuration.resource_uri = "http://127.0.0.1/mcp"
+    host! "127.0.0.1"
+    https!(false)
     get "/.well-known/oauth-authorization-server"
     body = JSON.parse(response.body)
-    assert_equal "https://www.example.com", body["issuer"]
-    assert_equal true, body["authorization_response_iss_parameter_supported"]
-  ensure
-    https!(false)
+    assert_equal "http://127.0.0.1", body["issuer"]
+    assert_equal false, body["authorization_response_iss_parameter_supported"]
   end
 
   # An http `iss` is NOT conformant — RFC 9207 §2 requires the value use
@@ -96,32 +96,32 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
   # already accepted the http issuer from the same discovery document can
   # compare the two and pass; a stricter one may reject the http issuer
   # during discovery and never get here at all.
-  test "iss is emitted over http as development compatibility, unadvertised" do
+  test "iss is emitted for configured loopback http development, unadvertised" do
+    local_resource = "http://127.0.0.1/mcp"
+    Hitch.configuration.resource_uri = local_resource
+    host! "127.0.0.1"
+    https!(false)
     client = register_client
     sign_in @user
 
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"], redirect_uri: CLIENT_REDIRECT,
-      code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
+      code_challenge: @challenge, code_challenge_method: "S256", resource: local_resource
     }
     assert_response :redirect
     returned = URI.decode_www_form(URI.parse(response.location).query).to_h
-    assert_equal "http://www.example.com", returned["iss"]
+    assert_equal "http://127.0.0.1", returned["iss"]
   end
 
-  # The metadata body is derived from the request Host (issuer + all
-  # endpoint URLs come from request.base_url). It MUST NOT be stored in a
-  # shared cache that keys on path alone: a forged-Host request could
-  # otherwise poison the cached entry and steer later clients' credential
-  # flow to an attacker-controlled token_endpoint. So the responses are
-  # cached privately (per client), never `public`, and key any cache on
-  # Host as defense-in-depth.
+  # Metadata is fixed to the configured resource origin. Responses remain
+  # private and vary on Host as defense in depth for virtual-host caches.
   test "discovery metadata is not shared-cacheable and varies on Host" do
     %w[/.well-known/oauth-authorization-server /.well-known/oauth-protected-resource].each do |path|
       get path
       cache_control = response.headers["Cache-Control"].to_s
       assert_not_includes cache_control, "public",
-        "#{path} is shared-cacheable while its body is Host-derived — cache-poisoning risk"
+        "#{path} must not become shared-cacheable"
       assert_includes cache_control, "private", "#{path} should be privately cacheable"
       assert_includes response.headers["Vary"].to_s, "Host",
         "#{path} must Vary on Host so caches don't serve a forged-Host response cross-host"
@@ -129,11 +129,15 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
   end
 
   test "CORS preflight on .well-known/*" do
-    process :options, "/.well-known/oauth-authorization-server", headers: { "Origin" => "https://claude.ai" }
+    headers = {
+      "Origin" => "https://claude.ai",
+      "Access-Control-Request-Method" => "GET"
+    }
+    process :options, "/.well-known/oauth-authorization-server", headers: headers
     assert_response :no_content
     assert_equal "https://claude.ai", response.headers["Access-Control-Allow-Origin"]
 
-    process :options, "/.well-known/oauth-protected-resource", headers: { "Origin" => "https://claude.ai" }
+    process :options, "/.well-known/oauth-protected-resource", headers: headers
     assert_response :no_content
     assert_equal "https://claude.ai", response.headers["Access-Control-Allow-Origin"]
   end
@@ -143,35 +147,40 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
   # they're allowed, so the allow-list has to name them explicitly —
   # there is no wildcard fallback once Authorization is in play.
   test "CORS preflight allows the MCP 2026-07-28 request headers" do
-    process :options, "/oauth/token", headers: { "Origin" => "https://claude.ai" }
+    requested = %w[Content-Type Authorization MCP-Protocol-Version Mcp-Method Mcp-Name]
+    process :options, "/oauth/token", headers: {
+      "Origin" => "https://claude.ai",
+      "Access-Control-Request-Method" => "POST",
+      "Access-Control-Request-Headers" => requested.join(", ")
+    }
     allowed = response.headers["Access-Control-Allow-Headers"].to_s
 
-    %w[Content-Type Authorization MCP-Protocol-Version Mcp-Method Mcp-Name].each do |header|
+    requested.each do |header|
       assert_includes allowed, header,
         "#{header} must be in Access-Control-Allow-Headers or browser MCP clients fail preflight"
     end
   end
 
   test "DCR rejects javascript: redirect_uri" do
-    post "/oauth/register", params: { client_name: "Bad", redirect_uris: [ "javascript:alert(1)" ] }
+    post "/oauth/register", params: { client_name: "Bad", redirect_uris: [ "javascript:alert(1)" ] }, as: :json
     assert_response :bad_request
     body = JSON.parse(response.body)
     assert_equal "invalid_redirect_uri", body["error"]
   end
 
   test "DCR rejects non-loopback http redirect_uri" do
-    post "/oauth/register", params: { client_name: "Bad", redirect_uris: [ "http://attacker.test/cb" ] }
+    post "/oauth/register", params: { client_name: "Bad", redirect_uris: [ "http://attacker.test/cb" ] }, as: :json
     assert_response :bad_request
     assert_equal "invalid_redirect_uri", JSON.parse(response.body)["error"]
   end
 
   test "DCR allows http loopback redirect_uri" do
-    post "/oauth/register", params: { client_name: "Local", redirect_uris: [ "http://localhost:8080/cb" ] }
+    post "/oauth/register", params: { client_name: "Local", redirect_uris: [ "http://localhost:8080/cb" ] }, as: :json
     assert_response :created
   end
 
   test "DCR rejects when one of multiple redirect_uris is bad" do
-    post "/oauth/register", params: { client_name: "Mixed", redirect_uris: [ "https://app.test/cb", "javascript:1" ] }
+    post "/oauth/register", params: { client_name: "Mixed", redirect_uris: [ "https://app.test/cb", "javascript:1" ] }, as: :json
     assert_response :bad_request
   end
 
@@ -182,6 +191,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     sign_in @user
 
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"],
       redirect_uri: "http://localhost:54321/cb",
       code_challenge: @challenge,
@@ -197,6 +207,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     sign_in @user
 
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"],
       redirect_uri: "http://localhost:9000/different/path",
       code_challenge: @challenge,
@@ -221,6 +232,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
       "https://app.test/cb?TENANT=acme"         # key case changed
     ].each do |inbound|
       post "/oauth/authorize", params: {
+      response_type: "code",
         client_id: client["client_id"], redirect_uri: inbound,
         code_challenge: @challenge, code_challenge_method: "S256"
       }
@@ -233,6 +245,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     sign_in @user
 
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"], redirect_uri: "https://app.test/cb?tenant=acme",
       code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
     }
@@ -248,6 +261,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     sign_in @user
 
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"], redirect_uri: "https://evil%40x:pw@app.test/cb",
       code_challenge: @challenge, code_challenge_method: "S256"
     }
@@ -260,6 +274,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     sign_in @user
 
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"], redirect_uri: "http://localhost:54321/cb?extra=1",
       code_challenge: @challenge, code_challenge_method: "S256"
     }
@@ -271,6 +286,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     sign_in @user
 
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"],
       redirect_uri: "https://attacker.test/cb",
       code_challenge: @challenge,
@@ -294,7 +310,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
   test "DCR records and echoes a declared application_type" do
     post "/oauth/register", params: {
       client_name: "Claude Code", redirect_uris: [ "http://localhost:8080/cb" ], application_type: "native"
-    }
+    }, as: :json
     assert_response :created
     assert_equal "native", JSON.parse(response.body)["application_type"]
     assert_equal "native", Hitch::Client.last.application_type
@@ -303,7 +319,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
   test "DCR drops an unrecognized application_type without failing the registration" do
     post "/oauth/register", params: {
       client_name: "Odd", redirect_uris: [ CLIENT_REDIRECT ], application_type: "desktop"
-    }
+    }, as: :json
     assert_response :created
     assert_nil JSON.parse(response.body)["application_type"]
     assert_nil Hitch::Client.last.application_type
@@ -319,6 +335,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     sign_in @user
 
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"],
       redirect_uri: "http://localhost:54321/cb",
       code_challenge: @challenge,
@@ -335,12 +352,13 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
   test "declaring web does not restrict a loopback redirect (no enforcement yet)" do
     post "/oauth/register", params: {
       client_name: "Weblike", redirect_uris: [ "http://localhost:9000/cb" ], application_type: "web"
-    }
+    }, as: :json
     assert_response :created
     client = JSON.parse(response.body)
     sign_in @user
 
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"],
       redirect_uri: "http://localhost:54321/cb",
       code_challenge: @challenge,
@@ -393,8 +411,9 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     sign_in @user
     stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id, **) { flunk "must not resolve while disabled" }) do
       post "/oauth/authorize", params: {
+        response_type: "code",
         client_id: CIMD_URL, redirect_uri: CLIENT_REDIRECT,
-        code_challenge: @challenge, code_challenge_method: "S256"
+        code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
       }
       assert_response :bad_request
       assert_equal "invalid_client", JSON.parse(response.body)["error"]
@@ -407,6 +426,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
 
     stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id, **) { cimd_document }) do
       post "/oauth/authorize", params: {
+      response_type: "code",
         client_id: CIMD_URL, redirect_uri: CLIENT_REDIRECT,
         code_challenge: @challenge, code_challenge_method: "S256",
         state: "xyz", resource: RESOURCE_A
@@ -429,8 +449,9 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
 
     stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id, **) { cimd_document }) do
       post "/oauth/authorize", params: {
+        response_type: "code",
         client_id: CIMD_URL, redirect_uri: "https://attacker.test/cb",
-        code_challenge: @challenge, code_challenge_method: "S256"
+        code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
       }
       assert_response :bad_request
     end
@@ -442,8 +463,9 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
 
     stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id, **) { nil }) do
       post "/oauth/authorize", params: {
+        response_type: "code",
         client_id: CIMD_URL, redirect_uri: CLIENT_REDIRECT,
-        code_challenge: @challenge, code_challenge_method: "S256"
+        code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
       }
       assert_response :bad_request
       assert_equal "invalid_client", JSON.parse(response.body)["error"]
@@ -468,8 +490,9 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     hostile = cimd_document(redirect_uris: [ "javascript:alert(1)", "http://attacker.test/cb" ])
     stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id, **) { hostile }) do
       post "/oauth/authorize", params: {
+        response_type: "code",
         client_id: CIMD_URL, redirect_uri: CLIENT_REDIRECT,
-        code_challenge: @challenge, code_challenge_method: "S256"
+        code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
       }
       assert_response :bad_request
       assert_equal "client has no usable redirect_uris",
@@ -487,6 +510,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     sign_in @user
 
     get "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"], redirect_uri: CLIENT_REDIRECT,
       code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
     }
@@ -508,6 +532,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     local = cimd_document(redirect_uris: [ "http://localhost:9000/cb", "http://127.0.0.1:9000/cb" ])
     stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id, **) { local }) do
       get "/oauth/authorize", params: {
+      response_type: "code",
         client_id: CIMD_URL, redirect_uri: "http://localhost:9000/cb",
         code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
       }
@@ -522,6 +547,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
 
     stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id, **) { cimd_document }) do
       get "/oauth/authorize", params: {
+      response_type: "code",
         client_id: CIMD_URL, redirect_uri: CLIENT_REDIRECT,
         code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
       }
@@ -548,8 +574,9 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
       stub_class_method(Hitch::ClientIdMetadata, :fetch_and_validate, ->(_id, *) { fetches += 1; nil }) do
         5.times do |i|
           post "/oauth/authorize", params: {
+            response_type: "code",
             client_id: "https://client.example/doc#{i}.json", redirect_uri: CLIENT_REDIRECT,
-            code_challenge: @challenge, code_challenge_method: "S256"
+            code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
           }
           assert_response :bad_request
         end
@@ -568,6 +595,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     document = cimd_document(client_name: "<script>alert(1)</script>Trusted Bank")
     stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id, **) { document }) do
       get "/oauth/authorize", params: {
+      response_type: "code",
         client_id: CIMD_URL, redirect_uri: CLIENT_REDIRECT,
         code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
       }
@@ -583,6 +611,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
 
     # Consent screen renders for authenticated user
     get "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"],
       redirect_uri: CLIENT_REDIRECT,
       code_challenge: @challenge,
@@ -595,6 +624,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
 
     # User approves
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"],
       redirect_uri: CLIENT_REDIRECT,
       code_challenge: @challenge,
@@ -614,6 +644,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     post "/oauth/token", params: {
       grant_type: "authorization_code",
       code: code,
+      client_id: client["client_id"],
       code_verifier: @verifier,
       resource: RESOURCE_A
     }
@@ -622,6 +653,8 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     assert body["access_token"].present?
     assert_equal "Bearer", body["token_type"]
     assert_equal "mcp", body["scope"]
+    assert_equal "no-store", response.headers["Cache-Control"]
+    assert_equal "no-cache", response.headers["Pragma"]
 
     # The minted token is bound to the configured resource (RFC 8707)
     raw_token = body["access_token"]
@@ -642,21 +675,20 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     # ride along on the state branch — the metadata advertises it
     # unconditionally, so an omission is a hard failure at the client.
     #
-    # Run on a non-default host:port. On the default test host a second,
-    # subtly different derivation (scheme://host, dropping the port)
-    # coincides with request.base_url, so the drift this shares a helper
-    # to prevent would go unnoticed.
+    # Run through an allowed ingress alias. The alias must never become a
+    # second issuer identity; both values use the fixed resource_uri origin.
     [ nil, "xyz" ].each do |state|
-      host! "mcp.example.com:8443"
+      host! "mcp.example.com"
 
       get "/.well-known/oauth-authorization-server"
       advertised_issuer = JSON.parse(response.body)["issuer"]
-      assert_equal "http://mcp.example.com:8443", advertised_issuer
+      assert_equal "https://dummy.test", advertised_issuer
 
       client = register_client
       sign_in @user
 
       post "/oauth/authorize", params: {
+      response_type: "code",
         client_id: client["client_id"],
         redirect_uri: CLIENT_REDIRECT,
         code_challenge: @challenge,
@@ -685,6 +717,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     sign_in @user
 
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"],
       redirect_uri: "#{CLIENT_REDIRECT}?iss=https%3A%2F%2Fattacker-as.example",
       code_challenge: @challenge,
@@ -709,6 +742,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     sign_in @user
 
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"],
       redirect_uri: poisoned,
       code_challenge: @challenge,
@@ -722,7 +756,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     issuers = pairs.select { |k, _| k == "iss" }.map(&:last)
     assert_equal 1, issuers.length,
       "the authorization response must carry exactly one iss — a duplicate is shadowable by a first-wins client parser"
-    assert_equal "http://www.example.com", issuers.first
+    assert_equal "https://dummy.test", issuers.first
     assert_not_includes response.location, "attacker-as.example"
   end
 
@@ -742,6 +776,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     sign_in @user
 
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"],
       redirect_uri: poisoned,
       code_challenge: @challenge,
@@ -765,9 +800,38 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
   test "DCR rejects a redirect_uri carrying a fragment" do
     post "/oauth/register", params: {
       client_name: "Fragment", redirect_uris: [ "#{CLIENT_REDIRECT}#iss=https://attacker.example" ]
-    }
+    }, as: :json
     assert_response :bad_request
     assert_equal "invalid_redirect_uri", JSON.parse(response.body)["error"]
+  end
+
+  test "DCR rejects syntactically present empty fragment and userinfo components" do
+    [ "#{CLIENT_REDIRECT}#", "https://@claude.ai/callback" ].each do |redirect_uri|
+      post "/oauth/register", params: {
+        client_name: "Empty component", redirect_uris: [ redirect_uri ]
+      }, as: :json
+
+      assert_response :bad_request
+      assert_equal "invalid_redirect_uri", JSON.parse(response.body).fetch("error")
+    end
+  end
+
+  test "authorize rejects syntactically present empty fragment and userinfo components" do
+    client = register_client
+    sign_in @user
+
+    [ "#{CLIENT_REDIRECT}#", "https://@claude.ai/callback" ].each do |redirect_uri|
+      post "/oauth/authorize", params: {
+        response_type: "code",
+        client_id: client.fetch("client_id"),
+        redirect_uri: redirect_uri,
+        code_challenge: @challenge,
+        code_challenge_method: "S256",
+        resource: RESOURCE_A
+      }
+
+      assert_response :bad_request
+    end
   end
 
   # Same primitive applied to code/state. Mandatory S256 PKCE blunts the
@@ -779,6 +843,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     sign_in @user
 
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"],
       redirect_uri: poisoned,
       code_challenge: @challenge,
@@ -805,6 +870,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     sign_in @user
 
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"],
       redirect_uri: redirect_with_query,
       code_challenge: @challenge,
@@ -824,6 +890,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
   test "authorize without sign-in returns 401 when login_path unset" do
     client = register_client
     get "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"],
       redirect_uri: CLIENT_REDIRECT,
       code_challenge: @challenge,
@@ -837,10 +904,12 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     sign_in @user
 
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"],
       redirect_uri: "https://attacker.test/callback",
       code_challenge: @challenge,
-      code_challenge_method: "S256"
+      code_challenge_method: "S256",
+      resource: RESOURCE_A
     }
     assert_response :bad_request
     body = JSON.parse(response.body)
@@ -856,6 +925,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     # independently of what the client registered.
     client = register_client(redirect_uris: [ "http://localhost:8765/cb" ])
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"],
       redirect_uri: "http://attacker.test/callback",
       code_challenge: @challenge,
@@ -869,10 +939,12 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     client = register_client(redirect_uris: [ "http://localhost:8765/cb" ])
     sign_in @user
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"],
       redirect_uri: "http://localhost:8765/cb",
       code_challenge: @challenge,
-      code_challenge_method: "S256"
+      code_challenge_method: "S256",
+      resource: RESOURCE_A
     }
     assert_response :redirect
   end
@@ -880,9 +952,11 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
   test "authorize rejects a request with no client_id (OAuth 2.1 requires it)" do
     sign_in @user
     post "/oauth/authorize", params: {
+      response_type: "code",
       redirect_uri: CLIENT_REDIRECT,
       code_challenge: @challenge,
-      code_challenge_method: "S256"
+      code_challenge_method: "S256",
+      resource: RESOURCE_A
     }
     assert_response :bad_request
     assert_equal "invalid_request", JSON.parse(response.body)["error"]
@@ -893,6 +967,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     client = register_client
     sign_in @user
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"],
       redirect_uri: CLIENT_REDIRECT,
       code_challenge: @challenge,
@@ -904,7 +979,9 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     post "/oauth/token", params: {
       grant_type: "authorization_code",
       code: code,
-      code_verifier: "wrong-verifier"
+      client_id: client["client_id"],
+      code_verifier: "wrong-verifier",
+      resource: RESOURCE_A
     }
     assert_response :bad_request
     assert_equal "invalid_grant", JSON.parse(response.body)["error"]
@@ -914,6 +991,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     client = register_client
     sign_in @user
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"],
       redirect_uri: CLIENT_REDIRECT,
       code_challenge: @challenge,
@@ -925,6 +1003,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     post "/oauth/token", params: {
       grant_type: "authorization_code",
       code: code,
+      client_id: client["client_id"],
       code_verifier: @verifier,
       resource: RESOURCE_B
     }
@@ -937,6 +1016,8 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     sign_in @user
     [ "javascript:alert(1)", "not a uri", "data:text/html,<h1>x", "/relative/path", "ftp://example.com/x" ].each do |bad_resource|
       post "/oauth/authorize", params: {
+        response_type: "code",
+        client_id: "test-client",
         redirect_uri: CLIENT_REDIRECT,
         code_challenge: @challenge,
         code_challenge_method: "S256",
@@ -950,6 +1031,8 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
   test "authorize rejects resource with URL fragment (RFC 8707)" do
     sign_in @user
     post "/oauth/authorize", params: {
+      response_type: "code",
+      client_id: "test-client",
       redirect_uri: CLIENT_REDIRECT,
       code_challenge: @challenge,
       code_challenge_method: "S256",
@@ -968,6 +1051,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     client = register_client
     sign_in @user
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"],
       redirect_uri: CLIENT_REDIRECT,
       code_challenge: @challenge,
@@ -978,7 +1062,9 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     post "/oauth/token", params: {
       grant_type: "authorization_code",
       code: code,
-      code_verifier: @verifier
+      client_id: client["client_id"],
+      code_verifier: @verifier,
+      resource: RESOURCE_A
     }
     raw_token = JSON.parse(response.body)["access_token"]
 
@@ -987,8 +1073,28 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     assert_nil Hitch::AccessToken.find_by_token(raw_token)
   end
 
+  test "malformed revocation token shapes remain no-oracle 200 without lookup" do
+    lookup = ->(*) { flunk "malformed revocation input must not reach token lookup" }
+
+    stub_class_method(Hitch::AccessToken, :find_by_token, lookup) do
+      post "/oauth/revoke", params: { token: { value: "nested" } }
+      assert_response :ok
+
+      post "/oauth/revoke", params: "token=one&token=two",
+        headers: { "CONTENT_TYPE" => "application/x-www-form-urlencoded" }
+      assert_response :ok
+
+      post "/oauth/revoke?token=query", params: "",
+        headers: { "CONTENT_TYPE" => "application/x-www-form-urlencoded" }
+      assert_response :ok
+    end
+  end
+
   test "CORS preflight returns 204 with allowed-origin headers for claude.ai" do
-    process :options, "/oauth/token", headers: { "Origin" => "https://claude.ai" }
+    process :options, "/oauth/token", headers: {
+      "Origin" => "https://claude.ai",
+      "Access-Control-Request-Method" => "POST"
+    }
     assert_response :no_content
     assert_equal "https://claude.ai", response.headers["Access-Control-Allow-Origin"]
   end

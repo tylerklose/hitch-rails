@@ -13,7 +13,21 @@ module Hitch
   # is persisted on the access token at issue time and validated at
   # token-use time, satisfying the MCP authorization spec's audience MUST.
   class AuthorizationsController < Hitch::ApplicationController
+    MAX_REQUEST_BODY_BYTES = 16_384
+
+    include Hitch::OauthFormAdmission
     include Hitch::UriValidation
+
+    AUTHORIZATION_PARAMETER_NAMES = %i[
+      response_type
+      client_id
+      redirect_uri
+      scope
+      state
+      code_challenge
+      code_challenge_method
+      resource
+    ].freeze
 
     # The consent POST is a state-changing, session-authenticated
     # action, so it MUST be CSRF-protected. Declared here rather than
@@ -26,14 +40,11 @@ module Hitch
     # ActionController::API-derived host base doesn't define the macro,
     # and such a host can't serve the HTML consent screen anyway.
     protect_from_forgery with: :exception if respond_to?(:protect_from_forgery)
-
     def new
       return require_principal! unless current_principal
 
-      oauth = extract_oauth_params
-      return oauth_error("invalid_request", "redirect_uri is required") if oauth[:redirect_uri].blank?
-      return oauth_error("invalid_request", "Invalid redirect_uri") unless valid_redirect_uri?(oauth[:redirect_uri])
-      return oauth_error("invalid_target", "resource must be an absolute URI") if oauth[:resource].present? && !valid_resource_uri?(oauth[:resource])
+      oauth = valid_authorization_request(extract_oauth_params)
+      return unless oauth
 
       if (err = client_redirect_error(oauth[:client_id], oauth[:redirect_uri]))
         return oauth_error(*err)
@@ -53,12 +64,8 @@ module Hitch
     def create
       return require_principal! unless current_principal
 
-      oauth = extract_oauth_params
-      return oauth_error("invalid_request", "redirect_uri is required") if oauth[:redirect_uri].blank?
-      return oauth_error("invalid_request", "Invalid redirect_uri") unless valid_redirect_uri?(oauth[:redirect_uri])
-      return oauth_error("invalid_request", "code_challenge is required") if oauth[:code_challenge].blank?
-      return oauth_error("invalid_request", "code_challenge_method must be S256") unless oauth[:code_challenge_method] == "S256"
-      return oauth_error("invalid_target", "resource must be an absolute URI") if oauth[:resource].present? && !valid_resource_uri?(oauth[:resource])
+      oauth = valid_authorization_request(extract_oauth_params)
+      return unless oauth
 
       if (err = client_redirect_error(oauth[:client_id], oauth[:redirect_uri]))
         return oauth_error(*err)
@@ -71,42 +78,100 @@ module Hitch
         redirect_uri: oauth[:redirect_uri],
         code_challenge: oauth[:code_challenge],
         code_challenge_method: oauth[:code_challenge_method],
-        resource_uri: resource_for_token(oauth[:resource]),
+        resource_uri: oauth[:resource],
         # Clamp to the server allowlist — a client cannot self-grant a
         # scope the server doesn't support (RFC 6749 §3.3).
         scopes: granted_scopes(oauth[:scope])
       )
 
-      redirect_to build_redirect_uri(oauth[:redirect_uri], code: token.raw_authorization_code, state: oauth[:state]),
-                  allow_other_host: true
+      redirect_with_authorization_code(
+        build_redirect_uri(oauth[:redirect_uri], code: token.raw_authorization_code, state: oauth[:state])
+      )
     end
 
     private
 
     def extract_oauth_params
-      {
-        redirect_uri: scalar_param(:redirect_uri),
-        state: scalar_param(:state),
-        client_id: scalar_param(:client_id),
-        code_challenge: scalar_param(:code_challenge),
-        code_challenge_method: scalar_param(:code_challenge_method),
-        scope: scalar_param(:scope),
-        resource: scalar_param(:resource)
-      }
+      oauth_parameters(*AUTHORIZATION_PARAMETER_NAMES)
     end
 
-    # If the client supplied a `resource` parameter, bind the token to
-    # it (RFC 8707). If absent, fall back to the host's configured
-    # resource_uri so the MCP server's audience check has something to
-    # validate against. If neither is set, the token is issued
-    # unbound and downstream resource checks will reject it — that's
-    # the safe default per spec.
-    def resource_for_token(client_resource)
-      client_resource.presence || Hitch.configuration.resource_uri
+    def valid_authorization_request(oauth)
+      if oauth[:response_type].blank?
+        oauth_error("invalid_request", "response_type is required")
+        return false
+      end
+      unless oauth[:response_type] == "code"
+        oauth_error("unsupported_response_type", "response_type must be code")
+        return false
+      end
+      if oauth[:client_id].blank?
+        oauth_error("invalid_request", "client_id is required")
+        return false
+      end
+      if oauth[:redirect_uri].blank?
+        oauth_error("invalid_request", "redirect_uri is required")
+        return false
+      end
+      unless valid_redirect_uri?(oauth[:redirect_uri])
+        oauth_error("invalid_request", "Invalid redirect_uri")
+        return false
+      end
+      if oauth[:code_challenge].blank?
+        oauth_error("invalid_request", "code_challenge is required")
+        return false
+      end
+      unless Hitch::Pkce.valid_s256_challenge?(oauth[:code_challenge])
+        oauth_error("invalid_request", "code_challenge must be a 43-character S256 value")
+        return false
+      end
+      unless oauth[:code_challenge_method] == "S256"
+        oauth_error("invalid_request", "code_challenge_method must be S256")
+        return false
+      end
+
+      resource = canonical_resource(oauth[:resource])
+      resource ? oauth.merge(resource: resource).freeze : false
+    end
+
+    def canonical_resource(value)
+      if value.blank?
+        oauth_error("invalid_target", "resource is required")
+        return false
+      end
+
+      requested = Hitch::ResourceUri.canonicalize!(
+        value,
+        allow_loopback_http: Rails.env.development? || Rails.env.test?
+      )
+      configured = Hitch::ResourceUri.canonicalize!(
+        Hitch.configuration.resource_uri,
+        allow_loopback_http: Rails.env.development? || Rails.env.test?
+      )
+      unless requested == configured
+        oauth_error("invalid_target", "resource does not identify this MCP server")
+        return false
+      end
+
+      requested
+    rescue Hitch::ResourceUri::Invalid => error
+      oauth_error("invalid_target", error.message)
+      false
+    end
+
+    def reject_oversized_oauth_form_body!
+      oauth_error(
+        "invalid_request",
+        "authorization request body exceeds #{MAX_REQUEST_BODY_BYTES} bytes",
+        :content_too_large
+      )
+    end
+
+    def preserve_oauth_authenticity_token?
+      true
     end
 
     def default_scope
-      Array.wrap(Hitch.configuration.supported_scopes).first || "mcp"
+      Hitch.configuration.supported_scopes.first
     end
 
     # Intersect the requested scope with the server's supported_scopes
@@ -301,6 +366,18 @@ module Hitch
       query_params << [ "iss", issuer_url ]
       uri.query = URI.encode_www_form(query_params)
       uri.to_s
+    end
+
+    # Action Controller's ordinary redirect helper emits the complete Location
+    # through `redirect_to.action_controller`; Rails' log subscriber then
+    # writes the one-time authorization code in plaintext. The destination has
+    # already passed exact registered-URI validation, so construct the 302
+    # directly and keep the credential out of redirect instrumentation.
+    def redirect_with_authorization_code(location)
+      response.headers["Cache-Control"] = "no-store"
+      response.headers["Pragma"] = "no-cache"
+      response.headers["Location"] = location
+      head :found
     end
 
     def require_principal!

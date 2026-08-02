@@ -18,8 +18,8 @@ class ConsentFlowTest < ActionDispatch::IntegrationTest
     Hitch::Client.delete_all
     Hitch.reset_configuration!
     Hitch.configure do |c|
-      c.principal_model = "User"
       c.resource_uri = RESOURCE
+      c.allowed_hosts = [ "www.example.com" ]
       c.brand_name = "Dummy"
     end
     @user = User.create!(email: "consent@test")
@@ -33,7 +33,7 @@ class ConsentFlowTest < ActionDispatch::IntegrationTest
   end
 
   def register_client
-    post "/oauth/register", params: { client_name: "Claude", redirect_uris: [ REDIRECT ] }
+    post "/oauth/register", params: { client_name: "Claude", redirect_uris: [ REDIRECT ] }, as: :json
     assert_response :created
     JSON.parse(response.body)["client_id"]
   end
@@ -47,6 +47,7 @@ class ConsentFlowTest < ActionDispatch::IntegrationTest
     sign_in @user
 
     get "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client_id, redirect_uri: REDIRECT,
       code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE
     }
@@ -64,6 +65,7 @@ class ConsentFlowTest < ActionDispatch::IntegrationTest
     # no sign_in → current_principal nil → require_principal!
 
     get "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client_id, redirect_uri: REDIRECT,
       code_challenge: @challenge, code_challenge_method: "S256"
     }

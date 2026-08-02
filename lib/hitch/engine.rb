@@ -4,6 +4,12 @@ module Hitch
   class Engine < ::Rails::Engine
     isolate_namespace Hitch
 
+    # Rack::MethodOverride would otherwise parse OAuth form bodies before the
+    # controller-level strict admission boundary can cap or redact them.
+    initializer "hitch.guard_oauth_forms", before: :build_middleware_stack do |app|
+      app.middleware.insert_before Rack::MethodOverride, Hitch::RackFormGuard
+    end
+
     # Host apps see the engine's migrations via db:migrate without needing
     # to copy them — the install generator only writes the initializer.
     initializer :append_migrations do |app|
@@ -54,6 +60,37 @@ module Hitch
       )
     end
 
+    initializer "hitch.validate_dynamic_client_registration", after: :load_config_initializers do
+      configuration = Hitch.configuration
+      next unless configuration.dynamic_client_registration_enabled
+
+      unless configuration.dynamic_client_registration_enabled_configured?
+        Rails.logger&.warn(
+          "[hitch] Dynamic Client Registration is enabled by the compatibility default. " \
+          "Set config.dynamic_client_registration_enabled explicitly. Production also " \
+          "requires config.dynamic_client_registration_rate_store; new installs disable DCR."
+        )
+      end
+
+      next unless Rails.env.production?
+
+      Hitch::DynamicRegistrationRateLimit.validate_production_store!(
+        configuration.dynamic_client_registration_rate_store
+      )
+    end
+
+    initializer "hitch.validate_configuration", after: :load_config_initializers do
+      # A fresh host has to boot once to run this generator, and the
+      # initializer it creates is what sets resource_uri. Keep the exception
+      # exact: other generators and every ordinary application boot still
+      # validate and fail closed.
+      install_generator = ARGV.first == "hitch:install" ||
+        (%w[generate g].include?(ARGV.first) && ARGV[1] == "hitch:install")
+      next if install_generator
+
+      Hitch.configuration.validate!
+    end
+
     # Filter OAuth secrets out of Rails request logs. Without this, a
     # crash on /oauth/token would log the raw code + code_verifier
     # (both lookup credentials), and a successful response would log
@@ -69,6 +106,8 @@ module Hitch
       app.config.filter_parameters += [
         :code,
         :code_verifier,
+        :client_secret,
+        :client_secret_digest,
         :access_token,
         :authorization_code,
         :token

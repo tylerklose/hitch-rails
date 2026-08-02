@@ -30,19 +30,19 @@
   "constraints": [
     {
       "type": "invalid_pair",
-      "_why": "If code is already_consumed, PKCE verifier is moot — the consume_code! step already happened.",
+      "_why": "If code is already_consumed, PKCE verifier is moot — the bound conditional exchange already happened.",
       "if": { "parameter": "code_state", "value": "already_consumed" },
       "then_not": { "parameter": "code_verifier_match", "value": "wrong" }
     },
     {
       "type": "invalid_pair",
-      "_why": "consume_code! creates the token — already_consumed implies a token now exists (active/revoked/expired), not never_issued.",
+      "_why": "The bound conditional exchange creates the token — already_consumed implies a token now exists (active/revoked/expired), not never_issued.",
       "if": { "parameter": "code_state", "value": "already_consumed" },
       "then_not": { "parameter": "token_state_at_check", "value": "never_issued" }
     },
     {
       "type": "invalid_pair",
-      "_why": "Wrong PKCE verifier blocks consume_code! — token cannot exist downstream.",
+      "_why": "A wrong PKCE verifier blocks the bound exchange — token cannot exist downstream.",
       "if": { "parameter": "code_verifier_match", "value": "wrong" },
       "then_not": { "parameter": "token_state_at_check", "value": "active" }
     },
@@ -53,7 +53,7 @@
     },
     {
       "type": "invalid_pair",
-      "_why": "Expired auth code blocks consume_code! — token cannot exist downstream.",
+      "_why": "An expired auth code blocks the bound exchange — token cannot exist downstream.",
       "if": { "parameter": "code_state", "value": "expired" },
       "then_not": { "parameter": "token_state_at_check", "value": "active" }
     },

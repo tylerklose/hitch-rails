@@ -1,50 +1,97 @@
 # frozen_string_literal: true
 
 module Hitch
-  # CORS support for OAuth endpoints. MCP clients running in a browser
-  # context (claude.ai, chatgpt.com, etc.) make cross-origin requests
-  # during the OAuth dance and during MCP tool calls.
+  # Exact-origin CORS support for Hitch endpoints and host controllers that
+  # opt in. Preflight is validated separately from ordinary response headers.
   module CorsSupport
     extend ActiveSupport::Concern
 
     included do
-      before_action :set_cors_headers
+      before_action :handle_hitch_preflight, if: -> { request.options? }
+      before_action :set_cors_headers, unless: -> { request.options? }
     end
 
     private
 
-    ALLOWED_ORIGINS = %w[
-      https://claude.ai
-      https://chatgpt.com
-      https://openai.com
-      https://gemini.google.com
-      https://cursor.com
-      https://cursor.sh
-      https://windsurf.com
+    ALLOWED_REQUEST_HEADERS = [
+      "Content-Type",
+      "Authorization",
+      "MCP-Protocol-Version",
+      "Mcp-Method",
+      "Mcp-Name"
     ].freeze
 
-    LOOPBACK_PATTERN = %r{\Ahttps?://(localhost|127\.0\.0\.1)(:\d+)?\z}.freeze
+    LOOPBACK_PATTERN = %r{\Ahttps?://(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?\z}.freeze
 
     def set_cors_headers
+      append_vary_header("Origin")
       origin = request.headers["Origin"]
-      return unless origin
       return unless allowed_origin?(origin)
 
       response.headers["Access-Control-Allow-Origin"] = origin
-      response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-      # MCP 2026-07-28 makes MCP-Protocol-Version, Mcp-Method and
-      # Mcp-Name required request headers on Streamable HTTP (the latter
-      # two so gateways can route and authorize without parsing the JSON
-      # body). A browser-based client sending them fails preflight unless
-      # they're allowed here. Widening an allow-list is safe for older
-      # clients: one that never sends them is unaffected.
-      response.headers["Access-Control-Allow-Headers"] =
-        "Content-Type, Authorization, MCP-Protocol-Version, Mcp-Method, Mcp-Name"
-      response.headers["Access-Control-Max-Age"] = "86400"
     end
 
     def allowed_origin?(origin)
-      ALLOWED_ORIGINS.include?(origin) || LOOPBACK_PATTERN.match?(origin)
+      return false unless origin.is_a?(String)
+      return true if Hitch.configuration.allowed_origins.include?(origin)
+
+      loopback_origins_allowed? && LOOPBACK_PATTERN.match?(origin)
+    end
+
+    # Called by Hitch::PreflightsController. Host-owned endpoints may call the
+    # same private helper from an explicit action, keeping route ownership clear.
+    def hitch_preflight(allowed_methods:)
+      append_vary_header("Origin")
+      append_vary_header("Access-Control-Request-Method")
+      append_vary_header("Access-Control-Request-Headers")
+
+      origin = request.headers["Origin"]
+      requested_method = request.headers["Access-Control-Request-Method"].to_s.upcase
+      methods = Array(allowed_methods).map { |method| method.to_s.upcase }.uniq
+      requested_headers = parsed_requested_headers
+
+      unless allowed_origin?(origin) && methods.include?(requested_method) && requested_headers_allowed?(requested_headers)
+        return head :forbidden
+      end
+
+      response.headers["Access-Control-Allow-Origin"] = origin
+      response.headers["Access-Control-Allow-Methods"] = methods.join(", ")
+      response.headers["Access-Control-Allow-Headers"] = ALLOWED_REQUEST_HEADERS.join(", ")
+      response.headers["Access-Control-Max-Age"] = "600"
+      head :no_content
+    end
+
+    def handle_hitch_preflight
+      methods = request.path_parameters[:target_methods].to_s.split(",").reject(&:empty?)
+      methods = [ "POST" ] if methods.empty?
+      hitch_preflight(allowed_methods: methods)
+    end
+
+    def parsed_requested_headers
+      raw = request.headers["Access-Control-Request-Headers"].to_s
+      return [] if raw.empty?
+
+      values = raw.split(",", -1).map(&:strip)
+      return nil if values.any?(&:empty?)
+
+      values
+    end
+
+    def requested_headers_allowed?(headers)
+      return false if headers.nil?
+
+      allowed = ALLOWED_REQUEST_HEADERS.map(&:downcase)
+      headers.all? { |header| allowed.include?(header.downcase) }
+    end
+
+    def loopback_origins_allowed?
+      Rails.env.development? || Rails.env.test?
+    end
+
+    def append_vary_header(value)
+      values = response.headers["Vary"].to_s.split(",").map(&:strip).reject(&:empty?)
+      values << value unless values.include?(value)
+      response.headers["Vary"] = values.join(", ")
     end
   end
 end

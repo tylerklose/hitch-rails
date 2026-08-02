@@ -1,0 +1,54 @@
+schema_version: 1
+contract:
+  protocol_version: "2026-07-28"
+  roadmap:
+    path: ROADMAP.md
+    sha256: af095ce49cd03407723a41eca8a0fdc52ec6ae66c6ac6c3c4d4af2c423643bee
+  lattice_schema:
+    path: test/lattice/mcp_tool_authorization.json
+    sha256: 70aec37011d2be7a1b7ed8e72118cd7d4c2305848b645c6745cdf1ba385710e7
+  lattice_scenarios:
+    path: test/lattice/mcp_tool_authorization_scenarios.json
+    sha256: f27346dd8cc8337f2cc599071e21e3bc73268a576e24b76fb2e83c040a67cd7e
+    seed: 42
+    exhaustive_strength: 8
+    expected_rows: 12
+ruby_sdk:
+  gem: mcp
+  requirement: ">= 1.1.0, < 2"
+  tag: v1.1.0
+  version: 1.1.0
+  revision: 72a929bbc00c512fbaad82f1e14d02fae2539032
+  issue: https://github.com/modelcontextprotocol/ruby-sdk/issues/389
+  lanes:
+    min:
+      selector: "= 1.1.0"
+      resolved_at_contract: 1.1.0
+    latest:
+      selector: ">= 1.1.0, < 2"
+      resolved_at_contract: 1.1.0
+conformance:
+  package: "@modelcontextprotocol/conformance"
+  version: 0.2.0-alpha.10
+  revision: a9896553900a2ef61787b57adfcbbe936a8ab1f9
+  integrity: sha512-0V/HZDdWHcg6j0zVBzBsXcPZ571IVi6umKgTpnBhtTx/jm/LONmGF6cIWL2k4Xjyps0OiHV6B37nj2s0pUg0nQ==
+lattice:
+  package: lattice-cli
+  implementation: python
+  version: 0.1.2
+  seed: 42
+redis:
+  gem_requirement: ">= 5, < 7"
+  image: docker.io/library/redis:7.4.5-alpine
+  index_digest: sha256:bb186d083732f669da90be8b0f975a37812b15e913465bb14d845db72a4e3e08
+  linux_amd64_digest: sha256:0302cccee2b2043e61b497c8f4075467c5f7ba27a9f38be7e092634f2734baed
+  linux_arm64_digest: sha256:53ced3c237c7411bcac9047db4a04e4d1060adc052f8cfb409136be6ced7f293
+mutation:
+  runner: mutant
+  version: 0.16.3
+  integration: mutant-minitest
+  integration_version: 0.16.3
+support_tools:
+  jq: "1.7.1"
+  node: "23.7.0"
+  npm: "11.1.0"

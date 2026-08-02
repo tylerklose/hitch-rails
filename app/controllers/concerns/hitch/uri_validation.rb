@@ -18,18 +18,19 @@ module Hitch
     # http (which RFC 8252 permits for native apps).
     def valid_redirect_uri?(uri)
       parsed = URI.parse(uri)
-      return false if parsed.host.blank?
+      return false if parsed.hostname.blank?
+      return false unless parsed.userinfo.nil? && !userinfo_component_present?(uri)
       # RFC 6749 §3.1.2: the redirection endpoint URI MUST NOT include a
       # fragment component. Enforced because redirect_uri_matches? does
       # not compare fragments either, so one would otherwise ride through
       # unvalidated — and a client that scans location.hash for response
       # parameters (a real pattern in libraries supporting both query and
       # fragment response modes) would read whatever was smuggled there.
-      return false if parsed.fragment.present?
+      return false unless parsed.fragment.nil?
 
       case parsed.scheme
       when "https" then true
-      when "http"  then loopback_host?(parsed.host)
+      when "http"  then loopback_host?(parsed.hostname)
       else false
       end
     rescue URI::InvalidURIError
@@ -37,7 +38,12 @@ module Hitch
     end
 
     def loopback_host?(host)
-      host == "localhost" || host == "127.0.0.1"
+      Hitch::ResourceUri::LOOPBACK_HOSTS.include?(host)
+    end
+
+    def userinfo_component_present?(value)
+      authority = value.to_s.match(/\A[a-z][a-z0-9+.-]*:\/\/([^\/?#]*)/i)&.captures&.first
+      authority&.include?("@") || false
     end
 
     # Exact comparison, with exactly one exception.
@@ -66,14 +72,15 @@ module Hitch
       reg = URI.parse(registered)
       inb = URI.parse(inbound)
 
-      return false if reg.fragment.present? || inb.fragment.present?
-      return false if reg.userinfo.present? || inb.userinfo.present?
+      return false unless reg.fragment.nil? && inb.fragment.nil?
+      return false unless reg.userinfo.nil? && inb.userinfo.nil?
+      return false if userinfo_component_present?(registered) || userinfo_component_present?(inbound)
       return false unless reg.scheme == inb.scheme
-      return false unless reg.host == inb.host
+      return false unless reg.hostname == inb.hostname
       return false unless reg.path == inb.path
       return false unless reg.query == inb.query
 
-      return true if reg.scheme == "http" && loopback_host?(reg.host)
+      return true if reg.scheme == "http" && loopback_host?(reg.hostname)
 
       reg.port == inb.port
     rescue URI::InvalidURIError
@@ -88,8 +95,9 @@ module Hitch
       parsed = URI.parse(uri)
       return false unless parsed.absolute?
       return false unless %w[http https].include?(parsed.scheme)
-      return false if parsed.host.blank?
-      return false if parsed.fragment.present?
+      return false if parsed.hostname.blank?
+      return false unless parsed.userinfo.nil? && !userinfo_component_present?(uri)
+      return false unless parsed.fragment.nil?
 
       true
     rescue URI::InvalidURIError

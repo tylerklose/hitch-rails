@@ -22,8 +22,8 @@ class MCPServerEndpointTest < ActionDispatch::IntegrationTest
     Hitch::Client.delete_all
     Hitch.reset_configuration!
     Hitch.configure do |c|
-      c.principal_model = "User"
       c.resource_uri = RESOURCE # tokens are validated against this
+      c.allowed_hosts = [ "www.example.com" ]
       c.supported_scopes = [ "mcp" ]
     end
     @user = User.create!(email: "mcp@test")
@@ -39,7 +39,7 @@ class MCPServerEndpointTest < ActionDispatch::IntegrationTest
       code_challenge: challenge, code_challenge_method: "S256",
       resource_uri: resource
     )
-    record.consume_code!(verifier)
+    exchange_authorization_code(record, verifier: verifier)
   end
 
   def post_mcp(payload, headers: @auth)
@@ -79,6 +79,68 @@ class MCPServerEndpointTest < ActionDispatch::IntegrationTest
     assert_match(/\ABearer /, challenge)
     assert_match(%r{resource_metadata="[^"]+/\.well-known/oauth-protected-resource"}, challenge)
     assert_match(/scope="mcp"/, challenge)
+  end
+
+  test "Bearer parsing is strict before lookup and case-insensitive for one valid credential" do
+    malformed = [
+      "Bearer #{@auth.fetch('Authorization')},other",
+      "Bearer token\nsmuggled",
+      "Bearer #{'a' * (Hitch::ServerEndpoint::MAX_BEARER_TOKEN_BYTES + 1)}",
+      "Bearer  two-spaces",
+      "Basic token"
+    ]
+    lookup = ->(*) { flunk "malformed bearer credential must not reach token lookup" }
+
+    malformed.each do |authorization|
+      stub_class_method(Hitch::AccessToken, :find_by_token, lookup) do
+        post_mcp({ jsonrpc: "2.0", id: 1, method: "tools/list" },
+          headers: { "Authorization" => authorization })
+      end
+      assert_response :unauthorized
+    end
+
+    mixed_case = @auth.fetch("Authorization").sub("Bearer", "bEaReR")
+    post_mcp({ jsonrpc: "2.0", id: 1, method: "tools/list" },
+      headers: { "Authorization" => mixed_case })
+    assert_response :success
+  end
+
+  test "an invalid Host halts before bearer lookup and emits no reflected challenge" do
+    lookup = ->(*) { flunk "bearer lookup must not run for an invalid Host" }
+
+    stub_class_method(Hitch::AccessToken, :find_by_token, lookup) do
+      post "/mcp_test",
+        params: { jsonrpc: "2.0", id: 1, method: "tools/list" }.to_json,
+        headers: {
+          "Authorization" => "Bearer attacker-controlled",
+          "Content-Type" => "application/json",
+          "Host" => "attacker.example"
+        }
+    end
+
+    assert_response :bad_request
+    assert_nil response.headers["WWW-Authenticate"]
+    assert_equal "invalid_request", JSON.parse(response.body).fetch("error")
+  end
+
+  test "the canonical resource Host may produce the discovery challenge" do
+    post "/mcp_test",
+      params: { jsonrpc: "2.0", id: 1, method: "tools/list" }.to_json,
+      headers: { "Content-Type" => "application/json", "Host" => "dummy.test", "HTTPS" => "on" }
+
+    assert_response :unauthorized
+    assert_includes response.headers.fetch("WWW-Authenticate"),
+      'resource_metadata="https://dummy.test/.well-known/oauth-protected-resource"'
+  end
+
+  test "an explicitly allowed proxy Host may produce the discovery challenge" do
+    post "/mcp_test",
+      params: { jsonrpc: "2.0", id: 1, method: "tools/list" }.to_json,
+      headers: { "Content-Type" => "application/json", "Host" => "www.example.com", "HTTPS" => "on" }
+
+    assert_response :unauthorized
+    assert_includes response.headers.fetch("WWW-Authenticate"),
+      'resource_metadata="https://dummy.test/.well-known/oauth-protected-resource"'
   end
 
   test "a token bound to a different resource is rejected (RFC 8707)" do

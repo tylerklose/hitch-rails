@@ -1,0 +1,255 @@
+{
+  "meta": {
+    "model_name": "agreement_creation_gate",
+    "strength": 2,
+    "test_count": 15,
+    "exhaustive_count": 972,
+    "reduction": "64.8x",
+    "coverage": "100.0%",
+    "seed": 42
+  },
+  "coverage_curve": [
+    {
+      "scenario": 1,
+      "cumulative_pct": 15.2
+    },
+    {
+      "scenario": 2,
+      "cumulative_pct": 23.2
+    },
+    {
+      "scenario": 3,
+      "cumulative_pct": 27.5
+    },
+    {
+      "scenario": 4,
+      "cumulative_pct": 31.9
+    },
+    {
+      "scenario": 5,
+      "cumulative_pct": 37.0
+    },
+    {
+      "scenario": 6,
+      "cumulative_pct": 46.4
+    },
+    {
+      "scenario": 7,
+      "cumulative_pct": 54.3
+    },
+    {
+      "scenario": 8,
+      "cumulative_pct": 68.8
+    },
+    {
+      "scenario": 9,
+      "cumulative_pct": 79.7
+    },
+    {
+      "scenario": 10,
+      "cumulative_pct": 88.4
+    },
+    {
+      "scenario": 11,
+      "cumulative_pct": 92.0
+    },
+    {
+      "scenario": 12,
+      "cumulative_pct": 94.2
+    },
+    {
+      "scenario": 13,
+      "cumulative_pct": 96.4
+    },
+    {
+      "scenario": 14,
+      "cumulative_pct": 99.3
+    },
+    {
+      "scenario": 15,
+      "cumulative_pct": 100.0
+    }
+  ],
+  "scenarios": [
+    {
+      "id": 1,
+      "values": {
+        "revision_integrity": "exact_immutable",
+        "party_roster": "complete_snapshot",
+        "actor_capacity": "intended_person",
+        "assent_method": "hosted_native",
+        "evidence_posture": "valid_new",
+        "issuance_posture": "open",
+        "quorum_evaluation": "satisfied"
+      }
+    },
+    {
+      "id": 2,
+      "values": {
+        "revision_integrity": "exact_immutable",
+        "party_roster": "complete_snapshot",
+        "actor_capacity": "authorized_representative",
+        "assent_method": "external_provider",
+        "evidence_posture": "valid_new",
+        "issuance_posture": "open",
+        "quorum_evaluation": "satisfied"
+      }
+    },
+    {
+      "id": 3,
+      "values": {
+        "revision_integrity": "exact_immutable",
+        "party_roster": "complete_snapshot",
+        "actor_capacity": "intended_person",
+        "assent_method": "paper_or_in_person",
+        "evidence_posture": "valid_new",
+        "issuance_posture": "open",
+        "quorum_evaluation": "satisfied"
+      }
+    },
+    {
+      "id": 4,
+      "values": {
+        "revision_integrity": "exact_immutable",
+        "party_roster": "complete_snapshot",
+        "actor_capacity": "authorized_representative",
+        "assent_method": "external_provider",
+        "evidence_posture": "valid_new",
+        "issuance_posture": "open",
+        "quorum_evaluation": "pending"
+      }
+    },
+    {
+      "id": 5,
+      "values": {
+        "revision_integrity": "exact_immutable",
+        "party_roster": "complete_snapshot",
+        "actor_capacity": "intended_person",
+        "assent_method": "external_provider",
+        "evidence_posture": "exact_replay",
+        "issuance_posture": "open",
+        "quorum_evaluation": "satisfied"
+      }
+    },
+    {
+      "id": 6,
+      "values": {
+        "revision_integrity": "exact_immutable",
+        "party_roster": "complete_snapshot",
+        "actor_capacity": "intended_person",
+        "assent_method": "hosted_native",
+        "evidence_posture": "invalid_or_conflicting",
+        "issuance_posture": "expired_or_revoked",
+        "quorum_evaluation": "pending"
+      }
+    },
+    {
+      "id": 7,
+      "values": {
+        "revision_integrity": "exact_immutable",
+        "party_roster": "complete_snapshot",
+        "actor_capacity": "authorized_representative",
+        "assent_method": "paper_or_in_person",
+        "evidence_posture": "exact_replay",
+        "issuance_posture": "superseded",
+        "quorum_evaluation": "pending"
+      }
+    },
+    {
+      "id": 8,
+      "values": {
+        "revision_integrity": "mutable_or_mismatched",
+        "party_roster": "missing_required_party",
+        "actor_capacity": "unauthorized_or_unknown",
+        "assent_method": "external_provider",
+        "evidence_posture": "valid_new",
+        "issuance_posture": "expired_or_revoked",
+        "quorum_evaluation": "invalid_roster"
+      }
+    },
+    {
+      "id": 9,
+      "values": {
+        "revision_integrity": "mutable_or_mismatched",
+        "party_roster": "missing_required_party",
+        "actor_capacity": "intended_person",
+        "assent_method": "hosted_native",
+        "evidence_posture": "invalid_or_conflicting",
+        "issuance_posture": "superseded",
+        "quorum_evaluation": "invalid_roster"
+      }
+    },
+    {
+      "id": 10,
+      "values": {
+        "revision_integrity": "mutable_or_mismatched",
+        "party_roster": "missing_required_party",
+        "actor_capacity": "authorized_representative",
+        "assent_method": "paper_or_in_person",
+        "evidence_posture": "invalid_or_conflicting",
+        "issuance_posture": "open",
+        "quorum_evaluation": "invalid_roster"
+      }
+    },
+    {
+      "id": 11,
+      "values": {
+        "revision_integrity": "exact_immutable",
+        "party_roster": "complete_snapshot",
+        "actor_capacity": "authorized_representative",
+        "assent_method": "hosted_native",
+        "evidence_posture": "exact_replay",
+        "issuance_posture": "expired_or_revoked",
+        "quorum_evaluation": "satisfied"
+      }
+    },
+    {
+      "id": 12,
+      "values": {
+        "revision_integrity": "mutable_or_mismatched",
+        "party_roster": "missing_required_party",
+        "actor_capacity": "unauthorized_or_unknown",
+        "assent_method": "hosted_native",
+        "evidence_posture": "valid_new",
+        "issuance_posture": "superseded",
+        "quorum_evaluation": "invalid_roster"
+      }
+    },
+    {
+      "id": 13,
+      "values": {
+        "revision_integrity": "mutable_or_mismatched",
+        "party_roster": "missing_required_party",
+        "actor_capacity": "unauthorized_or_unknown",
+        "assent_method": "paper_or_in_person",
+        "evidence_posture": "invalid_or_conflicting",
+        "issuance_posture": "open",
+        "quorum_evaluation": "invalid_roster"
+      }
+    },
+    {
+      "id": 14,
+      "values": {
+        "revision_integrity": "exact_immutable",
+        "party_roster": "complete_snapshot",
+        "actor_capacity": "intended_person",
+        "assent_method": "external_provider",
+        "evidence_posture": "invalid_or_conflicting",
+        "issuance_posture": "superseded",
+        "quorum_evaluation": "satisfied"
+      }
+    },
+    {
+      "id": 15,
+      "values": {
+        "revision_integrity": "exact_immutable",
+        "party_roster": "complete_snapshot",
+        "actor_capacity": "intended_person",
+        "assent_method": "paper_or_in_person",
+        "evidence_posture": "valid_new",
+        "issuance_posture": "expired_or_revoked",
+        "quorum_evaluation": "pending"
+      }
+    }
+  ]
+}

@@ -7,14 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-08-01
+
+Internal verified checkpoint only. `0.1.0` was not tagged, GitHub-released, or
+published to RubyGems. The first public artifact is deferred until the useful
+end-to-end M5 prerelease at the earliest, and may be deferred to final `0.2.0`.
+
 ### Added
+
+- **Reproducible 0.1.0 checkpoint gates and contract.** The gem now declares Ruby
+  `>= 3.3, < 4.1`, Rails `>= 7.2, < 8.2`, and supports only SQLite and
+  PostgreSQL. Its
+  manifest is an explicit file allowlist containing runtime code, migrations,
+  the installer, and versioned public/upgrade/removal docs while excluding
+  tests, work packets, evidence, and local state.
+
+  `bin/ci` aggregates style, Zeitwerk, packet/provenance/toolchain validation,
+  disposable dual-adapter migration checks, the full Rails 7.2/SQLite and
+  Rails 8.1/PostgreSQL appraisal suites, and `bin/package-smoke`. The smoke
+  builds the exact gem artifact, compares its manifest and bytes, installs it
+  through a temporary gem repository into two disposable Rails applications,
+  runs the generator and migrations, boots, and completes discovery plus an
+  authorization-code exchange. The dormant `bin/release-check VERSION` is
+  reserved for the first public 0.2 artifact; it compares RubyGems bytes with an
+  annotated immutable tag and rejects the internal 0.1 checkpoint.
+
+- **Default-deny Host, Origin, preflight, and Dynamic Client Registration
+  posture.** Engine endpoints accept the canonical resource host plus exact
+  `config.allowed_hosts`, and reject any other Host before issuer response generation,
+  OAuth credential handling, or registration work. Browser origins come only
+  from exact `config.allowed_origins`; the dedicated OPTIONS controller returns
+  `204` only when Origin, target method, and requested headers all pass.
+
+  New installations set `config.dynamic_client_registration_enabled = false`,
+  so discovery omits `registration_endpoint` and `/oauth/register` returns a
+  stable `404`. The library fallback remains enabled for compatibility with
+  existing unreleased installs and emits an actionable boot warning until the
+  application chooses explicitly.
+
+  Enabled production DCR requires a fleet-shared rate store implementing one
+  atomic `increment_with_expiry(key:, expires_in:)` operation and returning the
+  positive post-increment integer. It must also report `shared? == true`.
+  Missing, process-local, incapable, malformed, or failing stores close the
+  endpoint before parameter/model work. Development/test use a private
+  mutex-protected memory fallback.
+
+- **SQLite and PostgreSQL use normalized redirect URI storage.**
+  `hitch_client_redirect_uris` replaces the PostgreSQL-only array as canonical
+  storage, with staged compatibility and rollback tasks for unreleased adopters.
 
 - **New installations enable Client ID Metadata Documents by default.**
   The generated initializer now sets
-  `config.client_id_metadata_enabled = true`, so a fresh install is
-  conformant with MCP 2026-07-28 — which makes supporting CIMD a SHOULD
-  and demotes Dynamic Client Registration to a deprecated MAY — through
-  configuration the adopter owns and can see.
+  `config.client_id_metadata_enabled = true`, so a fresh install adopts MCP
+  2026-07-28's preferred registration posture — supporting CIMD is a SHOULD
+  and Dynamic Client Registration is a deprecated MAY — through configuration
+  the adopter owns and can see.
 
   The library fallback stays `false`, so **upgrading an existing
   application changes nothing** until it opts in. CIMD needs the app to
@@ -117,7 +164,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `:null_store` is Rails' default in test and in development without
   `tmp/caching-dev.txt`, and a warning on every console and rake task is
   one adopters learn to ignore.
+
 ### Fixed
+
+- **A fresh host can run `hitch:install` before its Hitch initializer exists.**
+  Required `resource_uri` validation still fails every ordinary boot and every
+  unrelated generator, but the exact install-generator command may boot once
+  so it can create the configuration that satisfies that invariant.
+
+- **Polymorphic access-token principals now preserve nonnumeric IDs.** Fresh
+  installs store `hitch_access_tokens.principal_id` as a string, and an
+  additive migration widens integer-backed installs without changing their
+  values. Integer, UUID, and ULID host primary keys now round-trip on SQLite
+  and PostgreSQL. Rollback refuses once a nonnumeric principal exists rather
+  than coercing or corrupting the authority binding.
 
 - **`Duplicate migration` no longer aborts a schema load driven from the
   engine root.** ActiveRecord's own `db:load_config` hook appends the
@@ -136,6 +196,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   them, and the fix keys on that rather than on comparing paths.
 
 ### Security
+
+- **OAuth and DCR admission now happens before Action Controller
+  instrumentation.** Authorization, token, and revocation form bodies and DCR
+  JSON bodies are capped at 16 KiB before Rails can parse or instrument them.
+  OAuth security parameters remain absent from processing events; consent
+  preserves exactly one CSRF token. DCR parses one cached JSON object, rejects
+  duplicate names, and applies its shared rate gate before malformed JSON.
+  DCR metadata, PKCE, bearer headers, Basic credentials, resources, scopes,
+  client names, and redirect sets now have explicit finite shape/byte bounds.
+
+  The Rack boundary follows the route Rails actually owns, including format
+  and trailing-slash variants, without consuming ordinary forms from a host
+  route that shadows the engine mount. Bounded reads continue through legal
+  short chunks until EOF or the cap sentinel, so an input cannot hide a later
+  duplicate parameter. Authorization-code redirects bypass Rails' ordinary
+  redirect instrumentation, whose default log subscriber would otherwise
+  record the one-time code in the complete `Location` value.
+
+  Live authorization conformance now routes Rails and SQL output into a
+  disposable mode-`0600` log and proves client-secret, code, verifier, and
+  access-token canaries are absent. Credential-bearing upstream output is
+  destroyed and never uploaded from the public repository; CI retains only a
+  sanitized summary and hashes of the ephemeral raw files.
 
 - **`redirect_uri` is now matched exactly.** Matching compared scheme,
   host, path and port but ignored the query string entirely, so anyone
@@ -191,7 +274,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   older clients, which ignore an unrecognized redirect parameter.
 
   The two halves ship together deliberately. A conformant client — the
-  Ruby MCP SDK does this as of 0.24.0 — treats an advertised-but-absent
+  locked Ruby MCP SDK client validator treats an advertised-but-absent
   `iss` as a hard failure and refuses the exchange, so advertising the
   capability without sending the parameter is worse than doing neither.
   Both values now come from a shared `Hitch::IssuerUrl` helper because
@@ -250,10 +333,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [MCP 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/).
   A client may use an `https` URL as its `client_id`; Hitch fetches the
   client metadata from that URL and matches `redirect_uri` against the
-  `redirect_uris` it declares. DCR continues to work unchanged — an
-  opaque `client_id` and a URL `client_id` cannot collide, so the two
-  schemes run side by side for the spec's twelve-month deprecation
-  window and beyond.
+  `redirect_uris` it declares. DCR has an independent configuration posture;
+  when enabled, an opaque `client_id` and a URL `client_id` cannot collide.
 
   Controlled by `config.client_id_metadata_enabled`. See the entries
   above for how it is defaulted and bounded: the library fallback is
@@ -351,18 +432,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   — a browser ignores it otherwise. The README example and the
   `ServerEndpoint` docs now show including `CorsSupport` alongside it,
   which is what makes the 401 challenge readable to a browser client.
-## [0.1.0]
+### Initial authorization substrate
 
-Initial release. A mountable Rails engine that turns a Rails app into a
-spec-conformant MCP authorization server, built against the
-[MCP authorization spec (2025-11-25)](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization)
+Initial internal checkpoint. A mountable Rails engine that turns a Rails app into a
+MCP authorization server, implemented against the
+[MCP authorization spec (2026-07-28)](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization)
 and the underlying OAuth RFCs.
 
 ### OAuth authorization server
 
 - OAuth 2.1 + PKCE (S256) authorization-code flow. PKCE is mandatory;
   `plain` is rejected and only `S256` is advertised.
-- Dynamic Client Registration, RFC 7591 (`POST /oauth/register`), with
+- Optional Dynamic Client Registration, RFC 7591 (`POST /oauth/register`), with
   `redirect_uris` validated against an `https`-or-loopback policy
   (RFC 8252). `javascript:` and arbitrary `http://` URIs are rejected at
   registration, not just at authorize.
@@ -386,38 +467,41 @@ and the underlying OAuth RFCs.
   `invalid_target`. `Hitch::AccessToken#valid_for_resource?` lets the MCP
   server enforce the audience at token-use time, failing closed.
 
-### MCP server endpoint support
+### Deprecated MCP response helper
 
-- `Hitch::ServerEndpoint` — a concern the host includes in its own `/mcp`
-  controller. Provides the MCP Streamable HTTP response contract
+- `Hitch::ServerEndpoint` — the deprecated compatibility concern retained for
+  existing host-owned `/mcp` controllers through the 0.2 line. It provides
+  bearer validation, the discovery challenge, and basic Streamable HTTP
+  response shaping
   (`202 Accepted` with no body for notifications/responses, `200` +
-  `application/json` for requests — required by strict clients), bearer
-  authentication validated against `config.resource_uri`, and the
-  `401` `WWW-Authenticate` discovery challenge (RFC 9728 §5.1).
+  `application/json` for requests). It is not the authenticated Hitch MCP
+  endpoint planned for 0.2, provides no registry or tool dispatch, and adds no
+  runtime dependency on the `mcp` SDK.
 
 ### Security
 
 - Access tokens and authorization codes are stored as SHA-256 digests,
   never in plaintext; raw values are surfaced once at issuance.
-- Authorization codes are single-use, consumed atomically within a
-  transaction (`FOR UPDATE SKIP LOCKED` + a `token_digest` state
-  transition) to prevent double-spend.
+- Authorization codes are single-use, consumed with a conditional digest state
+  transition so concurrent exchange yields only one token on SQLite and
+  PostgreSQL.
 - Public OAuth endpoints `skip_forgery_protection` (bearer/PKCE is the
   credential; non-browser clients carry no CSRF token), while the
   session-backed consent action declares `protect_from_forgery` itself.
-- Discovery metadata is cached privately and `Vary: Host` so a shared
-  cache can't be poisoned via a forged `Host` header.
-- OAuth secrets (`code`, `code_verifier`, `access_token`,
-  `authorization_code`, `token`) are added to `filter_parameters` so they
-  never reach Rails request logs.
+- Discovery validates Host before responding, derives every URL from the fixed
+  configured resource origin, is cached privately, and carries `Vary: Host`
+  as defense in depth.
+- OAuth secrets (`code`, `code_verifier`, `client_secret`,
+  `client_secret_digest`, `access_token`, `authorization_code`, `token`) are
+  added to `filter_parameters` so they never reach Rails request logs.
 - The attacker-controllable DCR `client_name` is persisted for audit but
   never trusted for consent-screen display; the display name derives from
   the verified `redirect_uri` host.
 
 ### Host integration
 
-- Configurable principal: `config.principal_model` (string class name) +
-  `config.principal_method` (default `:current_user`). Works with Devise,
+- Configurable principal lookup through `config.principal_method` (default
+  `:current_user`). Works with Devise,
   `has_secure_password`, and Rails 8's built-in `bin/rails g
   authentication` (falls back to `Current.user`) with no glue.
 - `config.resource_uri`, `config.supported_scopes`, `config.brand_name`,
@@ -431,7 +515,4 @@ and the underlying OAuth RFCs.
 
 ### Requirements
 
-- Rails `>= 7.1, < 10`, Ruby `>= 3.3`, PostgreSQL (the clients table uses
-  an array column).
-
-[0.1.0]: https://github.com/tylerklose/hitch-rails/releases/tag/v0.1.0
+- Rails `>= 7.2, < 8.2`, Ruby `>= 3.3, < 4.1`, SQLite or PostgreSQL.

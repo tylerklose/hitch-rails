@@ -35,7 +35,7 @@ module Hitch
         say ""
         say "hitch-rails installed.", :green
         say "Next steps:"
-        say "  1. Edit config/initializers/hitch.rb to set resource_uri + principal_model"
+        say "  1. Edit config/initializers/hitch.rb to set resource_uri, hosts, and origins"
         say "  2. Run: bin/rails db:migrate"
         say "  3. The engine mount exposes /oauth/authorize, /oauth/token, /oauth/register,"
         say "     /oauth/revoke, /.well-known/oauth-authorization-server, and"

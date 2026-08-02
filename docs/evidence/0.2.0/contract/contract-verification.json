@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "verified_on": "2026-08-01",
+  "source_revision": "cd42bf84fec834923fa9c900287e76dabd0e1cf4",
+  "source_state": "uncommitted_worktree",
+  "acceptance_status": "locally_prepared_and_verified",
+  "runtime_status": "pending_m2",
+  "checkpoint_predecessor": {
+    "issue": "M0.5",
+    "status": "not_accepted",
+    "effect": "M2 acceptance awaits the immutable M0 checkpoint; publication is not required"
+  },
+  "pins": {
+    "ruby_sdk": {"version": "1.1.0", "revision": "72a929bbc00c512fbaad82f1e14d02fae2539032"},
+    "conformance": {"version": "0.2.0-alpha.10", "revision": "a9896553900a2ef61787b57adfcbbe936a8ab1f9"},
+    "lattice_cli": "0.1.2",
+    "redis_image_index": "sha256:bb186d083732f669da90be8b0f975a37812b15e913465bb14d845db72a4e3e08",
+    "mutant": "0.16.3"
+  },
+  "artifacts": {
+    "toolchain_lock_sha256": "dd123870170431f97901b60ffa0aa9b29ea40b4909451f6e0d8f68d25320edc2",
+    "wire_vectors_sha256": "011a0bc35a80cba90bcc7c94647c412cc31d612536a91e90b1ad34b4f24dcb1b",
+    "wire_vector_count": 44,
+    "authorization_oracles_sha256": "c54ca2e9922c7b4dd3436733390916e3dfbaf8b0f5a50fe6ec5067dafa207026",
+    "pending_runtime_tests_sha256": "5340621d80882f863be26a14e59d95e920b9e8f81f9f3f47483d83f7ebe1f3b4"
+  },
+  "lattice": {
+    "schema_sha256": "70aec37011d2be7a1b7ed8e72118cd7d4c2305848b645c6745cdf1ba385710e7",
+    "scenario_sha256": "f27346dd8cc8337f2cc599071e21e3bc73268a576e24b76fb2e83c040a67cd7e",
+    "seed": 42,
+    "default_rows": 12,
+    "strength_8_rows": 12,
+    "scenario_sets_equal": true
+  },
+  "commands": [
+    {"command": "bin/contract", "status": 0},
+    {"command": "bin/verify-toolchain --live", "status": 0},
+    {"command": "bin/ci-test test/tooling/verify_work_packets_test.rb test/tooling/release_policy_test.rb test/tooling/verify_provenance_test.rb test/tooling/verify_doc_contract_test.rb test/tooling/verify_toolchain_test.rb test/contracts/mcp_contract_artifacts_test.rb", "status": 0, "runs": 38, "assertions": 608, "skips": 0}
+  ]
+}

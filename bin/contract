@@ -1,0 +1,87 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "open3"
+require "timeout"
+
+ROOT = File.expand_path("..", __dir__)
+
+def resolve_lattice
+  return ENV.fetch("LATTICE_BIN") if ENV["LATTICE_BIN"]
+
+  ENV.fetch("PATH").split(File::PATH_SEPARATOR).each do |directory|
+    candidate = File.join(directory, "lattice")
+    next unless File.executable?(candidate)
+
+    _stdout, _stderr, status = Timeout.timeout(5) { Open3.capture3(candidate, "--help") }
+    return candidate if status.success?
+  rescue Timeout::Error
+    next
+  end
+  abort "No working lattice executable found on PATH"
+end
+
+LATTICE = resolve_lattice
+ENV["LATTICE_BIN"] = LATTICE
+
+def capture_bounded(*command, timeout_seconds:)
+  stdin, stdout, stderr, wait_thread = Open3.popen3(*command, pgroup: true, chdir: ROOT)
+  stdin.close
+  stdout_reader = Thread.new { stdout.read }
+  stderr_reader = Thread.new { stderr.read }
+  status = Timeout.timeout(timeout_seconds) { wait_thread.value }
+  [ stdout_reader.value, stderr_reader.value, status ]
+rescue Timeout::Error
+  Process.kill("TERM", -wait_thread.pid)
+  begin
+    Timeout.timeout(5) { wait_thread.value }
+  rescue Timeout::Error
+    Process.kill("KILL", -wait_thread.pid)
+    wait_thread.value
+  end
+  abort "Timed out after #{timeout_seconds}s: #{command.join(' ')}"
+ensure
+  stdout&.close unless stdout&.closed?
+  stderr&.close unless stderr&.closed?
+end
+
+def run!(*command, timeout_seconds: 60, quiet: false)
+  stdout, stderr, status = capture_bounded(*command, timeout_seconds:)
+  $stdout.write(stdout) unless quiet
+  $stderr.write(stderr)
+  abort "Contract command failed (#{status.exitstatus}): #{command.join(' ')}" unless status.success?
+  stdout
+end
+
+run!(File.join(ROOT, "bin/verify-work-packets"))
+run!(File.join(ROOT, "bin/verify-release-policy"))
+run!(File.join(ROOT, "bin/verify-provenance"))
+run!(File.join(ROOT, "bin/verify-doc-contract"))
+run!(File.join(ROOT, "bin/verify-toolchain"), "--live")
+
+schema = File.join(ROOT, "test/lattice/mcp_tool_authorization.json")
+checked_path = File.join(ROOT, "test/lattice/mcp_tool_authorization_scenarios.json")
+run!(LATTICE, "validate", schema)
+default_output = run!(LATTICE, "generate", schema, "--format", "json", "--seed", "42", quiet: true)
+strength_eight_output = run!(LATTICE, "generate", schema, "--format", "json", "--seed", "42", "--strength", "8", quiet: true)
+
+checked = JSON.parse(File.read(checked_path))
+generated_default = JSON.parse(default_output)
+generated_strength_eight = JSON.parse(strength_eight_output)
+abort "Default Lattice generation differs from checked artifact" unless generated_default == checked
+abort "Strength-8 Lattice scenarios differ from checked artifact" unless generated_strength_eight.fetch("scenarios") == checked.fetch("scenarios")
+abort "Expected exactly 12 exhaustive terminal scenarios" unless checked.fetch("scenarios").length == 12
+
+run!(
+  File.join(ROOT, "bin/ci-test"),
+  "test/tooling/verify_work_packets_test.rb",
+  "test/tooling/release_policy_test.rb",
+  "test/tooling/verify_provenance_test.rb",
+  "test/tooling/verify_doc_contract_test.rb",
+  "test/tooling/verify_toolchain_test.rb",
+  "test/contracts/mcp_contract_artifacts_test.rb",
+  timeout_seconds: 180
+)
+
+puts "MCP contract verified: 12 exhaustive rows at default and strength 8; runtime remains pending M2"

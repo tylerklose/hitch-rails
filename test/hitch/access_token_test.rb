@@ -38,7 +38,7 @@ class Hitch::AccessTokenTest < ActiveSupport::TestCase
   # Row 1: happy path
   test "fresh code + correct verifier + matching resource → token usable" do
     record = mint(resource: RESOURCE_A)
-    raw_token = record.consume_code!(@verifier)
+    raw_token = exchange_authorization_code(record, verifier: @verifier)
 
     assert record.accessible?
     assert record.valid_for_resource?(RESOURCE_A)
@@ -46,10 +46,10 @@ class Hitch::AccessTokenTest < ActiveSupport::TestCase
   end
 
   # Row 2: PKCE mismatch
-  test "fresh code + wrong verifier → consume_code! raises invalid_grant" do
+  test "fresh code + wrong verifier → exchange raises invalid_grant" do
     record = mint
     err = assert_raises(Hitch::AccessToken::OAuthError) do
-      record.consume_code!("not-the-real-verifier")
+      exchange_authorization_code(record, verifier: "a" * 43)
     end
     assert_equal "invalid_grant", err.oauth_code
     assert_match(/PKCE/, err.description)
@@ -57,27 +57,25 @@ class Hitch::AccessTokenTest < ActiveSupport::TestCase
   end
 
   # Row 3: expired auth code
-  test "expired code + correct verifier → consume_code! raises invalid_grant" do
+  test "expired code + correct verifier → exchange returns no token" do
     record = mint
     record.update_columns(code_expires_at: 1.minute.ago)
-    err = assert_raises(Hitch::AccessToken::OAuthError) do
-      record.consume_code!(@verifier)
-    end
-    assert_equal "invalid_grant", err.oauth_code
-    assert_match(/expired/i, err.description)
+
+    assert_nil exchange_authorization_code(record, verifier: @verifier)
+    assert_nil record.reload.token_digest
   end
 
   # Row 4: RFC 8707 audience mismatch
   test "active token + different resource at check → valid_for_resource? false" do
     record = mint(resource: RESOURCE_A)
-    record.consume_code!(@verifier)
+    exchange_authorization_code(record, verifier: @verifier)
     refute record.valid_for_resource?(RESOURCE_B)
   end
 
   # Row 5: revoked
   test "revoked token → not accessible, not findable" do
     record = mint
-    raw_token = record.consume_code!(@verifier)
+    raw_token = exchange_authorization_code(record, verifier: @verifier)
     record.revoke!
     refute record.reload.accessible?
     assert_nil Hitch::AccessToken.find_by_token(raw_token)
@@ -86,43 +84,40 @@ class Hitch::AccessTokenTest < ActiveSupport::TestCase
   # Row 6: token issued without audience, no resource at check
   test "no resource at issue, no resource at check → valid_for_resource? false (blank resource)" do
     record = mint(resource: nil)
-    record.consume_code!(@verifier)
+    exchange_authorization_code(record, verifier: @verifier)
     refute record.valid_for_resource?(nil)
     refute record.valid_for_resource?("")
   end
 
   # Row 7: expired + wrong (defense in depth — either alone blocks)
-  test "expired code + wrong verifier → invalid_grant on expiry check first" do
+  test "expired code + wrong verifier → exchange returns no token before PKCE" do
     record = mint(resource: nil)
     record.update_columns(code_expires_at: 1.minute.ago)
-    err = assert_raises(Hitch::AccessToken::OAuthError) do
-      record.consume_code!("not-the-real-verifier")
-    end
-    assert_equal "invalid_grant", err.oauth_code
+
+    assert_nil exchange_authorization_code(record, verifier: "a" * 43)
+    assert_nil record.reload.token_digest
   end
 
-  # Row 8: re-consume on revoked token
-  test "second consume_code! on already-consumed token raises (code is nil)" do
+  # Row 8: re-exchange on revoked token
+  test "a consumed code cannot be exchanged again after revocation" do
     record = mint(resource: nil)
-    record.consume_code!(@verifier)
+    raw_code = record.raw_authorization_code
+    exchange_authorization_code(record, verifier: @verifier, raw_code: raw_code)
     record.revoke!
 
-    # code_expires_at was cleared on first consume; second call should raise
-    # because verify_pkce! sees code_expires_at: nil → "expired" branch.
-    err = assert_raises(Hitch::AccessToken::OAuthError) do
-      record.consume_code!(@verifier)
-    end
-    assert_equal "invalid_grant", err.oauth_code
+    assert_nil exchange_authorization_code(record, verifier: @verifier, raw_code: raw_code)
+    assert record.reload.revoked?
   end
 
   # Row 9: idempotency — token exists with audience matching
   test "consumed + active + audience matches → still valid even if consume tried again" do
     record = mint(resource: RESOURCE_A)
-    record.consume_code!(@verifier)
+    raw_code = record.raw_authorization_code
+    exchange_authorization_code(record, verifier: @verifier, raw_code: raw_code)
     assert record.valid_for_resource?(RESOURCE_A)
 
-    # Second consume must fail (code is gone)
-    assert_raises(Hitch::AccessToken::OAuthError) { record.consume_code!(@verifier) }
+    # The conditional update makes replay a no-op (the code is gone).
+    assert_nil exchange_authorization_code(record, verifier: @verifier, raw_code: raw_code)
     # Token is unaffected
     assert record.reload.accessible?
   end
@@ -130,7 +125,7 @@ class Hitch::AccessTokenTest < ActiveSupport::TestCase
   # Row 10: revoked + audience set + check blank
   test "revoked token with audience set, asked with blank → not valid_for_resource" do
     record = mint(resource: RESOURCE_A)
-    record.consume_code!(@verifier)
+    exchange_authorization_code(record, verifier: @verifier)
     record.revoke!
     refute record.valid_for_resource?("")
     refute record.accessible?
@@ -139,7 +134,7 @@ class Hitch::AccessTokenTest < ActiveSupport::TestCase
   # Row 11: audience absent at issue, ask with a real resource
   test "token issued without audience → valid_for_resource? false for any concrete resource" do
     record = mint(resource: nil)
-    record.consume_code!(@verifier)
+    exchange_authorization_code(record, verifier: @verifier)
     refute record.valid_for_resource?(RESOURCE_A)
   end
 
@@ -157,33 +152,33 @@ class Hitch::AccessTokenTest < ActiveSupport::TestCase
     assert reloaded.authorization_code_digest.present?
   end
 
-  test "find_pending_by_code hashes inbound + finds the row" do
+  test "pending authorization code inspection hashes the inbound value" do
     record = mint
     raw = record.raw_authorization_code
 
-    assert_equal record.id, Hitch::AccessToken.find_pending_by_code(raw).id
-    assert_nil Hitch::AccessToken.find_pending_by_code("wrong-code")
-    assert_nil Hitch::AccessToken.find_pending_by_code(nil)
-    assert_nil Hitch::AccessToken.find_pending_by_code("")
+    assert authorization_code_pending?(raw)
+    refute authorization_code_pending?("wrong-code")
+    refute authorization_code_pending?(nil)
+    refute authorization_code_pending?("")
   end
 
   test "token_digest is SHA256 of raw token, not the raw token itself" do
     record = mint
-    raw_token = record.consume_code!(@verifier)
+    raw_token = exchange_authorization_code(record, verifier: @verifier)
     refute_equal raw_token, record.token_digest
     assert_equal Digest::SHA256.hexdigest(raw_token), record.token_digest
   end
 
   test "principal is polymorphic — User reaches its tokens via has_many" do
     record = mint
-    record.consume_code!(@verifier)
+    exchange_authorization_code(record, verifier: @verifier)
     assert_includes @user.reload.access_tokens, record
   end
 
   test "pending scope filters to records with no token_digest + unexpired code" do
     pending = mint
     consumed = mint
-    consumed.consume_code!(@verifier)
+    exchange_authorization_code(consumed, verifier: @verifier)
 
     pending_ids = Hitch::AccessToken.pending.pluck(:id)
     assert_includes pending_ids, pending.id
@@ -192,11 +187,11 @@ class Hitch::AccessTokenTest < ActiveSupport::TestCase
 
   test "active scope filters out revoked + expired" do
     revoked = mint
-    revoked.consume_code!(@verifier)
+    exchange_authorization_code(revoked, verifier: @verifier)
     revoked.revoke!
 
     active = mint
-    active.consume_code!(@verifier)
+    exchange_authorization_code(active, verifier: @verifier)
 
     active_ids = Hitch::AccessToken.active.pluck(:id)
     assert_includes active_ids, active.id
@@ -237,7 +232,7 @@ class Hitch::AccessTokenTest < ActiveSupport::TestCase
 
   test "cleanup_expired! keeps revoked tokens inside retention window" do
     record = mint
-    record.consume_code!(@verifier)
+    exchange_authorization_code(record, verifier: @verifier)
     record.update!(revoked_at: 5.days.ago)
 
     Hitch::AccessToken.cleanup_expired!(revoked_retention_days: 30)
@@ -247,7 +242,7 @@ class Hitch::AccessTokenTest < ActiveSupport::TestCase
 
   test "cleanup_expired! drops revoked tokens older than retention" do
     record = mint
-    record.consume_code!(@verifier)
+    exchange_authorization_code(record, verifier: @verifier)
     record.update!(revoked_at: 60.days.ago)
 
     Hitch::AccessToken.cleanup_expired!(revoked_retention_days: 30)
@@ -257,7 +252,7 @@ class Hitch::AccessTokenTest < ActiveSupport::TestCase
 
   test "cleanup_expired! drops expired tokens older than retention" do
     record = mint
-    record.consume_code!(@verifier)
+    exchange_authorization_code(record, verifier: @verifier)
     # Bypass the cant-set-past-expires guard by direct column update
     record.update_columns(expires_at: 60.days.ago)
 
@@ -268,7 +263,7 @@ class Hitch::AccessTokenTest < ActiveSupport::TestCase
 
   test "cleanup_expired! leaves active tokens untouched" do
     record = mint
-    record.consume_code!(@verifier)
+    exchange_authorization_code(record, verifier: @verifier)
     assert record.accessible?
 
     Hitch::AccessToken.cleanup_expired!

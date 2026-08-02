@@ -1,0 +1,30 @@
+{
+  "recorded_at": "2026-08-01",
+  "source_revision": "cd42bf84fec834923fa9c900287e76dabd0e1cf4+working-tree",
+  "command": "bin/ci-migrations",
+  "exit_status": 0,
+  "authority_round_trip": [1, 2, 1, 1, 2],
+  "operator_tasks": [
+    "hitch:redirects:cutover",
+    "hitch:redirects:prepare_rollback"
+  ],
+  "checks": {
+    "cutover_final_backfill": "passed",
+    "cutover_idempotence": "passed",
+    "prepare_rollback_parity": "passed",
+    "parity_failure_preserves_version_2": "passed",
+    "old_writer_addition_preserved": "passed",
+    "old_writer_deletion_preserved": "passed",
+    "new_code_dual_write_addition_preserved": "passed",
+    "new_code_dual_write_deletion_preserved": "passed",
+    "fresh_sqlite_version_2_cutover_no_op": "passed",
+    "fresh_sqlite_rollback_to_unavailable_legacy_column_refused": "passed",
+    "primary_uncached_authority_reads": "passed",
+    "nonzero_task_failure_exit": "passed"
+  },
+  "database_cleanup": {
+    "sqlite_temporary_directory_removed": true,
+    "postgresql_temporary_database_dropped": true
+  },
+  "contains_non_fixture_redirect_uris": false
+}

@@ -1,0 +1,253 @@
+schema_version: 1
+release: 0.2.0
+entries:
+  - name: Hitch::MCP::Endpoint
+    kind: concern
+    visibility: public
+    introduced: M2.2
+    inputs: Host controller inclusion and one catch-all route.
+    outputs: POST JSON MCP responses, OPTIONS preflight, exact non-POST status/headers, and challenges/identity rooted only at canonical resource_uri.
+    errors: Boot configuration errors and frozen HTTP/protocol mappings.
+    reload_behavior: Resolves configured registry class by name on each request.
+  - name: Hitch::MCP::Context
+    kind: value
+    visibility: public
+    introduced: M3.1
+    inputs: Framework-validated request authority and recursively copied untrusted metadata.
+    outputs: Frozen envelope readers for principal, access token, scope, granted scopes, client/resource/request/network/protocol values, and meta.
+    errors: Construction is framework-owned; missing validated inputs fail before tool dispatch.
+    reload_behavior: New instance per request; contains no reloadable class cache.
+  - name: Hitch::Configuration#mcp
+    kind: method
+    visibility: public
+    introduced: M2.1
+    inputs: No arguments.
+    outputs: The MCP configuration object.
+    errors: Boot validation aggregates missing or invalid required settings.
+    reload_behavior: Configuration object persists; registry class is stored by name.
+  - name: Hitch::MCP::Configuration#registry=
+    kind: method
+    visibility: public
+    introduced: M3.2
+    inputs: A nonempty String constant name.
+    outputs: Assigned name.
+    errors: Invalid/missing/non-Registry constant fails boot or atomic prepare.
+    reload_behavior: Constantized and validated on every Rails prepare cycle.
+  - name: Hitch::MCP::Configuration#server_info=
+    kind: method
+    visibility: public
+    introduced: M2.2
+    inputs: Callable receiving Context and returning documented scalar identity keys.
+    outputs: Final server identity metadata.
+    errors: Nil, raises, or invalid values become sanitized internal failure.
+    reload_behavior: Callable is invoked for every request; no response cache.
+  - name: Hitch::MCP::Configuration#scope_resolver=
+    kind: method
+    visibility: public
+    introduced: M3.3
+    inputs: Callable with principal, access_token, and request keywords.
+    outputs: One opaque host scope object or nil.
+    errors: Raise becomes generic internal failure with no registry/scope disclosure.
+    reload_behavior: Invoked once per request; result never shared.
+  - name: Hitch::MCP::Configuration#request_limit=
+    kind: method
+    visibility: public
+    introduced: M4.3
+    inputs: Mapping with positive to count and within duration.
+    outputs: Validated endpoint-wide fixed-window profile.
+    errors: Invalid values fail boot.
+    reload_behavior: Revalidated on configuration reload; active Redis windows are not rewritten.
+  - name: Hitch::MCP::Configuration#rate_limit_redis_url=
+    kind: method
+    visibility: public
+    introduced: M4.3
+    inputs: Redis URL String in production; nil permits private memory store only outside production.
+    outputs: Validated store configuration.
+    errors: Missing/invalid production URL fails boot; runtime store error returns 503.
+    reload_behavior: New store connection after configuration reload; HMAC key rotation resets windows.
+  - name: Hitch::MCP::Configuration#max_request_bytes=
+    kind: method
+    visibility: public
+    introduced: M2.2
+    inputs: Positive Integer byte cap.
+    outputs: Raw POST body limit.
+    errors: Invalid value fails boot; oversized request returns 413 before parsing.
+    reload_behavior: Read from current configuration for every request.
+  - name: Hitch::MCP::Configuration#max_result_bytes=
+    kind: method
+    visibility: public
+    introduced: M4.2
+    inputs: Positive Integer byte cap.
+    outputs: JSON-serialized Result limit.
+    errors: Invalid value fails boot; oversized result becomes generic tool error.
+    reload_behavior: Read from current configuration for every invocation.
+  - name: Hitch::MCP::Registry.register
+    kind: method
+    visibility: public
+    introduced: M3.2
+    inputs: Named Tool class constant and nonempty supported OAuth scopes.
+    outputs: Declarative registry entry stored as class name and frozen scopes.
+    errors: Atomic validation rejects any invalid entry/registry.
+    reload_behavior: Entire registry is rebuilt under to_prepare; failed reload serves no stale snapshot.
+  - name: Hitch::MCP::Tool.tool_name
+    kind: method
+    visibility: public
+    introduced: M3.2
+    inputs: One 1-64 character name matching ASCII alphanumeric, underscore, dot, or dash.
+    outputs: Frozen MCP name.
+    errors: Missing, duplicate, slash-containing, too long, or invalid name rejects registry.
+    reload_behavior: Re-evaluated from the reloadable class each prepare cycle.
+  - name: Hitch::MCP::Tool.description
+    kind: method
+    visibility: public
+    introduced: M3.2
+    inputs: Nonblank String.
+    outputs: Frozen tool description.
+    errors: Missing/non-string description rejects registry.
+    reload_behavior: Re-evaluated each prepare cycle.
+  - name: Hitch::MCP::Tool.input_schema
+    kind: method
+    visibility: public
+    introduced: M3.2
+    inputs: Valid bounded JSON Schema 2020-12 object with local references only.
+    outputs: Frozen schema passed to the SDK.
+    errors: Invalid schema or effective explicit top-level server_context property rejects registry.
+    reload_behavior: Revalidated atomically each prepare cycle.
+  - name: Hitch::MCP::Tool.output_schema
+    kind: method
+    visibility: public
+    introduced: M3.2
+    inputs: Optional valid bounded JSON Schema 2020-12 object with local references only.
+    outputs: Frozen schema used by Hitch and SDK validation.
+    errors: Invalid schema rejects registry; structured success without a schema is rejected.
+    reload_behavior: Revalidated atomically each prepare cycle.
+  - name: Hitch::MCP::Tool.annotations
+    kind: method
+    visibility: public
+    introduced: M3.2
+    inputs: Supported MCP tool hint keys and scalar values only; no header annotations.
+    outputs: Frozen SDK annotations.
+    errors: Unknown/unsupported annotation rejects registry.
+    reload_behavior: Revalidated each prepare cycle.
+  - name: Hitch::MCP::Tool.available_to?
+    kind: method
+    visibility: public
+    introduced: M3.3
+    inputs: Context only; no arguments.
+    outputs: Boolean coarse visibility/callability gate; default false.
+    errors: Raise becomes generic internal failure and exposes no scopes/existence.
+    reload_behavior: Called per request for the currently resolved class.
+  - name: Hitch::MCP::Tool.authorize!
+    kind: method
+    visibility: public
+    introduced: M4.1
+    inputs: Context and recursively frozen string-keyed arguments Hash after schema validation.
+    outputs: Return value ignored when allowed; default raises Forbidden.
+    errors: Forbidden and every unexpected error become generic tool error.
+    reload_behavior: Called per invocation on current class after registry filtering.
+  - name: Hitch::MCP::Tool.perform
+    kind: method
+    visibility: public
+    introduced: M4.1
+    inputs: Context and the same frozen arguments Hash after policy allows.
+    outputs: One Hitch::MCP::Result.
+    errors: Raise, wrong return, invalid output, or oversize output becomes generic tool error.
+    reload_behavior: Called per invocation on current class; never cached.
+  - name: Hitch::MCP::Forbidden
+    kind: exception
+    visibility: public
+    introduced: M4.1
+    inputs: Raised by host argument policy; message is private.
+    outputs: Generic isError tool result and zero host execution.
+    errors: The exception itself never crosses the wire.
+    reload_behavior: Stable framework constant.
+  - name: Hitch::MCP::Result.text
+    kind: method
+    visibility: public
+    introduced: M4.2
+    inputs: String.
+    outputs: Bounded text Result.
+    errors: Non-string or oversize serialized result becomes generic tool error.
+    reload_behavior: Stable framework constructor.
+  - name: Hitch::MCP::Result.structured
+    kind: method
+    visibility: public
+    introduced: M4.2
+    inputs: JSON value and optional text String.
+    outputs: Schema-valid structured Result with compatible text content.
+    errors: Missing output schema, invalid value/text/schema, or cap violation becomes generic tool error.
+    reload_behavior: Stable framework constructor; validates current tool schema per call.
+  - name: Hitch::MCP::Result.error
+    kind: method
+    visibility: public
+    introduced: M4.2
+    inputs: Explicit host-approved public message String.
+    outputs: isError Result preserving only that safe message.
+    errors: Invalid/oversize message becomes generic tool error.
+    reload_behavior: Stable framework constructor.
+  - name: request.hitch_mcp
+    kind: event
+    visibility: public
+    introduced: M4.4
+    inputs: One non-OPTIONS endpoint request at the outer callback.
+    outputs: Version-1 structural ActiveSupport notification payload.
+    errors: Subscriber failures are sanitized/reported and never alter response.
+    reload_behavior: Subscriber set follows ActiveSupport; payload schema is versioned and stable.
+    payload_keys: [schema_version, request_id, method, tool_name, principal_type, principal_key, client_key, http_status, protocol_code, outcome, request_bytes, response_bytes, duration_ms]
+  - name: invocation.hitch_mcp
+    kind: event
+    visibility: public
+    introduced: M4.4
+    inputs: Registered executable tool reached after SDK input validation.
+    outputs: Version-1 structural ActiveSupport notification payload.
+    errors: Subscriber failures are sanitized/reported and never alter response.
+    reload_behavior: Subscriber set follows ActiveSupport; payload schema is versioned and stable.
+    payload_keys: [schema_version, request_id, tool_name, availability, argument_policy, executed, result_category, duration_ms]
+  - name: Hitch::MCP::TestHelper#mcp_headers
+    kind: method
+    visibility: public
+    introduced: M5.2
+    inputs: Access token, method, optional name, and protocol version.
+    outputs: Exact modern authenticated request headers without logging token values.
+    errors: Invalid method/name/version raises ArgumentError in test code.
+    reload_behavior: Stable helper; reads current configured resource.
+  - name: Hitch::MCP::TestHelper#post_mcp
+    kind: method
+    visibility: public
+    introduced: M5.2
+    inputs: Method, params, token, optional client info, and capabilities.
+    outputs: Rails integration POST using the final envelope/header contract.
+    errors: Invalid helper inputs raise ArgumentError; response errors remain ordinary integration responses.
+    reload_behavior: Resolves current route/configuration per call.
+  - name: hitch:mcp:install
+    kind: generator
+    visibility: public
+    introduced: M5.1
+    inputs: Installed auth substrate and optional controller-name escape hatch.
+    outputs: Host controller, route, initializer settings, registry, and rollback manifest.
+    errors: Missing prerequisites or any collision refuses without overwrite.
+    reload_behavior: Generated registry follows Rails to_prepare semantics.
+  - name: hitch:tool
+    kind: generator
+    visibility: public
+    introduced: M5.2
+    inputs: Tool name and optional namespace.
+    outputs: Tool subclass, Minitest, and manual registration instruction.
+    errors: Invalid name or file/constant collision refuses without overwrite.
+    reload_behavior: Generated class is ordinary reloadable application code.
+  - name: hitch:doctor
+    kind: task
+    visibility: public
+    introduced: M5.3
+    inputs: Current host configuration and isolated diagnostic probes.
+    outputs: Stable human and machine diagnostic categories without secrets.
+    errors: Nonzero status for actionable failures; never mutates application data/config.
+    reload_behavior: Loads the current application environment for each invocation.
+  - name: Hitch::MCP::SDKAdapter
+    kind: class
+    visibility: private
+    introduced: M2.1
+    inputs: Verified request, filtered tools, context, and private callbacks.
+    outputs: Normalized frozen-profile response.
+    errors: Internal errors are mapped at Endpoint and never form public API.
+    reload_behavior: Fresh instance per request.

@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "milestone": "M0",
+  "version": "0.1.0",
+  "recorded_on": "2026-08-01",
+  "status": "candidate_not_accepted",
+  "accepted": false,
+  "published": false,
+  "source": {
+    "commit": null,
+    "tree": null,
+    "clean_worktree": false
+  },
+  "evidence": {
+    "ci_matrix": "docs/evidence/0.1.0/checkpoint/ci-matrix.json",
+    "package_manifest": "docs/evidence/0.1.0/checkpoint/package-manifest.json",
+    "disposable_apps": "docs/evidence/0.1.0/checkpoint/disposable-apps.json",
+    "publication_status": "docs/evidence/0.1.0/checkpoint/publication-status.json"
+  },
+  "gates": {
+    "immutable_source": "pending",
+    "exact_matrix": "green",
+    "package_and_disposable_apps": "green",
+    "authorization_conformance": "green"
+  },
+  "remaining": [
+    "Seal the candidate in an immutable source commit and record its commit/tree identity.",
+    "Regenerate package/checkpoint evidence from the sealed source and rerun bin/verify-release-policy --acceptance."
+  ]
+}

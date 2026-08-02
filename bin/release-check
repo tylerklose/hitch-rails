@@ -1,0 +1,195 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "fileutils"
+require "json"
+require "open3"
+require "rubygems/package"
+require "rubygems/version"
+require "tmpdir"
+
+ROOT = File.expand_path("..", __dir__)
+GEM_NAME = "hitch-rails"
+EARLIEST_PUBLIC_VERSION = Gem::Version.new("0.2.0.pre.4")
+FORBIDDEN_PACKAGE_PATHS = [
+  %r{\A(?:test|spec|tmp|log)/},
+  %r{\Adocs/(?:evidence|work_packets)/},
+  %r{\A\.git},
+  %r{(?:\A|/)\.env(?:\.|\z)},
+  %r{(?:\A|/)master\.key\z},
+  %r{(?:\A|/)credentials\.ya?ml\.enc\z},
+  %r{\.(?:pem|key)\z}
+].freeze
+
+def usage!(message = nil)
+  warn message if message
+  warn "Usage: bin/release-check [--validate-version] VERSION"
+  warn "Downloads the published RubyGems artifact; run only after publication and annotated tagging."
+  exit 64
+end
+
+def capture!(*command, environment: {}, chdir: ROOT)
+  output, status = Open3.capture2e(environment, *command, chdir: chdir)
+  return output if status.success?
+
+  warn output
+  raise "command failed (#{status.exitstatus}): #{command.join(' ')}"
+end
+
+validate_only = ARGV.delete("--validate-version")
+version = ARGV.shift
+usage! if version.nil?
+usage!("Unexpected arguments: #{ARGV.join(' ')}") unless ARGV.empty?
+usage!("VERSION must be a public-eligible version at or after 0.2.0.pre.4") unless
+  version.match?(/\A\d+\.\d+\.\d+(?:\.pre\.\d+|\.rc\d+)?\z/) &&
+    Gem::Version.new(version) >= EARLIEST_PUBLIC_VERSION
+
+if validate_only
+  puts "#{version} is eligible for public artifact verification."
+  exit 0
+end
+
+tag = "v#{version}"
+contract_version = version[/\A\d+\.\d+\.\d+/]
+before_status = capture!("git", "status", "--porcelain=v1", "-z", "--untracked-files=all")
+tag_type = capture!("git", "cat-file", "-t", "refs/tags/#{tag}").strip
+raise "#{tag} must be an annotated tag (found #{tag_type.inspect})" unless tag_type == "tag"
+
+tag_metadata = capture!(
+  "git", "for-each-ref",
+  "--format=%(taggername)%00%(taggeremail)%00%(taggerdate:iso-strict)%00%(contents:subject)",
+  "refs/tags/#{tag}"
+).strip.split("\0", 4)
+unless tag_metadata.length == 4 && tag_metadata.all? { |value| !value.empty? }
+  raise "#{tag} is missing tagger identity, date, or annotation"
+end
+
+report = nil
+Dir.mktmpdir("hitch-release-check-") do |directory|
+  archive = File.join(directory, "tag.tar")
+  tag_tree = File.join(directory, "tag")
+  extracted = File.join(directory, "gem")
+  FileUtils.mkdir_p(tag_tree)
+  FileUtils.mkdir_p(extracted)
+
+  capture!("git", "archive", "--format=tar", "--output", archive, tag)
+  capture!("tar", "-xf", archive, "-C", tag_tree)
+
+  tag_gemspec_path = File.join(tag_tree, "hitch-rails.gemspec")
+  tag_specification = Gem::Specification.load(tag_gemspec_path) ||
+    raise("could not load gemspec from #{tag}")
+  raise "tag gemspec version is #{tag_specification.version}, expected #{version}" unless
+    tag_specification.version.to_s == version
+
+  capture!(
+    "gem", "fetch", GEM_NAME, "--version", version,
+    "--clear-sources", "--source", "https://rubygems.org",
+    chdir: directory
+  )
+  artifact = File.join(directory, "#{GEM_NAME}-#{version}.gem")
+  raise "RubyGems did not return #{File.basename(artifact)}" unless File.file?(artifact)
+
+  package = Gem::Package.new(artifact)
+  published_specification = package.spec
+  raise "published gem name is #{published_specification.name.inspect}" unless
+    published_specification.name == GEM_NAME
+  raise "published gem version is #{published_specification.version}, expected #{version}" unless
+    published_specification.version.to_s == version
+
+  expected_files = tag_specification.files.sort
+  published_files = published_specification.files.sort
+  published_contents = package.contents.sort
+  raise "published manifest differs from the annotated tag allowlist" unless
+    published_files == expected_files
+  raise "published contents differ from the embedded gem manifest" unless
+    published_contents == published_files
+  forbidden = published_files.select do |path|
+    FORBIDDEN_PACKAGE_PATHS.any? { |pattern| pattern.match?(path) }
+  end
+  raise "published gem contains forbidden paths: #{forbidden.join(', ')}" if forbidden.any?
+
+  package.extract_files(extracted)
+  mismatched = published_files.reject do |path|
+    tag_path = File.join(tag_tree, path)
+    gem_path = File.join(extracted, path)
+    File.file?(tag_path) && File.file?(gem_path) &&
+      Digest::SHA256.file(tag_path).hexdigest == Digest::SHA256.file(gem_path).hexdigest
+  end
+  raise "published files differ from #{tag}: #{mismatched.join(', ')}" if mismatched.any?
+
+  required = %W[
+    CHANGELOG.md
+    README.md
+    SECURITY.md
+    bin/release-check
+    docs/public_api/#{contract_version}.md
+    docs/removing.md
+    docs/upgrading/#{contract_version}.md
+    lib/hitch/version.rb
+  ]
+  missing = required - published_files
+  raise "published gem is missing release contract files: #{missing.join(', ')}" if missing.any?
+
+  version_source = File.read(File.join(tag_tree, "lib/hitch/version.rb"))
+  raise "Hitch::VERSION does not equal #{version}" unless
+    version_source.match?(/VERSION\s*=\s*["']#{Regexp.escape(version)}["']/)
+
+  changelog = File.read(File.join(tag_tree, "CHANGELOG.md"))
+  raise "CHANGELOG has no dated #{version} release heading" unless
+    changelog.match?(/^## \[#{Regexp.escape(version)}\] - \d{4}-\d{2}-\d{2}$/)
+
+  readme = File.read(File.join(tag_tree, "README.md"))
+  installation = if Gem::Version.new(version).prerelease?
+    %(gem "hitch-rails", "= #{version}")
+  else
+    %(gem "hitch-rails", "~> #{version}")
+  end
+  raise "README installation does not name the #{version} artifact" unless readme.include?(installation)
+
+  public_api = File.read(File.join(tag_tree, "docs/public_api/#{contract_version}.md"))
+  raise "public API manifest does not identify #{contract_version}" unless public_api.include?(contract_version)
+
+  report = {
+    "release" => version,
+    "status" => "verified_published_artifact",
+    "rubygems" => {
+      "artifact" => File.basename(artifact),
+      "sha256" => Digest::SHA256.file(artifact).hexdigest,
+      "files" => published_files.length
+    },
+    "repository" => {
+      "tag" => tag,
+      "tag_type" => tag_type,
+      "tagger" => tag_metadata.fetch(0),
+      "tagged_at" => tag_metadata.fetch(2),
+      "annotation" => tag_metadata.fetch(3)
+    },
+    "checks" => {
+      "version" => "match",
+      "manifest" => "match",
+      "forbidden_paths" => "absent",
+      "file_checksums" => "match",
+      "readme" => "match",
+      "changelog" => "match",
+      "public_api" => "match"
+    }
+  }
+end
+
+after_status = capture!("git", "status", "--porcelain=v1", "-z", "--untracked-files=all")
+raise "release check changed the worktree" unless after_status == before_status
+
+json = JSON.pretty_generate(report)
+report_path = ENV["HITCH_RELEASE_REPORT"]
+if report_path
+  expanded_report = File.expand_path(report_path)
+  if expanded_report == ROOT || expanded_report.start_with?("#{ROOT}/")
+    raise "HITCH_RELEASE_REPORT must be outside the repository so release verification stays read-only"
+  end
+  File.write(expanded_report, "#{json}\n")
+else
+  puts json
+end
+
+puts "Published #{GEM_NAME} #{version} matches #{tag}."

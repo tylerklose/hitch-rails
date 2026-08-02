@@ -1,0 +1,42 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+ROOT = File.expand_path("..", __dir__)
+
+def run!(*command, environment: {})
+  puts
+  puts "+ #{command.join(' ')}"
+  return if system(environment, *command, chdir: ROOT)
+
+  abort "CI command failed: #{command.join(' ')}"
+end
+
+run!(File.join(ROOT, "bin/rubocop"))
+run!(File.join(ROOT, "bin/verify-work-packets"))
+run!(File.join(ROOT, "bin/verify-release-policy"))
+run!(File.join(ROOT, "bin/verify-provenance"))
+run!(File.join(ROOT, "bin/verify-doc-contract"))
+run!(File.join(ROOT, "bin/verify-toolchain"))
+run!(File.join(ROOT, "bin/prose-audit"))
+
+%w[rails_7_2_sqlite rails_8_1_postgresql].each do |profile|
+  run!(
+    File.join(ROOT, "bin/ci-appraisal"), profile, "--",
+    "bundle", "exec", "rake", "app:zeitwerk:check"
+  )
+end
+
+run!(File.join(ROOT, "bin/ci-migrations"))
+
+%w[rails_7_2_sqlite rails_8_1_postgresql].each do |profile|
+  run!(
+    File.join(ROOT, "bin/ci-appraisal"), profile, "--",
+    File.join(ROOT, "bin/rails"), "test",
+    environment: { "HITCH_FAIL_ON_SKIPS" => "1" }
+  )
+end
+
+run!(File.join(ROOT, "bin/package-smoke"))
+
+puts
+puts "All Hitch CI gates passed."

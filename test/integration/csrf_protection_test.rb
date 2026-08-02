@@ -34,7 +34,9 @@ class CsrfProtectionTest < ActionDispatch::IntegrationTest
     Hitch::Client.delete_all
     Hitch.reset_configuration!
     Hitch.configure do |c|
-      c.principal_model = "User"
+      c.resource_uri = "https://dummy.test/mcp"
+      c.allowed_hosts = [ "www.example.com" ]
+      c.allowed_origins = [ "https://claude.ai" ]
       c.supported_scopes = [ "mcp" ]
     end
     @victim = User.create!(email: "victim@test")
@@ -54,7 +56,7 @@ class CsrfProtectionTest < ActionDispatch::IntegrationTest
   end
 
   test "public POST /oauth/register stays reachable without a CSRF token" do
-    post "/oauth/register", params: { client_name: "Claude", redirect_uris: [ "https://claude.ai/cb" ] }
+    post "/oauth/register", params: { client_name: "Claude", redirect_uris: [ "https://claude.ai/cb" ] }, as: :json
 
     refute_equal 422, response.status,
       "CSRF protection blocked a tokenless DCR call — non-browser clients can't register"
@@ -82,6 +84,7 @@ class CsrfProtectionTest < ActionDispatch::IntegrationTest
 
   test "consent POST /oauth/authorize is CSRF-protected (forged request rejected)" do
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: "x",
       redirect_uri: "https://claude.ai/cb",
       code_challenge: "c",
@@ -98,15 +101,17 @@ class CsrfProtectionTest < ActionDispatch::IntegrationTest
   # CSRF could silently break real approvals, and the suite (forgery off
   # globally) would never notice.
   test "consent Approve succeeds with the CSRF token the rendered form carries" do
-    post "/oauth/register", params: { client_name: "Claude", redirect_uris: [ HONEST_REDIRECT ] }
+    post "/oauth/register", params: { client_name: "Claude", redirect_uris: [ HONEST_REDIRECT ] }, as: :json
     client_id = JSON.parse(response.body)["client_id"]
     sign_in @victim
 
     authorize_params = {
+      response_type: "code",
       client_id: client_id,
       redirect_uri: HONEST_REDIRECT,
       code_challenge: @challenge,
-      code_challenge_method: "S256"
+      code_challenge_method: "S256",
+      resource: "https://dummy.test/mcp"
     }
 
     get "/oauth/authorize", params: authorize_params
@@ -114,9 +119,81 @@ class CsrfProtectionTest < ActionDispatch::IntegrationTest
     token = css_select("input[name=authenticity_token]").first&.attr("value")
     assert token.present?, "consent form did not render an authenticity_token — real Approve would 422"
 
-    post "/oauth/authorize", params: authorize_params.merge(authenticity_token: token)
+    redirect_events = []
+    subscriber = ->(event) { redirect_events << event }
+    ActiveSupport::Notifications.subscribed(subscriber, "redirect_to.action_controller") do
+      post "/oauth/authorize", params: authorize_params.merge(authenticity_token: token)
+    end
 
     assert_response :redirect, "tokened consent Approve was rejected under forgery protection"
     assert_match(/[?&]code=/, response.location, "Approve did not deliver an authorization code")
+    assert_empty redirect_events, "authorization codes must not enter Rails redirect instrumentation"
+    assert_equal "no-store", response.headers["Cache-Control"]
+    assert_equal "no-cache", response.headers["Pragma"]
+  end
+
+  test "consent accepts the standard CSRF header without copying OAuth credentials into Rails params" do
+    client_id, authorize_params, token = consent_fixture
+
+    post "/oauth/authorize", params: authorize_params, headers: { "X-CSRF-Token" => token }
+
+    assert_response :redirect
+    assert_match(/[?&]code=/, response.location)
+    assert_equal client_id, URI.decode_www_form(URI.parse(response.location).query).to_h.fetch("state")
+  end
+
+  test "duplicate and structured body CSRF tokens fail closed" do
+    _client_id, authorize_params, token = consent_fixture
+
+    duplicate = URI.encode_www_form(
+      authorize_params.to_a +
+        [ [ "authenticity_token", token ], [ "authenticity_token", token ] ]
+    )
+    post "/oauth/authorize", params: duplicate,
+      headers: { "CONTENT_TYPE" => "application/x-www-form-urlencoded" }
+    assert_response :unprocessable_entity
+
+    structured = URI.encode_www_form(authorize_params.to_a + [ [ "authenticity_token[value]", token ] ])
+    post "/oauth/authorize", params: structured,
+      headers: { "CONTENT_TYPE" => "application/x-www-form-urlencoded" }
+    assert_response :unprocessable_entity
+    assert_equal 0, Hitch::AccessToken.count
+  end
+
+  test "oversized consent fails before CSRF and creates no authorization" do
+    _client_id, authorize_params, token = consent_fixture
+    oversized = URI.encode_www_form(
+      authorize_params.to_a + [ [ "authenticity_token", token ], [ "padding", "a" * 20_000 ] ]
+    )
+
+    post "/oauth/authorize", params: oversized,
+      headers: { "CONTENT_TYPE" => "application/x-www-form-urlencoded" }
+
+    assert_response :content_too_large
+    assert_equal 0, Hitch::AccessToken.count
+  end
+
+  private
+
+  def consent_fixture
+    post "/oauth/register", params: {
+      client_name: "Claude",
+      redirect_uris: [ HONEST_REDIRECT ]
+    }, as: :json
+    client_id = JSON.parse(response.body).fetch("client_id")
+    sign_in @victim
+    authorize_params = {
+      response_type: "code",
+      client_id: client_id,
+      redirect_uri: HONEST_REDIRECT,
+      code_challenge: @challenge,
+      code_challenge_method: "S256",
+      resource: "https://dummy.test/mcp",
+      state: client_id
+    }
+    get "/oauth/authorize", params: authorize_params
+    token = css_select("input[name=authenticity_token]").first&.attr("value")
+    assert token.present?
+    [ client_id, authorize_params, token ]
   end
 end

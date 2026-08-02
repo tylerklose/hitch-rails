@@ -1,0 +1,164 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "optparse"
+require "yaml"
+
+EXPECTED_ARTIFACTS = {
+  "M0.5" => [ "0.1.0", "internal_only" ],
+  "M2.3" => [ "0.2.0.pre.1", "internal_only" ],
+  "M3.3" => [ "0.2.0.pre.2", "internal_only" ],
+  "M4.5" => [ "0.2.0.pre.3", "internal_only" ],
+  "M5.4" => [ "0.2.0.pre.4", "public_optional" ],
+  "M6" => [ "0.2.0.rc1", "public_if_pre4_published" ],
+  "M7" => [ "0.2.0.rc2", "public_if_pre4_published" ],
+  "M8" => [ "0.2.0", "public_required" ]
+}.freeze
+
+EVIDENCE_ROOT = "docs/evidence/0.1.0/checkpoint"
+EVIDENCE_PATHS = {
+  "ci_matrix" => "#{EVIDENCE_ROOT}/ci-matrix.json",
+  "package_manifest" => "#{EVIDENCE_ROOT}/package-manifest.json",
+  "disposable_apps" => "#{EVIDENCE_ROOT}/disposable-apps.json",
+  "publication_status" => "#{EVIDENCE_ROOT}/publication-status.json"
+}.freeze
+
+Options = Data.define(:root, :acceptance)
+
+def parse_options(argv)
+  root = File.expand_path("..", __dir__)
+  acceptance = false
+  parser = OptionParser.new do |options|
+    options.banner = "Usage: bin/verify-release-policy [--root PATH] [--acceptance]"
+    options.on("--root PATH", "Repository root") { |path| root = File.expand_path(path) }
+    options.on("--acceptance", "Require a sealed and fully green M0 checkpoint") { acceptance = true }
+  end
+  parser.parse!(argv)
+  abort "Unexpected arguments: #{argv.join(' ')}" unless argv.empty?
+  Options.new(root:, acceptance:)
+end
+
+def load_json(root, relative_path, errors)
+  path = File.join(root, relative_path)
+  unless File.file?(path)
+    errors << "missing #{relative_path}"
+    return {}
+  end
+
+  JSON.parse(File.read(path))
+rescue JSON::ParserError => error
+  errors << "#{relative_path}: invalid JSON: #{error.message}"
+  {}
+end
+
+def forty_hex?(value)
+  value.is_a?(String) && value.match?(/\A[0-9a-f]{40}\z/)
+end
+
+options = parse_options(ARGV)
+root = options.root
+errors = []
+
+index_path = File.join(root, "docs/work_packets/index.yml")
+index = if File.file?(index_path)
+  YAML.safe_load_file(index_path, permitted_classes: [], aliases: false)
+else
+  errors << "missing docs/work_packets/index.yml"
+  {}
+end
+
+errors << "work-packet schema must be 2" unless index["schema_version"] == 2
+first_public = index.dig("distribution_policy", "first_public_eligible")
+unless first_public == {
+  "issue" => "M5.4",
+  "version" => "0.2.0.pre.4",
+  "decisions" => %w[published_pre4 deferred_to_final]
+}
+  errors << "first public eligibility must be M5.4/0.2.0.pre.4 with publish-or-defer decisions"
+end
+unless index.dig("distribution_policy", "final_public_release") == {
+  "issue" => "M8", "version" => "0.2.0"
+}
+  errors << "final 0.2.0 must be the required public release"
+end
+
+EXPECTED_ARTIFACTS.each do |issue, (version, distribution)|
+  artifact = index.dig("nodes", issue, "artifact")
+  unless artifact.is_a?(Hash) && artifact["version"] == version && artifact["distribution"] == distribution
+    errors << "#{issue} must own #{version} as #{distribution}"
+  end
+end
+
+pre_public = %w[M0.5 M2.3 M3.3 M4.5]
+pre_public.each do |issue|
+  artifact = index.dig("nodes", issue, "artifact") || {}
+  errors << "#{issue} may not name a public verifier" if artifact.key?("public_verifier")
+end
+errors << "M5.4 must own bin/release-check" unless
+  index.dig("nodes", "M5.4", "creates_commands")&.include?("bin/release-check")
+
+workflow_path = File.join(root, ".github/workflows/ci.yml")
+workflow = File.file?(workflow_path) ? File.read(workflow_path) : ""
+errors << "public CI must not upload or retain an installable .gem before M5" if
+  workflow.match?(/\.gem(?:\s|["']|\z)/)
+
+publication = load_json(root, EVIDENCE_PATHS.fetch("publication_status"), errors)
+errors << "M0 publication status must be intentionally_not_published" unless
+  publication["status"] == "intentionally_not_published"
+errors << "M0 publication must be false" unless publication["published"] == false
+%w[rubygems_artifact rubygems_sha256 repository_tag github_release].each do |field|
+  errors << "M0 publication field #{field} must be null" unless publication.key?(field) && publication[field].nil?
+end
+unless publication.dig("next_public_eligible", "issue") == "M5.4" &&
+    publication.dig("next_public_eligible", "version") == "0.2.0.pre.4"
+  errors << "M0 publication evidence must point to M5.4/0.2.0.pre.4"
+end
+
+official = load_json(root, "docs/evidence/0.1.0/auth/official-metadata.json", errors)
+extension = load_json(root, "docs/evidence/0.1.0/auth/resource-aware-grants.json", errors)
+errors << "official metadata classification drifted" unless
+  official["classification"] == "official_unmodified_authorization_metadata"
+errors << "resource-aware extension classification drifted" unless
+  extension["classification"] == "reviewed_resource_indicator_extension"
+[ [ "official metadata", official ], [ "resource-aware extension", extension ] ].each do |label, evidence|
+  errors << "#{label} evidence contains credentials" unless evidence["contains_credentials"] == false
+  errors << "#{label} raw output must be destroyed and never uploaded" unless
+    evidence["raw_artifact"].to_s.include?("destroyed") && evidence["raw_artifact"].to_s.include?("never uploaded")
+end
+
+completion = load_json(root, "#{EVIDENCE_ROOT}/completion.json", errors)
+errors << "completion must identify M0/0.1.0" unless
+  completion["milestone"] == "M0" && completion["version"] == "0.1.0"
+errors << "completion must record published false" unless completion["published"] == false
+errors << "completion evidence references drifted" unless completion["evidence"] == EVIDENCE_PATHS
+
+if options.acceptance
+  errors << "M0 checkpoint is not accepted" unless
+    completion["accepted"] == true && completion["status"] == "accepted_internal_checkpoint"
+  source = completion["source"] || {}
+  errors << "accepted checkpoint needs a 40-hex source commit" unless forty_hex?(source["commit"])
+  errors << "accepted checkpoint needs a 40-hex source tree" unless forty_hex?(source["tree"])
+  errors << "accepted checkpoint must record a clean worktree" unless source["clean_worktree"] == true
+
+  matrix = load_json(root, EVIDENCE_PATHS.fetch("ci_matrix"), errors)
+  lanes = matrix["required_lanes"]
+  unless lanes.is_a?(Array) && lanes.length == 2 && lanes.all? { |lane| lane.dig("exact_result", "result") == "green" }
+    errors << "both exact checkpoint lanes must be green"
+  end
+
+  package = load_json(root, EVIDENCE_PATHS.fetch("package_manifest"), errors)
+  errors << "package manifest is not an accepted internal checkpoint" unless
+    package["status"] == "internal_checkpoint_verified"
+  errors << "package source identity differs from completion" unless package["source_identity"] == source
+  errors << "completion gates are not all green" unless
+    completion["gates"].is_a?(Hash) && completion["gates"].values.all? { |value| value == "green" }
+end
+
+if errors.any?
+  warn errors.uniq.join("\n")
+  exit 1
+end
+
+state = completion["accepted"] ? "accepted" : "candidate; acceptance still pending"
+puts "Verified deferred publication policy and M0 #{state}."

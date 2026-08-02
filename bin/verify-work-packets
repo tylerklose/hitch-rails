@@ -1,0 +1,401 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "fileutils"
+require "json"
+require "optparse"
+require "pathname"
+require "rubygems/version"
+require "shellwords"
+require "yaml"
+
+REQUIRED_SECTIONS = [
+  "Scope",
+  "Not in scope",
+  "Target files/API",
+  "Dependencies",
+  "Acceptance commands",
+  "Evidence paths",
+  "Rollback",
+  "Estimate",
+  "Risks",
+  "Owner"
+].freeze
+
+BOOTSTRAP_COMMANDS = %w[bin/rails bin/rake bin/rubocop].freeze
+ISSUE_PATTERN = /\A(?:H0|M[0-8](?:\.\d+[a-z]?)?)\z/
+EVIDENCE_PATTERN = %r{docs/evidence/[A-Za-z0-9_.\-/]+\.json}
+DISTRIBUTION_STATES = %w[
+  internal_only
+  public_optional
+  public_if_pre4_published
+  public_required
+].freeze
+
+Options = Data.define(:root, :graph_path, :packet_arguments)
+
+def parse_options(argv)
+  root = File.expand_path("..", __dir__)
+  graph_path = nil
+  parser = OptionParser.new do |options|
+    options.banner = "Usage: bin/verify-work-packets [--root PATH] [--graph PATH] [ISSUE ...]"
+    options.on("--root PATH", "Repository root (used by isolated tooling tests)") { |path| root = File.expand_path(path) }
+    options.on("--graph PATH", "Write the canonical dependency graph") { |path| graph_path = path }
+  end
+  packet_arguments = parser.parse(argv)
+  Options.new(root:, graph_path:, packet_arguments:)
+end
+
+def load_manifest(root)
+  path = File.join(root, "docs/work_packets/index.yml")
+  abort "Missing work-packet metadata: #{path}" unless File.file?(path)
+
+  manifest = YAML.safe_load_file(path, permitted_classes: [], aliases: false)
+  abort "#{path}: schema_version must be 2" unless manifest.is_a?(Hash) && manifest["schema_version"] == 2
+  abort "#{path}: nodes must be a mapping" unless manifest["nodes"].is_a?(Hash)
+
+  manifest
+rescue Psych::Exception => error
+  abort "#{path}: invalid YAML: #{error.message}"
+end
+
+def roadmap_graph(root)
+  path = File.join(root, "ROADMAP.md")
+  abort "Missing roadmap: #{path}" unless File.file?(path)
+
+  rows = File.read(path).lines.filter_map do |line|
+    next unless line.match?(/^\| (?:H0|M[0-8](?:\.\d+[a-z]?)?) \|/)
+
+    cells = line.delete_suffix("\n").split("|").map(&:strip).reject(&:empty?)
+    issue = cells.fetch(0)
+    dependencies = cells.fetch(1) == "—" ? [] : cells.fetch(1).split(",").map(&:strip)
+    [ issue, dependencies ]
+  end.to_h
+
+  abort "#{path}: build-packet issue table was not found" if rows.empty?
+  rows
+end
+
+def manifest_graph(manifest)
+  manifest.fetch("nodes").to_h do |issue, metadata|
+    abort "Invalid issue identifier in packet metadata: #{issue.inspect}" unless issue.match?(ISSUE_PATTERN)
+    abort "Packet metadata for #{issue} must be a mapping" unless metadata.is_a?(Hash)
+
+    dependencies = metadata.fetch("depends_on", [])
+    abort "depends_on for #{issue} must be an array" unless dependencies.is_a?(Array)
+    abort "Duplicate dependency for #{issue}" unless dependencies.uniq == dependencies
+
+    [ issue, dependencies ]
+  end
+end
+
+def validate_graph(graph)
+  errors = []
+  graph.each do |issue, dependencies|
+    dependencies.each do |dependency|
+      errors << "#{issue}: unknown predecessor #{dependency}" unless graph.key?(dependency)
+      errors << "#{issue}: may not depend on itself" if dependency == issue
+    end
+  end
+
+  state = {}
+  visit = lambda do |issue, trail|
+    case state[issue]
+    when :visiting
+      cycle = trail.drop_while { |node| node != issue } + [ issue ]
+      errors << "Dependency cycle: #{cycle.join(' -> ')}"
+      return
+    when :visited
+      return
+    end
+
+    state[issue] = :visiting
+    graph.fetch(issue).each { |dependency| visit.call(dependency, trail + [ issue ]) if graph.key?(dependency) }
+    state[issue] = :visited
+  end
+  graph.each_key { |issue| visit.call(issue, []) }
+  errors
+end
+
+def predecessors_for(issue, graph, memo = {})
+  return memo.fetch(issue) if memo.key?(issue)
+
+  memo[issue] = []
+  graph.fetch(issue, []).each do |dependency|
+    next unless graph.key?(dependency)
+
+    memo.fetch(issue) << dependency
+    memo.fetch(issue).concat(predecessors_for(dependency, graph, memo))
+  end
+  memo[issue] = memo.fetch(issue).uniq
+end
+
+def distribution_policy_errors(manifest, graph, command_owners)
+  errors = []
+  policy = manifest["distribution_policy"]
+  return [ "distribution_policy must be a mapping" ] unless policy.is_a?(Hash)
+
+  first_public = policy["first_public_eligible"]
+  final_public = policy["final_public_release"]
+  unless first_public.is_a?(Hash) && final_public.is_a?(Hash)
+    return [ "distribution_policy must define first_public_eligible and final_public_release" ]
+  end
+
+  first_issue = first_public["issue"]
+  first_version = first_public["version"]
+  final_issue = final_public["issue"]
+  final_version = final_public["version"]
+  errors << "first_public_eligible names unknown issue #{first_issue.inspect}" unless graph.key?(first_issue)
+  errors << "final_public_release names unknown issue #{final_issue.inspect}" unless graph.key?(final_issue)
+  errors << "first_public_eligible version must be a string" unless first_version.is_a?(String)
+  errors << "final_public_release version must be a string" unless final_version.is_a?(String)
+  decisions = first_public["decisions"]
+  unless decisions.is_a?(Array) && decisions.sort == %w[deferred_to_final published_pre4]
+    errors << "first_public_eligible decisions must be published_pre4 and deferred_to_final"
+  end
+
+  artifacts = {}
+  manifest.fetch("nodes").each do |issue, metadata|
+    artifact = metadata["artifact"]
+    next if artifact.nil?
+
+    unless artifact.is_a?(Hash)
+      errors << "artifact metadata for #{issue} must be a mapping"
+      next
+    end
+
+    version = artifact["version"]
+    distribution = artifact["distribution"]
+    verifier = artifact["verifier"]
+    errors << "artifact version for #{issue} must be a string" unless version.is_a?(String)
+    begin
+      Gem::Version.new(version) if version.is_a?(String)
+    rescue ArgumentError
+      errors << "artifact version for #{issue} is invalid: #{version.inspect}"
+    end
+    if version.is_a?(String) && artifacts.key?(version)
+      errors << "artifact version #{version} has duplicate owners #{artifacts.fetch(version)} and #{issue}"
+    elsif version.is_a?(String)
+      artifacts[version] = issue
+    end
+    errors << "artifact distribution for #{issue} is invalid: #{distribution.inspect}" unless
+      DISTRIBUTION_STATES.include?(distribution)
+    errors << "artifact verifier for #{issue} must name a bin/ command" unless
+      verifier.is_a?(String) && verifier.start_with?("bin/")
+
+    public_verifier = artifact["public_verifier"]
+    if distribution == "internal_only" && public_verifier
+      errors << "internal-only artifact #{issue} may not name a public verifier"
+    elsif distribution != "internal_only" && !(public_verifier.is_a?(String) && public_verifier.start_with?("bin/"))
+      errors << "public-capable artifact #{issue} must name a bin/ public_verifier"
+    end
+
+    [ verifier, public_verifier ].compact.each do |command|
+      errors << "artifact verifier #{command} for #{issue} has no command owner" unless command_owners.key?(command)
+    end
+  end
+
+  if graph.key?(first_issue)
+    first_artifact = manifest.dig("nodes", first_issue, "artifact")
+    errors << "#{first_issue} must own the first public-eligible artifact" unless
+      first_artifact.is_a?(Hash) && first_artifact["version"] == first_version &&
+        first_artifact["distribution"] == "public_optional"
+    predecessors_for(first_issue, graph).each do |issue|
+      distribution = manifest.dig("nodes", issue, "artifact", "distribution")
+      next if distribution.nil? || distribution == "internal_only"
+
+      errors << "#{issue}: #{distribution} precedes first public-eligible issue #{first_issue}"
+    end
+  end
+
+  if graph.key?(final_issue)
+    final_artifact = manifest.dig("nodes", final_issue, "artifact")
+    errors << "#{final_issue} must own the final public release artifact" unless
+      final_artifact.is_a?(Hash) && final_artifact["version"] == final_version &&
+        final_artifact["distribution"] == "public_required"
+    if graph.key?(first_issue) && first_issue != final_issue &&
+        !predecessors_for(final_issue, graph).include?(first_issue)
+      errors << "final public issue #{final_issue} must depend on first public-eligible issue #{first_issue}"
+    end
+  end
+
+  manifest.fetch("nodes").each do |issue, metadata|
+    next unless metadata.dig("artifact", "distribution") == "public_if_pre4_published"
+    next if graph.key?(first_issue) && predecessors_for(issue, graph).include?(first_issue)
+
+    errors << "#{issue}: conditional public artifact must follow #{first_issue}"
+  end
+
+  errors
+end
+
+def packet_path(root, argument)
+  directory = File.join(root, "docs/work_packets")
+  filename = argument.end_with?(".md") ? argument : "#{argument}.md"
+  path = filename.include?(File::SEPARATOR) ? File.expand_path(filename, root) : File.join(directory, filename)
+  abort "Work packet must live directly under docs/work_packets: #{argument}" unless File.dirname(path) == directory
+
+  path
+end
+
+def shell_commands(content)
+  content.scan(/^```sh\s*$\n(.*?)^```\s*$/m).flat_map do |(body)|
+    joined = body.lines.each_with_object([]) do |line, commands|
+      stripped = line.strip
+      next if stripped.empty? || stripped.start_with?("#")
+
+      if commands.any? && commands.last.end_with?("\\")
+        commands[-1] = "#{commands.last.delete_suffix('\\')} #{stripped}"
+      else
+        commands << stripped
+      end
+    end
+
+    joined.filter_map do |line|
+      words = Shellwords.split(line)
+      words.shift while words.first&.match?(/\A[A-Z][A-Z0-9_]*=/)
+      words.first if words.first&.start_with?("bin/")
+    rescue ArgumentError
+      nil
+    end
+  end
+end
+
+def packet_errors(path, issue, graph, command_owners)
+  return [ [ "#{path}: file does not exist" ], [] ] unless File.file?(path)
+
+  content = File.read(path)
+  errors = []
+  expected_heading = "# Work packet: #{issue}"
+  actual_heading = content.lines.find { |line| !line.strip.empty? }&.strip
+  errors << "#{path}: expected first heading #{expected_heading.inspect}" unless actual_heading == expected_heading
+
+  headings = content.scan(/^## (.+)$/).flatten
+  unless headings == REQUIRED_SECTIONS
+    errors << "#{path}: sections must be exactly #{REQUIRED_SECTIONS.join(', ')} in that order"
+  end
+
+  REQUIRED_SECTIONS.each do |section|
+    body = content[/^## #{Regexp.escape(section)}\s*$\n(.*?)(?=^## |\z)/m, 1]
+    errors << "#{path}: #{section} must not be empty" if body.nil? || body.strip.empty?
+  end
+  errors << "#{path}: unresolved placeholder" if content.match?(/\b(?:TODO|TBD|FIXME)\b/i)
+
+  shell_commands(content).uniq.each do |command|
+    next if BOOTSTRAP_COMMANDS.include?(command)
+
+    owner = command_owners[command]
+    if owner.nil?
+      errors << "#{path}: unowned command #{command}"
+    elsif owner != issue && !predecessors_for(issue, graph).include?(owner)
+      errors << "#{path}: command #{command} is owned by non-predecessor #{owner}"
+    end
+  end
+
+  evidence_section = content[/^## Evidence paths\s*$\n(.*?)(?=^## |\z)/m, 1].to_s
+  all_evidence = content.scan(EVIDENCE_PATTERN).uniq
+  declared_evidence = evidence_section.scan(EVIDENCE_PATTERN).uniq
+  (all_evidence - declared_evidence).each do |evidence|
+    errors << "#{path}: evidence path #{evidence} is not owned in Evidence paths"
+  end
+  errors << "#{path}: Evidence paths must name at least one JSON manifest" if declared_evidence.empty?
+
+  [ errors, declared_evidence ]
+end
+
+def canonical_graph(graph, manifest)
+  {
+    "schema_version" => 2,
+    "source" => "ROADMAP.md#build-packets-and-issue-graph",
+    "distribution_policy" => manifest.fetch("distribution_policy"),
+    "nodes" => graph.keys.sort.map do |issue|
+      node = {
+        "id" => issue,
+        "packet" => issue == "H0" ? nil : "docs/work_packets/#{issue}.md",
+        "depends_on" => graph.fetch(issue).sort
+      }
+      artifact = manifest.dig("nodes", issue, "artifact")
+      node["artifact"] = artifact if artifact
+      node
+    end,
+    "edges" => graph.flat_map do |issue, dependencies|
+      dependencies.map { |dependency| { "from" => dependency, "to" => issue } }
+    end.sort_by { |edge| [ edge.fetch("from"), edge.fetch("to") ] }
+  }
+end
+
+options = parse_options(ARGV)
+root = options.root
+manifest = load_manifest(root)
+graph = manifest_graph(manifest)
+roadmap = roadmap_graph(root)
+errors = validate_graph(graph)
+
+errors << "Packet metadata issue set differs from ROADMAP" unless graph.keys.sort == roadmap.keys.sort
+graph.each do |issue, dependencies|
+  next unless roadmap.key?(issue)
+  errors << "#{issue}: metadata predecessors differ from ROADMAP" unless dependencies.sort == roadmap.fetch(issue).sort
+end
+
+command_owners = {}
+manifest.fetch("nodes").each do |issue, metadata|
+  commands = metadata.fetch("creates_commands", [])
+  unless commands.is_a?(Array)
+    errors << "#{issue}: creates_commands must be an array"
+    next
+  end
+  commands.each do |command|
+    if command_owners.key?(command)
+      errors << "#{command}: duplicate command owners #{command_owners.fetch(command)} and #{issue}"
+    else
+      command_owners[command] = issue
+    end
+  end
+end
+errors.concat(distribution_policy_errors(manifest, graph, command_owners))
+
+packet_directory = File.join(root, "docs/work_packets")
+expected_packet_issues = graph.keys.reject { |issue| issue == "H0" }.sort
+if options.packet_arguments.empty?
+  actual_packet_issues = Dir[File.join(packet_directory, "*.md")].map { |path| File.basename(path, ".md") }
+    .reject { |name| name == "schema" }.sort
+  missing = expected_packet_issues - actual_packet_issues
+  extra = actual_packet_issues - expected_packet_issues
+  errors << "Missing packet nodes: #{missing.join(', ')}" if missing.any?
+  errors << "Unknown packet nodes: #{extra.join(', ')}" if extra.any?
+  packets = expected_packet_issues.map { |issue| File.join(packet_directory, "#{issue}.md") }
+else
+  packets = options.packet_arguments.map { |argument| packet_path(root, argument) }
+end
+
+evidence_owners = {}
+packets.each do |path|
+  issue = File.basename(path, ".md")
+  unless graph.key?(issue) && issue != "H0"
+    errors << "#{path}: unknown packet issue #{issue}"
+    next
+  end
+
+  packet_result = packet_errors(path, issue, graph, command_owners)
+  packet_result.first.each { |error| errors << error }
+  packet_result.last.each do |evidence|
+    if evidence_owners.key?(evidence)
+      errors << "#{evidence}: duplicate evidence owners #{evidence_owners.fetch(evidence)} and #{issue}"
+    else
+      evidence_owners[evidence] = issue
+    end
+  end
+end
+
+if errors.any?
+  warn errors.uniq.join("\n")
+  exit 1
+end
+
+if options.graph_path
+  output_path = Pathname.new(options.graph_path).absolute? ? options.graph_path : File.join(root, options.graph_path)
+  FileUtils.mkdir_p(File.dirname(output_path)) unless Dir.exist?(File.dirname(output_path))
+  File.write(output_path, "#{JSON.pretty_generate(canonical_graph(graph, manifest))}\n")
+end
+
+puts "Verified #{packets.length} work packets and #{graph.length} roadmap nodes (#{canonical_graph(graph, manifest).fetch('edges').length} edges)"

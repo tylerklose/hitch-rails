@@ -1,0 +1,120 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "optparse"
+require "pathname"
+require "yaml"
+
+CLASSIFICATIONS = %w[
+  standards_required
+  independently_converged
+  copied_lineage
+  host_policy
+  rejected
+].freeze
+DISPOSITIONS = %w[adopted adapted rejected deferred].freeze
+
+root = File.expand_path("..", __dir__)
+OptionParser.new do |options|
+  options.on("--root PATH") { |path| root = File.expand_path(path) }
+end.parse!(ARGV)
+
+sources_path = File.join(root, "docs/architecture/extraction_sources.yml")
+matrix_path = File.join(root, "docs/architecture/extraction_matrix.yml")
+dossier_path = File.join(root, "docs/architecture/extraction.md")
+errors = []
+
+begin
+  sources_document = YAML.safe_load_file(sources_path, permitted_classes: [], aliases: false)
+  matrix_document = YAML.safe_load_file(matrix_path, permitted_classes: [], aliases: false)
+rescue Errno::ENOENT, Psych::Exception => error
+  abort "Invalid provenance input: #{error.message}"
+end
+
+sources = sources_document.is_a?(Hash) ? sources_document["sources"] : nil
+ideas = matrix_document.is_a?(Hash) ? matrix_document["ideas"] : nil
+errors << "#{sources_path}: schema_version must be 1" unless sources_document["schema_version"] == 1
+errors << "#{matrix_path}: schema_version must be 1" unless matrix_document["schema_version"] == 1
+errors << "#{sources_path}: sources must be a nonempty mapping" unless sources.is_a?(Hash) && sources.any?
+errors << "#{matrix_path}: ideas must be a nonempty array" unless ideas.is_a?(Array) && ideas.any?
+sources ||= {}
+ideas ||= []
+
+roots = []
+sources.each do |id, source|
+  unless source.is_a?(Hash)
+    errors << "#{id}: source must be a mapping"
+    next
+  end
+
+  roots << id if source["lineage"] == "root"
+  errors << "#{id}: revision must be a full Git SHA" unless source["revision"].to_s.match?(/\A[0-9a-f]{40}\z/)
+  files = source["files"]
+  errors << "#{id}: files must be nonempty" unless files.is_a?(Array) && files.any?
+  Array(files).each do |file|
+    path = Pathname.new(file.to_s)
+    errors << "#{id}: source paths must be relative: #{file}" if path.absolute? || file.to_s.include?("..")
+    errors << "#{id}: source path looks like a remote URL: #{file}" if file.to_s.match?(%r{\A(?:https?|git@)})
+  end
+
+  parent = source["parent"]
+  errors << "#{id}: unknown lineage parent #{parent}" if parent && !sources.key?(parent)
+  independence_root = source["independence_root"]
+  errors << "#{id}: unknown independence root #{independence_root}" unless sources.key?(independence_root)
+  if source["lineage"] == "root"
+    errors << "#{id}: a root must identify itself as independence_root" unless independence_root == id && parent.nil?
+  elsif source["lineage"] == "copied_descendant"
+    errors << "#{id}: copied descendant must name a parent" unless parent
+    if parent && sources[parent].is_a?(Hash) && sources[parent]["independence_root"] != independence_root
+      errors << "#{id}: copied descendant changed independence root"
+    end
+  else
+    errors << "#{id}: lineage must be root or copied_descendant"
+  end
+end
+
+errors << "expected exactly two independent roots, found #{roots.length}" unless roots.length == 2
+
+idea_ids = []
+ideas.each_with_index do |idea, index|
+  unless idea.is_a?(Hash)
+    errors << "idea #{index}: must be a mapping"
+    next
+  end
+
+  id = idea["id"].to_s
+  errors << "idea #{index}: id is missing" if id.empty?
+  errors << "duplicate idea id #{id}" if idea_ids.include?(id)
+  idea_ids << id
+  classification = idea["classification"]
+  disposition = idea["disposition"]
+  cited_sources = idea["sources"]
+  errors << "#{id}: invalid classification #{classification.inspect}" unless CLASSIFICATIONS.include?(classification)
+  errors << "#{id}: invalid disposition #{disposition.inspect}" unless DISPOSITIONS.include?(disposition)
+  errors << "#{id}: sources must be an array" unless cited_sources.is_a?(Array)
+  Array(cited_sources).each { |source| errors << "#{id}: unknown source #{source}" unless sources.key?(source) }
+  errors << "#{id}: rationale is missing" if idea["rationale"].to_s.strip.empty?
+
+  if classification == "independently_converged"
+    independent_roots = Array(cited_sources).filter_map { |source| sources.dig(source, "independence_root") }.uniq
+    errors << "#{id}: independent convergence requires at least two roots" unless independent_roots.length >= 2
+  elsif classification == "copied_lineage"
+    independent_roots = Array(cited_sources).filter_map { |source| sources.dig(source, "independence_root") }.uniq
+    errors << "#{id}: copied lineage may not imply multiple roots" unless independent_roots.length == 1
+  end
+end
+
+unless File.file?(dossier_path)
+  errors << "missing dossier #{dossier_path}"
+else
+  dossier = File.read(dossier_path)
+  errors << "dossier must state exactly two independent design roots" unless dossier.include?("two independent design roots")
+  errors << "dossier must state that no third root was found" unless dossier.include?("No third independent root was found")
+end
+
+if errors.any?
+  warn errors.join("\n")
+  exit 1
+end
+
+puts "Verified #{sources.length} pinned sources, #{roots.length} independent roots, and #{ideas.length} classified ideas"

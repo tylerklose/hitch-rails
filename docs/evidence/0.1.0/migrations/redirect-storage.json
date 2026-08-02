@@ -1,0 +1,57 @@
+{
+  "recorded_at": "2026-08-01",
+  "source_revision": "cd42bf84fec834923fa9c900287e76dabd0e1cf4+working-tree",
+  "command": "bin/ci-migrations",
+  "exit_status": 0,
+  "profiles": {
+    "rails_7_2_sqlite": {
+      "ruby": "3.4.7",
+      "rails": "7.2.3.2",
+      "adapter_gem": "sqlite3 2.9.5",
+      "database": "SQLite 3.53.2 file-backed disposable database",
+      "result": {
+        "runs": 13,
+        "assertions": 98,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      "fresh_authority_version": 2,
+      "legacy_array_fixture": "rejected before mutation because the historical array schema was PostgreSQL-only"
+    },
+    "rails_8_1_postgresql": {
+      "ruby": "3.4.7",
+      "rails": "8.1.3.1",
+      "adapter_gem": "pg 1.6.3",
+      "database": "disposable PostgreSQL database",
+      "result": {
+        "runs": 13,
+        "assertions": 110,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      "fresh_authority_version": 2,
+      "legacy_authority_version": 1
+    }
+  },
+  "synthetic_legacy_fixture": {
+    "clients": 1,
+    "stored_values": 4,
+    "normalized_rows": 2,
+    "duplicate_values_removed": 1,
+    "blank_values_removed": 1,
+    "legacy_array_preserved": true
+  },
+  "checks": {
+    "fresh_schema_has_no_array_column": "passed",
+    "unique_client_uri_index": "passed",
+    "foreign_key_on_delete_cascade": "passed",
+    "state_1_dual_write_parity": "passed",
+    "normalized_uri_sorting": "passed",
+    "missing_duplicate_invalid_state_fail_closed": "passed",
+    "additive_rollback_and_retry": "passed",
+    "fresh_full_chain_and_authorization_code_index_up_down_up": "passed"
+  },
+  "contains_non_fixture_redirect_uris": false
+}

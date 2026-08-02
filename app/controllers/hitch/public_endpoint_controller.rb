@@ -17,7 +17,9 @@ module Hitch
   # in this category — it must integrate with the host's auth concern
   # to identify the user granting consent.
   class PublicEndpointController < ::ActionController::Base
+    include Hitch::HostValidation
     include Hitch::IssuerUrl
+    include Hitch::OauthParameterValidation
 
     # These endpoints serve non-browser MCP clients (CLI / desktop /
     # server-to-server) that carry no Rails session and no CSRF token —

@@ -6,7 +6,9 @@ module Hitch
   # apply automatically. The gem only adds OAuth-specific behavior on
   # top.
   class ApplicationController < ::ApplicationController
+    include Hitch::HostValidation
     include Hitch::IssuerUrl
+    include Hitch::OauthParameterValidation
 
     # Opt out of the host's blanket authentication-enforcement callback.
     # Rails 8's built-in `bin/rails g authentication` adds a global

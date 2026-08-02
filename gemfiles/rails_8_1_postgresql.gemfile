@@ -1,0 +1,10 @@
+source "https://rubygems.org"
+
+gemspec path: ".."
+
+gem "rails", "~> 8.1.0"
+gem "pg", ">= 1.5", "< 2"
+gem "puma"
+
+gem "mcp", "~> 1.0", group: :test, require: false
+gem "rubocop-rails-omakase", require: false

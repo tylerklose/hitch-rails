@@ -9,10 +9,10 @@ require "generators/hitch/install/install_generator"
 # the file on disk says the right thing; it proves nothing about whether
 # the generator still copies it, or copies that one.
 #
-# This is where new installations become spec-conformant: MCP 2026-07-28
-# makes supporting Client ID Metadata Documents a SHOULD, and clients
-# read `client_id_metadata_document_supported` to choose it over the
-# deprecated Dynamic Client Registration. The library fallback stays
+# This is where new installations adopt the profile's preferred registration
+# posture: MCP 2026-07-28 makes supporting Client ID Metadata Documents a
+# SHOULD, and clients read `client_id_metadata_document_supported` to choose it
+# over the deprecated Dynamic Client Registration. The library fallback stays
 # false, so this file is the whole mechanism.
 class Hitch::InstallGeneratorTest < Rails::Generators::TestCase
   tests Hitch::Generators::InstallGenerator
@@ -34,6 +34,16 @@ class Hitch::InstallGeneratorTest < Rails::Generators::TestCase
     assert_file "config/initializers/hitch.rb"
     assert_match(/^\s*config\.client_id_metadata_enabled = true$/, generated_initializer,
                  "new installs are how CIMD reaches the spec's SHOULD, since the library fallback stays false")
+  end
+
+  test "the generated initializer denies origins and DCR until the host opts in" do
+    run_generator
+
+    assert_match(/^\s*config\.allowed_hosts = \[\]$/, generated_initializer)
+    assert_match(/^\s*config\.allowed_origins = \[\]$/, generated_initializer)
+    assert_match(/^\s*config\.dynamic_client_registration_enabled = false$/, generated_initializer)
+    assert_match(/increment_with_expiry\(key:, expires_in:\)/, generated_initializer)
+    assert_match(/shared\?/, generated_initializer)
   end
 
   test "it explains the egress requirement, which is why this is not a library default" do

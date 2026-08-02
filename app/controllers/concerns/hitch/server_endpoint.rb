@@ -11,8 +11,8 @@ module Hitch
   # Use a DEDICATED controller for /mcp: `skip_forgery_protection` is
   # controller-wide, so don't mix MCP and browser actions in one class.
   #
-  # Include Hitch::CorsSupport too if browser-based MCP clients
-  # (claude.ai, chatgpt.com) will reach this endpoint. This concern does
+  # Include Hitch::CorsSupport too if an origin configured by the host will
+  # reach this endpoint. This concern does
   # NOT set Access-Control-Allow-Origin — the /mcp route is host-owned,
   # so CORS on it is the host's decision — and without that header the
   # Access-Control-Expose-Headers below has nothing to attach to, leaving
@@ -39,7 +39,10 @@ module Hitch
   # validated against it (RFC 8707 audience binding) and unbound or
   # mismatched tokens are rejected with 401.
   module ServerEndpoint
+    MAX_BEARER_TOKEN_BYTES = 512
+
     extend ActiveSupport::Concern
+    include Hitch::HostValidation
     include Hitch::IssuerUrl
 
     included do
@@ -81,11 +84,16 @@ module Hitch
     end
 
     # before_action: authenticate the inbound MCP request by bearer token.
+    # Hitch::HostValidation is prepended by this concern, so an untrusted Host
+    # halts before this method parses a credential or emits a discovery URL.
     # On success sets `mcp_token` and proceeds; on failure renders the 401
     # discovery challenge and halts. Scope *authorization* is the host's
     # call after this (e.g. `mcp_token.has_scope?("write")`).
     def require_mcp_token!
-      access_token = Hitch::AccessToken.find_by_token(bearer_token)
+      token = bearer_token
+      return mcp_unauthorized! unless token
+
+      access_token = Hitch::AccessToken.find_by_token(token)
 
       if access_token&.valid_for_resource?(Hitch.configuration.resource_uri)
         @mcp_token = access_token
@@ -121,13 +129,18 @@ module Hitch
     end
 
     def bearer_token
-      request.headers["Authorization"]&.delete_prefix("Bearer ")&.strip
+      authorization = request.headers["Authorization"].to_s
+      return if authorization.bytesize > MAX_BEARER_TOKEN_BYTES + 7
+      return unless authorization.valid_encoding?
+      return if authorization.match?(/[\u0000-\u001F\u007F-\u009F]/)
+
+      match = authorization.match(/\ABearer ([A-Za-z0-9_-]{1,#{MAX_BEARER_TOKEN_BYTES}})\z/i)
+      match&.captures&.first
     end
 
     def bearer_challenge
-      # issuer_url, not a second request.base_url — the discovery
-      # document and everything pointing at it derive from one helper so
-      # they can't drift (see Hitch::IssuerUrl).
+      # The discovery document and everything pointing at it derive from the
+      # fixed canonical resource origin, never request forwarding headers.
       metadata_url = "#{issuer_url}/.well-known/oauth-protected-resource"
       scope = Array.wrap(Hitch.configuration.supported_scopes).join(" ")
       %(Bearer resource_metadata="#{metadata_url}", scope="#{scope}")

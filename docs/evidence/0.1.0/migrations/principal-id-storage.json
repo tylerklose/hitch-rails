@@ -1,0 +1,50 @@
+{
+  "recorded_at": "2026-08-01",
+  "source_revision": "cd42bf84fec834923fa9c900287e76dabd0e1cf4+working-tree",
+  "command": "bin/ci-migrations",
+  "exit_status": 0,
+  "profiles": {
+    "rails_7_2_sqlite": {
+      "ruby": "3.4.7",
+      "rails": "7.2.3.2",
+      "adapter_gem": "sqlite3 2.9.5",
+      "database": "SQLite 3.53.2 file-backed disposable database",
+      "result": {
+        "runs": 16,
+        "assertions": 124,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      }
+    },
+    "rails_8_1_postgresql": {
+      "ruby": "3.4.7",
+      "rails": "8.1.3.1",
+      "adapter_gem": "pg 1.6.3",
+      "database": "disposable PostgreSQL database",
+      "result": {
+        "runs": 16,
+        "assertions": 136,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      }
+    }
+  },
+  "principal_id_checks": {
+    "fresh_schema_uses_string_storage": "passed",
+    "integer_principal_issue_exchange_and_lookup": "passed",
+    "uuid_principal_issue_exchange_and_lookup": "passed",
+    "legacy_integer_upgrade_is_lossless": "passed",
+    "numeric_up_down_up_is_retryable": "passed",
+    "uuid_rollback_fails_before_mutation": "passed",
+    "principal_type_and_id_index_survives": "passed"
+  },
+  "database_cleanup": {
+    "sqlite_temporary_directory_removed": true,
+    "postgresql_temporary_database_dropped": true,
+    "checked_in_schema_sha256_unchanged": true,
+    "disposable_schema_dumps_removed": true
+  },
+  "contains_real_principal_identifiers": false
+}

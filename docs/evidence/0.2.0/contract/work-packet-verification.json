@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "verified_on": "2026-08-01",
+  "source_revision": "cd42bf84fec834923fa9c900287e76dabd0e1cf4",
+  "source_state": "uncommitted_worktree",
+  "acceptance_status": "locally_prepared_and_verified",
+  "checkpoint_predecessor": {
+    "issue": "M0.5",
+    "status": "not_accepted",
+    "effect": "M1 artifacts may be reviewed, but M2 acceptance awaits the immutable M0 checkpoint; publication is not required"
+  },
+  "graph": {
+    "path": "docs/evidence/0.2.0/contract/work-packet-graph.json",
+    "sha256": "3c490fdfb43b002f87b805ee2f40b029884a824efa2cd34fd193dd708936b5ba",
+    "roadmap_nodes": 29,
+    "packet_nodes": 28,
+    "edges": 31,
+    "bootstrap_node": "H0"
+  },
+  "commands": [
+    {"command": "bin/verify-work-packets", "status": 0},
+    {"command": "bin/verify-work-packets --graph docs/evidence/0.2.0/contract/work-packet-graph.json", "status": 0},
+    {"command": "bin/ci-test test/tooling/verify_work_packets_test.rb", "status": 0, "runs": 10}
+  ]
+}

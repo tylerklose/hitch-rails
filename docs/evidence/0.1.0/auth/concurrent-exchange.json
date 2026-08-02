@@ -1,0 +1,25 @@
+{
+  "recorded_at": "2026-08-01",
+  "source_revision": "cd42bf84fec834923fa9c900287e76dabd0e1cf4+working-tree",
+  "command": "bin/ci-migrations",
+  "exit_status": 0,
+  "profiles": {
+    "rails_7_2_sqlite": {
+      "database": "SQLite 3.53.2 file-backed disposable database",
+      "connections": 2,
+      "contenders": 2,
+      "winners": 1,
+      "losers": 1,
+      "post_consumption_retry": "invalid_grant model outcome"
+    },
+    "rails_8_1_postgresql": {
+      "database": "disposable PostgreSQL database",
+      "connections": 2,
+      "contenders": 2,
+      "winners": 1,
+      "losers": 1,
+      "post_consumption_retry": "invalid_grant model outcome"
+    }
+  },
+  "raw_codes_or_tokens_recorded": false
+}

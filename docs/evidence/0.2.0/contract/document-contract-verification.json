@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "verified_on": "2026-08-01",
+  "source_revision": "cd42bf84fec834923fa9c900287e76dabd0e1cf4",
+  "source_state": "uncommitted_worktree",
+  "acceptance_status": "locally_prepared_and_verified",
+  "checkpoint_predecessor": {"issue": "M0.5", "status": "not_accepted"},
+  "counts": {"public_and_private_api_entries": 31, "invariants": 24, "sdk_probes": 15, "adrs": 4},
+  "checksums": {
+    "docs/contracts/mcp_public_api.yml": "5ef90dc37caa57f776639a824075e5f0d7f615db107570ab6f351c3977f31ec2",
+    "docs/contracts/mcp_invariants.yml": "75c983ed1c52944de28a9d06cda4c3803ebad9b0964ebb6c8824689e08360f5e",
+    "docs/contracts/sdk_probes.yml": "67142b3a0be42d1edce47080e91de9171cc403d0903d0e367e5b5a23e80976cb",
+    "docs/architecture/mcp-data-flow.md": "8d9a19df24d7b5f4924206561c602a913509329f5f2b470189c9b7e116359d69",
+    "docs/security/mcp-threat-model.md": "e39c355a6a8b01fe2a39c82eeacad37b99d9cc0975b36606698d570851b3b534"
+  },
+  "commands": [
+    {"command": "bin/verify-doc-contract", "status": 0},
+    {"command": "bin/ci-test test/tooling/verify_doc_contract_test.rb", "status": 0, "runs": 6}
+  ]
+}

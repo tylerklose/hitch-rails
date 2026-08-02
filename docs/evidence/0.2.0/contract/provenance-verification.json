@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "verified_on": "2026-08-01",
+  "source_revision": "cd42bf84fec834923fa9c900287e76dabd0e1cf4",
+  "source_state": "uncommitted_worktree",
+  "acceptance_status": "locally_prepared_and_verified",
+  "independent_roots": ["skillit", "stash"],
+  "copied_lineage": ["skillit", "kaffe_karma", "perfect_roofing"],
+  "pinned_sources": 4,
+  "classified_ideas": 14,
+  "checksums": {
+    "docs/architecture/extraction.md": "fc5f28f24182dead0f655af2163e04b4f28bf9e805580c634e0d59d4ee4695b0",
+    "docs/architecture/extraction_sources.yml": "1699c4c34a3d8fabfeeab810488268d082a7ae4916793fd5d4b3759c8df1d379",
+    "docs/architecture/extraction_matrix.yml": "9712785acfd8ab1b38e5d2ac271b1d425e3d15cc7f9b8ff7572a619107f12b3f"
+  },
+  "commands": [
+    {"command": "bin/verify-provenance", "status": 0},
+    {"command": "bin/ci-test test/tooling/verify_provenance_test.rb", "status": 0, "runs": 5}
+  ],
+  "privacy": {"private_remote_urls": 0, "absolute_checkout_paths": 0}
+}

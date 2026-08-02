@@ -1,0 +1,394 @@
+{
+  "schema_version": 2,
+  "source": "ROADMAP.md#build-packets-and-issue-graph",
+  "distribution_policy": {
+    "first_public_eligible": {
+      "issue": "M5.4",
+      "version": "0.2.0.pre.4",
+      "decisions": [
+        "published_pre4",
+        "deferred_to_final"
+      ]
+    },
+    "final_public_release": {
+      "issue": "M8",
+      "version": "0.2.0"
+    }
+  },
+  "nodes": [
+    {
+      "id": "H0",
+      "packet": null,
+      "depends_on": []
+    },
+    {
+      "id": "M0.1",
+      "packet": "docs/work_packets/M0.1.md",
+      "depends_on": [
+        "H0"
+      ]
+    },
+    {
+      "id": "M0.2",
+      "packet": "docs/work_packets/M0.2.md",
+      "depends_on": [
+        "M0.1"
+      ]
+    },
+    {
+      "id": "M0.3a",
+      "packet": "docs/work_packets/M0.3a.md",
+      "depends_on": [
+        "M0.1"
+      ]
+    },
+    {
+      "id": "M0.3b",
+      "packet": "docs/work_packets/M0.3b.md",
+      "depends_on": [
+        "M0.3a"
+      ]
+    },
+    {
+      "id": "M0.4",
+      "packet": "docs/work_packets/M0.4.md",
+      "depends_on": [
+        "M0.2",
+        "M0.3b"
+      ]
+    },
+    {
+      "id": "M0.5",
+      "packet": "docs/work_packets/M0.5.md",
+      "depends_on": [
+        "M0.4"
+      ],
+      "artifact": {
+        "version": "0.1.0",
+        "distribution": "internal_only",
+        "verifier": "bin/package-smoke"
+      }
+    },
+    {
+      "id": "M1.0",
+      "packet": "docs/work_packets/M1.0.md",
+      "depends_on": [
+        "M0.5"
+      ]
+    },
+    {
+      "id": "M1.1",
+      "packet": "docs/work_packets/M1.1.md",
+      "depends_on": [
+        "M1.0"
+      ]
+    },
+    {
+      "id": "M1.2",
+      "packet": "docs/work_packets/M1.2.md",
+      "depends_on": [
+        "M1.1"
+      ]
+    },
+    {
+      "id": "M1.3",
+      "packet": "docs/work_packets/M1.3.md",
+      "depends_on": [
+        "M1.2"
+      ]
+    },
+    {
+      "id": "M2.1",
+      "packet": "docs/work_packets/M2.1.md",
+      "depends_on": [
+        "M1.3"
+      ]
+    },
+    {
+      "id": "M2.2",
+      "packet": "docs/work_packets/M2.2.md",
+      "depends_on": [
+        "M2.1"
+      ]
+    },
+    {
+      "id": "M2.3",
+      "packet": "docs/work_packets/M2.3.md",
+      "depends_on": [
+        "M2.2"
+      ],
+      "artifact": {
+        "version": "0.2.0.pre.1",
+        "distribution": "internal_only",
+        "verifier": "bin/package-smoke"
+      }
+    },
+    {
+      "id": "M3.1",
+      "packet": "docs/work_packets/M3.1.md",
+      "depends_on": [
+        "M2.3"
+      ]
+    },
+    {
+      "id": "M3.2",
+      "packet": "docs/work_packets/M3.2.md",
+      "depends_on": [
+        "M3.1"
+      ]
+    },
+    {
+      "id": "M3.3",
+      "packet": "docs/work_packets/M3.3.md",
+      "depends_on": [
+        "M3.2"
+      ],
+      "artifact": {
+        "version": "0.2.0.pre.2",
+        "distribution": "internal_only",
+        "verifier": "bin/package-smoke"
+      }
+    },
+    {
+      "id": "M4.1",
+      "packet": "docs/work_packets/M4.1.md",
+      "depends_on": [
+        "M3.3"
+      ]
+    },
+    {
+      "id": "M4.2",
+      "packet": "docs/work_packets/M4.2.md",
+      "depends_on": [
+        "M4.1"
+      ]
+    },
+    {
+      "id": "M4.3",
+      "packet": "docs/work_packets/M4.3.md",
+      "depends_on": [
+        "M4.1"
+      ]
+    },
+    {
+      "id": "M4.4",
+      "packet": "docs/work_packets/M4.4.md",
+      "depends_on": [
+        "M4.2",
+        "M4.3"
+      ]
+    },
+    {
+      "id": "M4.5",
+      "packet": "docs/work_packets/M4.5.md",
+      "depends_on": [
+        "M4.4"
+      ],
+      "artifact": {
+        "version": "0.2.0.pre.3",
+        "distribution": "internal_only",
+        "verifier": "bin/package-smoke"
+      }
+    },
+    {
+      "id": "M5.1",
+      "packet": "docs/work_packets/M5.1.md",
+      "depends_on": [
+        "M4.5"
+      ]
+    },
+    {
+      "id": "M5.2",
+      "packet": "docs/work_packets/M5.2.md",
+      "depends_on": [
+        "M4.5"
+      ]
+    },
+    {
+      "id": "M5.3",
+      "packet": "docs/work_packets/M5.3.md",
+      "depends_on": [
+        "M5.1",
+        "M5.2"
+      ]
+    },
+    {
+      "id": "M5.4",
+      "packet": "docs/work_packets/M5.4.md",
+      "depends_on": [
+        "M5.3"
+      ],
+      "artifact": {
+        "version": "0.2.0.pre.4",
+        "distribution": "public_optional",
+        "verifier": "bin/package-smoke",
+        "public_verifier": "bin/release-check"
+      }
+    },
+    {
+      "id": "M6",
+      "packet": "docs/work_packets/M6.md",
+      "depends_on": [
+        "M5.4"
+      ],
+      "artifact": {
+        "version": "0.2.0.rc1",
+        "distribution": "public_if_pre4_published",
+        "verifier": "bin/package-smoke",
+        "public_verifier": "bin/release-check"
+      }
+    },
+    {
+      "id": "M7",
+      "packet": "docs/work_packets/M7.md",
+      "depends_on": [
+        "M6"
+      ],
+      "artifact": {
+        "version": "0.2.0.rc2",
+        "distribution": "public_if_pre4_published",
+        "verifier": "bin/package-smoke",
+        "public_verifier": "bin/release-check"
+      }
+    },
+    {
+      "id": "M8",
+      "packet": "docs/work_packets/M8.md",
+      "depends_on": [
+        "M7"
+      ],
+      "artifact": {
+        "version": "0.2.0",
+        "distribution": "public_required",
+        "verifier": "bin/package-smoke",
+        "public_verifier": "bin/release-check"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "H0",
+      "to": "M0.1"
+    },
+    {
+      "from": "M0.1",
+      "to": "M0.2"
+    },
+    {
+      "from": "M0.1",
+      "to": "M0.3a"
+    },
+    {
+      "from": "M0.2",
+      "to": "M0.4"
+    },
+    {
+      "from": "M0.3a",
+      "to": "M0.3b"
+    },
+    {
+      "from": "M0.3b",
+      "to": "M0.4"
+    },
+    {
+      "from": "M0.4",
+      "to": "M0.5"
+    },
+    {
+      "from": "M0.5",
+      "to": "M1.0"
+    },
+    {
+      "from": "M1.0",
+      "to": "M1.1"
+    },
+    {
+      "from": "M1.1",
+      "to": "M1.2"
+    },
+    {
+      "from": "M1.2",
+      "to": "M1.3"
+    },
+    {
+      "from": "M1.3",
+      "to": "M2.1"
+    },
+    {
+      "from": "M2.1",
+      "to": "M2.2"
+    },
+    {
+      "from": "M2.2",
+      "to": "M2.3"
+    },
+    {
+      "from": "M2.3",
+      "to": "M3.1"
+    },
+    {
+      "from": "M3.1",
+      "to": "M3.2"
+    },
+    {
+      "from": "M3.2",
+      "to": "M3.3"
+    },
+    {
+      "from": "M3.3",
+      "to": "M4.1"
+    },
+    {
+      "from": "M4.1",
+      "to": "M4.2"
+    },
+    {
+      "from": "M4.1",
+      "to": "M4.3"
+    },
+    {
+      "from": "M4.2",
+      "to": "M4.4"
+    },
+    {
+      "from": "M4.3",
+      "to": "M4.4"
+    },
+    {
+      "from": "M4.4",
+      "to": "M4.5"
+    },
+    {
+      "from": "M4.5",
+      "to": "M5.1"
+    },
+    {
+      "from": "M4.5",
+      "to": "M5.2"
+    },
+    {
+      "from": "M5.1",
+      "to": "M5.3"
+    },
+    {
+      "from": "M5.2",
+      "to": "M5.3"
+    },
+    {
+      "from": "M5.3",
+      "to": "M5.4"
+    },
+    {
+      "from": "M5.4",
+      "to": "M6"
+    },
+    {
+      "from": "M6",
+      "to": "M7"
+    },
+    {
+      "from": "M7",
+      "to": "M8"
+    }
+  ]
+}

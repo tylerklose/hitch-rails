@@ -1,0 +1,120 @@
+schema_version: 1
+sdk:
+  gem: mcp
+  version: 1.1.0
+  tag: v1.1.0
+  revision: 72a929bbc00c512fbaad82f1e14d02fae2539032
+upstream_issues:
+  stateless_2026: https://github.com/modelcontextprotocol/ruby-sdk/issues/389
+  header_version_mismatch: https://github.com/modelcontextprotocol/ruby-sdk/issues/351
+  annotations: https://github.com/modelcontextprotocol/ruby-sdk/issues/259
+  tool_name_format: https://github.com/modelcontextprotocol/modelcontextprotocol/issues/986
+probes:
+  - id: structural_symbol_keys
+    status: reproduced
+    observation: MCP::Server#handle rejects a string-keyed structural request but accepts a deeply frozen symbol-keyed structural request.
+    decision: Build a verified structural symbol-keyed Hash and call handle exactly once; never call handle_json.
+    references:
+      - https://github.com/modelcontextprotocol/ruby-sdk/blob/v1.1.0/lib/mcp/server.rb
+    runtime_test: test_handle_requires_structural_symbol_keys
+  - id: selective_argument_symbolization
+    status: reproduced
+    observation: Structural request keys may be symbols while arbitrary arguments and _meta stay string-keyed; SDK top-level keyword coercion does not require recursive attacker symbolization.
+    decision: Symbolize only fixed protocol keys and normalize SDK arguments back to recursively frozen string keys after schema validation.
+    references:
+      - https://github.com/modelcontextprotocol/ruby-sdk/blob/v1.1.0/lib/mcp/server.rb
+    runtime_test: test_selective_symbolization_preserves_untrusted_string_keys
+  - id: final_request_meta_shape
+    status: reproduced
+    observation: SDK RequestEnvelope requires clientInfo even though final 2026 makes it optional, and Server#handle does not consume RequestEnvelope.
+    decision: Hitch validates protocolVersion and clientCapabilities, validates optional clientInfo when present, and owns the private envelope value.
+    references:
+      - https://github.com/modelcontextprotocol/ruby-sdk/issues/389
+      - https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/migration/support-2026-07-28.md
+    runtime_test: test_final_meta_accepts_absent_client_info
+  - id: capability_handler_leak
+    status: reproduced
+    observation: Explicit tools-only capabilities do not remove SDK initialize or prompts handlers.
+    decision: Hitch prefilters every method except server/discover, tools/list, and tools/call before SDK dispatch.
+    references:
+      - https://github.com/modelcontextprotocol/ruby-sdk/issues/389
+    runtime_test: test_tools_only_method_allowlist_precedes_sdk
+  - id: final_discover_fields
+    status: reproduced
+    observation: SDK 1.1 discover/list/call results do not consistently emit the final serverInfo metadata location and complete/cache fields required by the frozen profile.
+    decision: A version-scoped private normalizer adds only the confirmed final fields and is removed when both SDK lanes pass without it.
+    references:
+      - https://github.com/modelcontextprotocol/ruby-sdk/issues/389
+      - https://github.com/modelcontextprotocol/modelcontextprotocol/issues/3040
+    runtime_test: test_sdk_1_1_final_discover_normalizer_issue_389
+  - id: unsafe_error_detail
+    status: reproduced
+    observation: Unknown tools, malformed arguments, schema failures, and host exceptions can expose names or Ruby details in SDK responses/callbacks.
+    decision: Hitch maps public errors from its frozen table and drops unsafe SDK error data.
+    references:
+      - https://github.com/modelcontextprotocol/ruby-sdk/blob/v1.1.0/lib/mcp/server.rb
+    runtime_test: test_sdk_error_details_are_not_public
+  - id: output_validation_default
+    status: reproduced
+    observation: SDK tool-result validation defaults to disabled.
+    decision: Set validate_tool_call_results true and independently validate/cap Hitch Result before SDK return.
+    references:
+      - https://github.com/modelcontextprotocol/ruby-sdk/tree/v1.1.0#tool-output-schemas
+    runtime_test: test_sdk_output_validation_is_explicitly_enabled
+  - id: callback_configuration_merge
+    status: reproduced
+    observation: Partial per-server callback configuration inherits global exception, around-request, or instrumentation callbacks.
+    decision: Every fresh server receives explicit non-forwarding values for all three callbacks; global configuration is never mutated.
+    references:
+      - https://github.com/modelcontextprotocol/ruby-sdk/blob/v1.1.0/lib/mcp/configuration.rb
+    runtime_test: test_hostile_global_callbacks_receive_no_hitch_request_data
+  - id: instrumentation_contains_arguments
+    status: reproduced
+    observation: SDK instrumentation data can contain tool_arguments and exception reporting can contain the raw request.
+    decision: Hitch disables SDK forwarding and emits only its exact structural event payloads.
+    references:
+      - https://github.com/modelcontextprotocol/ruby-sdk/tree/v1.1.0#configuration-block-data
+    runtime_test: test_sdk_callbacks_cannot_observe_arguments_or_body
+  - id: streamable_http_raw_body_callback
+    status: reproduced
+    observation: StreamableHTTPTransport outer rescue may invoke a global exception callback with the raw request body.
+    decision: The endpoint never instantiates StreamableHTTPTransport and passes the already verified Hash directly to Server#handle.
+    references:
+      - https://github.com/modelcontextprotocol/ruby-sdk/blob/v1.1.0/lib/mcp/server/transports/streamable_http_transport.rb
+    runtime_test: test_streamable_http_transport_is_not_used
+  - id: reserved_server_context_collision
+    status: reproduced
+    observation: A client top-level server_context argument is accepted and overwritten by SDK context injection.
+    decision: Reject the literal top-level key before SDK dispatch and reject an explicitly declared effective top-level property at registry validation; nested keys remain valid.
+    references:
+      - https://github.com/modelcontextprotocol/ruby-sdk/blob/v1.1.0/lib/mcp/tool.rb
+    runtime_test: test_reserved_server_context_forms_fail_before_sdk_dispatch
+  - id: hitch_context_wrapper
+    status: reproduced
+    observation: A host wrapper value passed in server_context can be retrieved with fetch during a tool call.
+    decision: Pass exactly hitch_context and never merge client metadata into that authority object.
+    references:
+      - https://github.com/modelcontextprotocol/ruby-sdk/tree/v1.1.0#server_context
+    runtime_test: test_context_is_retrieved_from_hitch_context_wrapper
+  - id: tool_name_validation_divergence
+    status: reproduced
+    observation: SEP-986 permits slash and caps names at 64 characters while SDK 1.1 rejects slash and accepts a 65-character name.
+    decision: Hitch 0.2 documents the SDK-compatible host subset 1-64 ASCII alphanumeric, underscore, dot, and dash; no SDK shim is copied.
+    references:
+      - https://github.com/modelcontextprotocol/modelcontextprotocol/issues/986
+      - https://github.com/modelcontextprotocol/ruby-sdk/blob/v1.1.0/lib/mcp/tool.rb
+    runtime_test: test_tool_name_host_subset_documents_sdk_1_1_divergence
+  - id: mutable_server_request_state
+    status: reproduced
+    observation: SDK server/configuration callbacks and request context are mutable request state.
+    decision: Construct a fresh SDK server, adapter, verified request, and Hitch context for every POST.
+    references:
+      - https://github.com/modelcontextprotocol/ruby-sdk/blob/v1.1.0/lib/mcp/server.rb
+    runtime_test: test_fresh_server_per_request_isolates_principals
+  - id: separately_named_sdk_lanes
+    status: reproduced
+    observation: The minimum and latest 1.x dependency selectors currently both resolve to 1.1.0.
+    decision: Keep separately named lanes and assert the loaded version so future drift is visible.
+    references:
+      - https://github.com/modelcontextprotocol/ruby-sdk/blob/v1.1.0/VERSIONING.md
+    runtime_test: test_sdk_lane_asserts_resolved_version

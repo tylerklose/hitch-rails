@@ -1,0 +1,302 @@
+{
+  "checkpoint": "0.1.0",
+  "recorded_on": "2026-08-01",
+  "status": "internal_checkpoint_candidate_verified",
+  "source_identity": {
+    "commit": null,
+    "tree": null,
+    "clean_worktree": false
+  },
+  "artifact": {
+    "name": "hitch-rails-0.1.0.gem",
+    "sha256": "2c0ab9a0db3b79991523e44ce1ab3aeb9ff3d3df89c51e179a58277145ce9cb7",
+    "source": "locally_built_gem"
+  },
+  "checks": {
+    "embedded_manifest": "matches_explicit_allowlist",
+    "archive_contents": "match_embedded_manifest",
+    "source_bytes": "match_checkout",
+    "forbidden_paths": "absent",
+    "checkpoint_contract": "ready",
+    "package_inputs": "unchanged_by_size_and_sha256_after_smoke"
+  },
+  "file_count": 55,
+  "total_bytes": 312844,
+  "files": [
+    {
+      "path": "CHANGELOG.md",
+      "size": 28863,
+      "sha256": "bbc130d320db27ba4b591a5c3d3ecc3a605195f7779e3cbe40385d30e25db5a0"
+    },
+    {
+      "path": "MIT-LICENSE",
+      "size": 1046,
+      "sha256": "98c2495b6f509947bbbab813ee945a285622f9be83beae55eab6fcccd01809e2"
+    },
+    {
+      "path": "README.md",
+      "size": 18249,
+      "sha256": "ae8b457376aa6b7c868839446d89e86483319052e21b54a4c38945db9f8e9703"
+    },
+    {
+      "path": "ROADMAP.md",
+      "size": 57352,
+      "sha256": "af095ce49cd03407723a41eca8a0fdc52ec6ae66c6ac6c3c4d4af2c423643bee"
+    },
+    {
+      "path": "SECURITY.md",
+      "size": 4948,
+      "sha256": "a0c27c4ff46a831d41e8025c46bb36799570b0e98dbf334d200038fd6fe649c0"
+    },
+    {
+      "path": "app/controllers/concerns/hitch/cors_support.rb",
+      "size": 3244,
+      "sha256": "4dc295f88c16fe05d0bfed9521ee57b9eb1bb5479ca42ceac4c5f3ac790b1fbc"
+    },
+    {
+      "path": "app/controllers/concerns/hitch/host_validation.rb",
+      "size": 1584,
+      "sha256": "73e2552845324b58d463b2290609ee9f6cd54b376957a8e84b81d261cb158473"
+    },
+    {
+      "path": "app/controllers/concerns/hitch/issuer_url.rb",
+      "size": 1094,
+      "sha256": "d54e4904a29c89cd8c20ac816243fb564f35679f3db365c1a983c4ba8d34cd53"
+    },
+    {
+      "path": "app/controllers/concerns/hitch/oauth_form_admission.rb",
+      "size": 2396,
+      "sha256": "0e76aee293ee1d8504574bc6d1160f1ff0d380b4c5bba3f80f2196e43f26d911"
+    },
+    {
+      "path": "app/controllers/concerns/hitch/oauth_parameter_validation.rb",
+      "size": 515,
+      "sha256": "cda92a63e9736349ddf734c1ad6c9c9e4ddc985d427da53263f249871b391b88"
+    },
+    {
+      "path": "app/controllers/concerns/hitch/registration_admission.rb",
+      "size": 3751,
+      "sha256": "21d3b657589654280f3b03394a14f7a8d555dfb8a820d3e7d5b67afc0d026977"
+    },
+    {
+      "path": "app/controllers/concerns/hitch/request_admission.rb",
+      "size": 1347,
+      "sha256": "fc638cd3c01ff9ba037d31adc311d4732dd051538a13365cb54938eaf72851dd"
+    },
+    {
+      "path": "app/controllers/concerns/hitch/server_endpoint.rb",
+      "size": 6843,
+      "sha256": "e7417f95e5c18f7ca7c583ffa2988d8b05df355e674c9dd59a3a53ac97fa3ff1"
+    },
+    {
+      "path": "app/controllers/concerns/hitch/uri_validation.rb",
+      "size": 4410,
+      "sha256": "6c5fffc5fa59ee588c9ddf17fcda5a0de3df729b3e4d2ed8d56ae7bb4225a6fa"
+    },
+    {
+      "path": "app/controllers/hitch/application_controller.rb",
+      "size": 3404,
+      "sha256": "fa78b1fbf305b9cc1cde383febe5497fa60192c9339907433bb8ecfe8c438fe6"
+    },
+    {
+      "path": "app/controllers/hitch/authorizations_controller.rb",
+      "size": 17609,
+      "sha256": "06bd933308a16596787389d588ab00fb964327d36e7edc97d1bc1bc9ee8e5486"
+    },
+    {
+      "path": "app/controllers/hitch/metadata_controller.rb",
+      "size": 5027,
+      "sha256": "07fb2b5aa62380f40ba02475b1c4ca4c8383a11ceadeb5998f8851fb9856b304"
+    },
+    {
+      "path": "app/controllers/hitch/preflights_controller.rb",
+      "size": 450,
+      "sha256": "1eaf37e5a935703451615378c31efed4687f60464a53ed948c044fb98db3c458"
+    },
+    {
+      "path": "app/controllers/hitch/public_endpoint_controller.rb",
+      "size": 2225,
+      "sha256": "07ba3fa45e44ae4beb28de3863884f3d4eefe94a17a3fe45e8965f1093aa9cf0"
+    },
+    {
+      "path": "app/controllers/hitch/registrations_controller.rb",
+      "size": 5283,
+      "sha256": "55234d3256cc6b3498b89c6c70a7ff9eaa86769941fdd22e8a15229f4bca3a80"
+    },
+    {
+      "path": "app/controllers/hitch/revocations_controller.rb",
+      "size": 891,
+      "sha256": "138f1295b03908eed1b77c23ab5d0f0fca4c02b1671dd1904a3b35da8c0c7ee2"
+    },
+    {
+      "path": "app/controllers/hitch/tokens_controller.rb",
+      "size": 4047,
+      "sha256": "0d0183554f2cd07183d712ffb0039596572728deaf0b0594fd20264fba0efd75"
+    },
+    {
+      "path": "app/models/hitch/access_token.rb",
+      "size": 7478,
+      "sha256": "cd66deab05437b04b329d63d25df3fe6dcb494ea9b39905ee44e56eea86b9f92"
+    },
+    {
+      "path": "app/models/hitch/application_record.rb",
+      "size": 132,
+      "sha256": "f3d1f74d066084b0adaca0453a9e1270a7a42e4ba152394ef4c4e93d947db7cd"
+    },
+    {
+      "path": "app/models/hitch/client.rb",
+      "size": 11353,
+      "sha256": "d8c30a825b38040a6bea2f4e2a86463deafad8aedff035456a5bf18958022da6"
+    },
+    {
+      "path": "app/models/hitch/client/credentials.rb",
+      "size": 684,
+      "sha256": "7db30c9fb5b34ed8d2348727723692af0a809bebb03edfe6405235e65b228bc2"
+    },
+    {
+      "path": "app/models/hitch/client_authentication.rb",
+      "size": 3294,
+      "sha256": "180b52c680b15f90e536b2e116563b1900aa4481fb088cd2198d9aaad1bec57b"
+    },
+    {
+      "path": "app/models/hitch/client_id_metadata.rb",
+      "size": 33942,
+      "sha256": "051880eb6470fcf5d4b28760e9604cfe24a53b2952a3f64ebef533ff0acdd220"
+    },
+    {
+      "path": "app/models/hitch/client_redirect_uri.rb",
+      "size": 365,
+      "sha256": "eaf5d4493214abaf9b7db408ef2ab503c17b86ba14f3200e45916d175843feaf"
+    },
+    {
+      "path": "app/models/hitch/oauth_request_parameters.rb",
+      "size": 2015,
+      "sha256": "bc763a4e8cf4d2c8bdfed0e51a7ab34cbe43629007b00dc0158b021b5b843ad5"
+    },
+    {
+      "path": "app/models/hitch/schema_state.rb",
+      "size": 2222,
+      "sha256": "5177bbb571eb9ace59acaa4da91975e817da877115e8ca125d8d54b18b927d9d"
+    },
+    {
+      "path": "app/views/hitch/authorizations/new.html.erb",
+      "size": 1905,
+      "sha256": "2c0e40174bf6e54ebc14c4c8e4b3efbcdfd42e5ccca1b3d56beab9e0bee0a20b"
+    },
+    {
+      "path": "config/routes.rb",
+      "size": 2237,
+      "sha256": "ade785cbf1dcaf280384689c315fefc19e7c747b646097fe62fb6b0deda56bb0"
+    },
+    {
+      "path": "db/migrate/20260528020918_create_hitch_tables.rb",
+      "size": 3120,
+      "sha256": "e2f37312c0a17f120677b3d55c0ad20457ee8c8ae4078cc5041db33a1e2f13d4"
+    },
+    {
+      "path": "db/migrate/20260528041652_hash_authorization_codes.rb",
+      "size": 2022,
+      "sha256": "1b16bbe65542e1d2bc760b73d582a3bcca7b7cade23a30fef24b68a68210d441"
+    },
+    {
+      "path": "db/migrate/20260729183000_add_application_type_to_hitch_clients.rb",
+      "size": 1075,
+      "sha256": "df30b2b15f638e7586d6351c7026e0fd45eaa8291edb75d7dbc858bda43a36f1"
+    },
+    {
+      "path": "db/migrate/20260801090000_normalize_hitch_client_redirect_uris.rb",
+      "size": 3970,
+      "sha256": "469876b43952d93d06181706e32c0f4fc9dd989716347c2965a288753e59dca1"
+    },
+    {
+      "path": "db/migrate/20260801090500_cascade_hitch_client_redirect_deletes.rb",
+      "size": 1173,
+      "sha256": "b9c5af7e8261108b807d3f4ca70f437ecfd5b3affaa5b8f21ba18310262ec56d"
+    },
+    {
+      "path": "db/migrate/20260801091000_add_confidential_credentials_to_hitch_clients.rb",
+      "size": 2109,
+      "sha256": "75a2227ebf4bdb38960714846c4dd289acadb3c968b337b28188c9757be043f8"
+    },
+    {
+      "path": "db/migrate/20260801091500_stringify_hitch_access_token_principal_ids.rb",
+      "size": 2950,
+      "sha256": "7d0a9c3a59772bacc0851454b40fc01bcbc504c12ca468b5595f7c026c647331"
+    },
+    {
+      "path": "docs/public_api/0.1.0.md",
+      "size": 12073,
+      "sha256": "e5daad3df0b98558a9c718048b76025a04dae65c8abc786dccbf9db8f36ba215"
+    },
+    {
+      "path": "docs/removing.md",
+      "size": 1486,
+      "sha256": "4da7177d6a9da286e59d7027df0c692c61ff8dda66c60fe4ef4c003b59a796b6"
+    },
+    {
+      "path": "docs/upgrading/0.1.0.md",
+      "size": 3834,
+      "sha256": "a36d4ebf1231a39b7936b74570f09bb0cc72ba24e2b99cc4cb3c8dbededaee96"
+    },
+    {
+      "path": "lib/generators/hitch/install/install_generator.rb",
+      "size": 1582,
+      "sha256": "962c2bc848527f01fb35739ac5f648c5f828ff75c3ab0edf4fa7f9360ca2f718"
+    },
+    {
+      "path": "lib/generators/hitch/install/templates/initializer.rb",
+      "size": 3728,
+      "sha256": "2a206697cba62701b405cc347ff7abcd84f0bb9e14ad32c67db10ed49ef545d6"
+    },
+    {
+      "path": "lib/hitch-rails.rb",
+      "size": 203,
+      "sha256": "f0ad5c3bccb68e3bb7cf6c66bdb764f0b5cd20ac67d93560616fd37c3ac377de"
+    },
+    {
+      "path": "lib/hitch.rb",
+      "size": 1541,
+      "sha256": "66c8d7b63391c0c8b54b8b0c77d191dc1b015a0f041c83b363deeef8613ee997"
+    },
+    {
+      "path": "lib/hitch/configuration.rb",
+      "size": 13405,
+      "sha256": "f9b24014f026569db387c8bc6858abd49cc0acde740de18bb21b5f36fd97526e"
+    },
+    {
+      "path": "lib/hitch/dynamic_registration_rate_limit.rb",
+      "size": 3424,
+      "sha256": "90f4ab0286d07131b907017b7052afa07491fa516072bb8abe49338128d5f40e"
+    },
+    {
+      "path": "lib/hitch/engine.rb",
+      "size": 5283,
+      "sha256": "200b64860d2217b9825a3ef63438a5a96f69c8541004b23cf12954189e891f68"
+    },
+    {
+      "path": "lib/hitch/pkce.rb",
+      "size": 376,
+      "sha256": "27a4191864d115d38ad9013e88ee2c5528d9313fc02b382f1ea658a45b3b5cff"
+    },
+    {
+      "path": "lib/hitch/rack_form_guard.rb",
+      "size": 2855,
+      "sha256": "f1c84a20c6f70adba0dcaabec10a47cadf184666f7e38ad9c7056b3725f35c46"
+    },
+    {
+      "path": "lib/hitch/resource_uri.rb",
+      "size": 1615,
+      "sha256": "03de0c160a79d2115ccabdeb0c3b201670c04b4baf1cc85564e95455b4385e2b"
+    },
+    {
+      "path": "lib/hitch/version.rb",
+      "size": 68,
+      "sha256": "1f90750de84d91b0af73dd67631fb0aca415ccce1d0a810adca7c4d695c8e88b"
+    },
+    {
+      "path": "lib/tasks/hitch.rake",
+      "size": 4747,
+      "sha256": "9462e96aa1ab5487f757913a87f14dd94d8fe462cab401680ba32b7fa9130037"
+    }
+  ]
+}

@@ -14,7 +14,14 @@
 # dance on failure — graceful invalidation, not a disruption surface.
 class HashAuthorizationCodes < ActiveRecord::Migration[7.1]
   def up
+    remove_index :hitch_access_tokens,
+      :authorization_code,
+      if_exists: true
     rename_column :hitch_access_tokens, :authorization_code, :authorization_code_digest
+    add_index :hitch_access_tokens,
+      :authorization_code_digest,
+      unique: true,
+      where: "authorization_code_digest IS NOT NULL"
 
     # Existing rows hold raw codes (or are NULL after consume). Invalidate
     # them all — they're either pending (will be retried) or already
@@ -26,6 +33,13 @@ class HashAuthorizationCodes < ActiveRecord::Migration[7.1]
     # Plaintext rollback loses the digests (cannot recover originals).
     # Equivalent to a mass-revoke of pending codes on rollback too.
     execute "UPDATE hitch_access_tokens SET authorization_code_digest = NULL"
+    remove_index :hitch_access_tokens,
+      :authorization_code_digest,
+      if_exists: true
     rename_column :hitch_access_tokens, :authorization_code_digest, :authorization_code
+    add_index :hitch_access_tokens,
+      :authorization_code,
+      unique: true,
+      where: "authorization_code IS NOT NULL"
   end
 end

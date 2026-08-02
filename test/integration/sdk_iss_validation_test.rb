@@ -21,10 +21,9 @@ end
 # verified through the layer it was built on rather than the layer that
 # runs for real, and both times that hid a defect.
 #
-# Requires mcp >= 0.24.0, where SEP-2468 landed
-# (MCP::Client::OAuth::Flow#validate_authorization_response_issuer!).
-# The gem's own lockfile currently pins 0.18.0, so this skips until that
-# bump lands — at which point it activates with no further edit.
+# The development lock exercises
+# MCP::Client::OAuth::Flow#validate_authorization_response_issuer! directly.
+# The capability guard keeps a missing optional development dependency readable.
 class SdkIssValidationTest < ActionDispatch::IntegrationTest
   RESOURCE = "https://dummy.test/mcp"
   CALLBACK = "https://claude.ai/callback"
@@ -36,7 +35,7 @@ class SdkIssValidationTest < ActionDispatch::IntegrationTest
 
   setup do
     unless self.class.sdk_validates_iss?
-      skip "mcp #{defined?(MCP::VERSION) ? MCP::VERSION : '(absent)'} predates SEP-2468 iss validation (needs >= 0.24.0)"
+      skip "mcp #{defined?(MCP::VERSION) ? MCP::VERSION : '(absent)'} does not expose issuer validation"
     end
 
     User.delete_all
@@ -44,8 +43,8 @@ class SdkIssValidationTest < ActionDispatch::IntegrationTest
     Hitch::Client.delete_all
     Hitch.reset_configuration!
     Hitch.configure do |c|
-      c.principal_model = "User"
       c.resource_uri = RESOURCE
+      c.allowed_hosts = [ "www.example.com" ]
       c.brand_name = "Dummy"
     end
     @user = User.create!(email: "sdk@test")
@@ -78,7 +77,7 @@ class SdkIssValidationTest < ActionDispatch::IntegrationTest
   # Returns the authorization response parameters this server really
   # emits, from a real authorize round trip — not a hand-built fixture.
   def authorization_response
-    post "/oauth/register", params: { client_name: "SDK", redirect_uris: [ CALLBACK ] }
+    post "/oauth/register", params: { client_name: "SDK", redirect_uris: [ CALLBACK ] }, as: :json
     assert_response :created
     client_id = JSON.parse(response.body)["client_id"]
 
@@ -86,6 +85,7 @@ class SdkIssValidationTest < ActionDispatch::IntegrationTest
     assert_response :success
 
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client_id, redirect_uri: CALLBACK,
       code_challenge: @challenge, code_challenge_method: "S256",
       state: "xyz", resource: RESOURCE
@@ -130,6 +130,8 @@ class SdkIssValidationTest < ActionDispatch::IntegrationTest
   # rather than merely quiet: unadvertised plus absent is the one
   # combination the SDK lets through.
   test "the SDK proceeds when iss is absent and unadvertised" do
+    Hitch.configuration.resource_uri = "http://127.0.0.1/mcp"
+    host! "127.0.0.1"
     https!(false)
     metadata = discovery_metadata
     assert_equal false, metadata["authorization_response_iss_parameter_supported"]

@@ -7,36 +7,54 @@ module Hitch
   # attacker-controllable — we persist it for audit fidelity but
   # consent UIs MUST NOT trust it for display (see authorize#new).
   class RegistrationsController < Hitch::PublicEndpointController
+    MAX_REQUEST_BODY_BYTES = 16_384
+
     include Hitch::CorsSupport
+    include Hitch::RegistrationAdmission
     include Hitch::UriValidation
 
     def create
+      metadata = registration_metadata
+      return if performed?
+
       # RFC 7591 §2: the authorization server is responsible for
       # enforcing its URI policy at registration. Without this, a
       # client could register `javascript:alert(1)` or
       # `http://attacker.test/cb` and try to use it at authorize.
-      candidate_uris = Array.wrap(params[:redirect_uris]).select { |v| v.is_a?(String) }.compact_blank
+      normalized = normalized_registration_metadata(metadata)
+      return if performed?
+
+      candidate_uris = normalized.fetch(:redirect_uris)
       invalid = candidate_uris.reject { |uri| valid_redirect_uri?(uri) }
       if invalid.any?
         return oauth_error(
           "invalid_redirect_uri",
-          "redirect_uris must be https://, or http://localhost / http://127.0.0.1 (RFC 8252). Rejected: #{invalid.join(', ')}"
+          "redirect_uris must contain only https URIs or RFC 8252 loopback http URIs"
         )
       end
 
-      client = Hitch::Client.register!(
-        client_id: SecureRandom.uuid,
-        client_name: params[:client_name],
-        redirect_uris: candidate_uris,
-        # MCP 2026-07-28 has clients declare this so the server can tell a
-        # native/CLI client from a web one. Recorded, never enforced:
-        # gating loopback redirects on "native" would break every client
-        # that omits the field, Claude Code among them. Persisting it is
-        # what makes a later decision evidence-based instead of a guess.
-        application_type: scalar_param(:application_type)
-      )
+      auth_method = optional_string_metadata(metadata, "token_endpoint_auth_method") || "none"
+      return if performed?
 
-      render json: {
+      unless Hitch::Client::TOKEN_ENDPOINT_AUTH_METHODS.include?(auth_method)
+        return oauth_error(
+          "invalid_client_metadata",
+          "token_endpoint_auth_method must be none or client_secret_basic"
+        )
+      end
+
+      application_type = optional_string_metadata(metadata, "application_type")
+      return if performed?
+
+      credentials = register_client(
+        auth_method,
+        client_name: metadata["client_name"],
+        redirect_uris: candidate_uris,
+        application_type: application_type
+      )
+      client = credentials.respond_to?(:client) ? credentials.client : credentials
+
+      response_body = {
         client_id: client.client_id,
         client_id_issued_at: client.created_at.to_i,
         client_name: client.client_name,
@@ -44,7 +62,7 @@ module Hitch
         grant_types: [ "authorization_code" ],
         response_types: [ "code" ],
         scope: Hitch.configuration.supported_scopes.join(" "),
-        token_endpoint_auth_method: "none"
+        token_endpoint_auth_method: client.token_endpoint_auth_method
       }.merge(
         # Echo what was actually STORED, not what was sent — RFC 7591
         # §3.2.1 makes the response the authoritative record of registered
@@ -59,7 +77,65 @@ module Hitch
         # any future nullable field, and §3.2.1 makes some of them —
         # `client_secret_expires_at` when a secret is issued — REQUIRED.
         client.application_type ? { application_type: client.application_type } : {}
-      ), status: :created
+      )
+      if credentials.respond_to?(:client_secret)
+        response_body.merge!(
+          client_secret: credentials.client_secret,
+          client_secret_issued_at: client.client_secret_issued_at.to_i,
+          client_secret_expires_at: 0
+        )
+      end
+
+      render json: response_body, status: :created
+    end
+
+    private
+
+    def registration_metadata
+      metadata = request.request_parameters
+      return metadata if metadata.is_a?(Hash)
+
+      oauth_error("invalid_client_metadata", "registration metadata must be a JSON object")
+      {}
+    end
+
+    def normalized_registration_metadata(metadata)
+      Hitch::Client.normalize_registration_metadata!(
+        client_id: "00000000-0000-0000-0000-000000000000",
+        client_name: metadata["client_name"],
+        redirect_uris: metadata["redirect_uris"]
+      )
+    rescue Hitch::Client::InvalidRegistrationMetadata
+      oauth_error(
+        "invalid_client_metadata",
+        "client_name and redirect_uris must satisfy the documented size and shape limits"
+      )
+      { redirect_uris: [] }
+    end
+
+    def optional_string_metadata(metadata, key)
+      return unless metadata.key?(key)
+      return metadata[key] if metadata[key].is_a?(String)
+
+      oauth_error("invalid_client_metadata", "#{key} must be a string")
+      nil
+    end
+
+    def register_client(auth_method, client_name:, redirect_uris:, application_type:)
+      attributes = {
+        client_id: SecureRandom.uuid,
+        client_name: client_name,
+        redirect_uris: redirect_uris,
+        # Recorded, never enforced: gating loopback redirects on a
+        # declaration would break clients that omit this metadata.
+        application_type: application_type
+      }
+
+      if auth_method == "client_secret_basic"
+        Hitch::Client.register_confidential!(**attributes)
+      else
+        Hitch::Client.register!(**attributes)
+      end
     end
   end
 end

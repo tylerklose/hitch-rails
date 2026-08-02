@@ -27,8 +27,8 @@ class RealMCPHandshakeTest < ActionDispatch::IntegrationTest
     Hitch::Client.delete_all
     Hitch.reset_configuration!
     Hitch.configure do |c|
-      c.principal_model = "User"
       c.resource_uri = RESOURCE
+      c.allowed_hosts = [ "www.example.com" ]
       c.supported_scopes = [ "mcp" ]
     end
     @user = User.create!(email: "mcp@test")
@@ -47,7 +47,7 @@ class RealMCPHandshakeTest < ActionDispatch::IntegrationTest
       code_challenge: challenge, code_challenge_method: "S256",
       resource_uri: RESOURCE
     )
-    record.consume_code!(verifier)
+    exchange_authorization_code(record, verifier: verifier)
   end
 
   def rpc(payload)

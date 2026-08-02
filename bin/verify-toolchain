@@ -1,0 +1,136 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "open3"
+require "optparse"
+require "yaml"
+
+root = File.expand_path("..", __dir__)
+live = false
+OptionParser.new do |options|
+  options.on("--root PATH") { |path| root = File.expand_path(path) }
+  options.on("--live") { live = true }
+end.parse!(ARGV)
+
+path = File.join(root, "test/conformance/toolchain.lock.yml")
+errors = []
+begin
+  lock = YAML.safe_load_file(path, permitted_classes: [], aliases: false)
+rescue Errno::ENOENT, Psych::Exception => error
+  abort "Invalid toolchain lock: #{error.message}"
+end
+
+errors << "toolchain.lock.yml: schema_version must be 1" unless lock["schema_version"] == 1
+
+contract = lock["contract"]
+unless contract.is_a?(Hash)
+  errors << "toolchain.lock.yml: contract must be a mapping"
+  contract = {}
+end
+%w[roadmap lattice_schema lattice_scenarios].each do |key|
+  entry = contract[key]
+  unless entry.is_a?(Hash) && entry["path"] && entry["sha256"].to_s.match?(/\A[0-9a-f]{64}\z/)
+    errors << "contract.#{key}: path and SHA-256 pin are required"
+    next
+  end
+  target = File.join(root, entry.fetch("path"))
+  if !File.file?(target)
+    errors << "contract.#{key}: missing #{entry.fetch('path')}"
+  elsif Digest::SHA256.file(target).hexdigest != entry.fetch("sha256")
+    errors << "contract.#{key}: checksum drift for #{entry.fetch('path')}"
+  end
+end
+
+sdk = lock["ruby_sdk"] || {}
+errors << "ruby_sdk: exact v1.1.0 tag/revision pin is required" unless sdk["version"].to_s == "1.1.0" &&
+  sdk["tag"] == "v1.1.0" && sdk["revision"] == "72a929bbc00c512fbaad82f1e14d02fae2539032"
+errors << "ruby_sdk: SEP-2575 issue link is required" unless sdk["issue"] == "https://github.com/modelcontextprotocol/ruby-sdk/issues/389"
+lanes = sdk["lanes"]
+errors << "ruby_sdk: separately named min/latest lanes are required" unless lanes.is_a?(Hash) && lanes.keys.sort == %w[latest min]
+Array(lanes&.values).each do |lane|
+  errors << "ruby_sdk: every lane needs selector and resolved_at_contract" unless lane.is_a?(Hash) && lane["selector"] && lane["resolved_at_contract"]
+end
+
+conformance = lock["conformance"] || {}
+unless conformance["package"] == "@modelcontextprotocol/conformance" &&
+    conformance["version"] == "0.2.0-alpha.10" &&
+    conformance["revision"] == "a9896553900a2ef61787b57adfcbbe936a8ab1f9" &&
+    conformance["integrity"] == "sha512-0V/HZDdWHcg6j0zVBzBsXcPZ571IVi6umKgTpnBhtTx/jm/LONmGF6cIWL2k4Xjyps0OiHV6B37nj2s0pUg0nQ=="
+  errors << "conformance: exact package/version/revision/integrity pin is required"
+end
+
+lattice = lock["lattice"] || {}
+errors << "lattice: exact 0.1.2 package pin and seed 42 are required" unless lattice["package"] == "lattice-cli" && lattice["version"].to_s == "0.1.2" && lattice["seed"] == 42
+scenario_lock = contract["lattice_scenarios"] || {}
+errors << "lattice contract: strength 8 and 12 expected rows are required" unless scenario_lock["seed"] == 42 && scenario_lock["exhaustive_strength"] == 8 && scenario_lock["expected_rows"] == 12
+
+redis = lock["redis"] || {}
+errors << "redis: immutable image index digest is required" unless redis["image"].to_s.include?("redis:7.4.5-alpine") && redis["index_digest"].to_s.match?(/\Asha256:[0-9a-f]{64}\z/)
+errors << "redis: linux amd64/arm64 digests are required" unless %w[linux_amd64_digest linux_arm64_digest].all? { |key| redis[key].to_s.match?(/\Asha256:[0-9a-f]{64}\z/) }
+
+mutation = lock["mutation"] || {}
+errors << "mutation: mutant/minitest 0.16.3 pins are required" unless mutation["runner"] == "mutant" && mutation["version"].to_s == "0.16.3" && mutation["integration"] == "mutant-minitest" && mutation["integration_version"].to_s == "0.16.3"
+
+expected_path = File.join(root, "test/conformance/expected-failures.yml")
+begin
+  expected = YAML.safe_load_file(expected_path, permitted_classes: [], aliases: false)
+  exact_expected = [
+    "server-stateless:sep-2575-server-rejects-undeclared-capability",
+    "server-stateless:sep-2575-missing-capability-http-400"
+  ]
+  errors << "expected-failures.yml: exact two-entry server baseline differs" unless expected["schema_version"] == 1 && expected["server"] == exact_expected
+rescue Errno::ENOENT, Psych::Exception => error
+  errors << "expected-failures.yml: #{error.message}"
+end
+
+if live
+  lattice_bin = ENV["LATTICE_BIN"] || `command -v lattice`.strip
+  if lattice_bin.empty?
+    errors << "live: lattice executable not found"
+  else
+    _stdout, stderr, status = Open3.capture3(lattice_bin, "validate", File.join(root, contract.dig("lattice_schema", "path").to_s))
+    errors << "live: lattice validate failed: #{stderr.strip}" unless status.success?
+
+    installed_version = nil
+    version_out, _version_err, version_status = Open3.capture3(lattice_bin, "--version")
+    installed_version = version_out[/\d+\.\d+\.\d+/] if version_status.success?
+    if installed_version.nil? && File.file?(lattice_bin)
+      interpreter = File.open(lattice_bin, &:readline).delete_prefix("#!").strip
+      if interpreter.include?("python") && File.executable?(interpreter)
+        python_version_out, _python_version_err, python_version_status = Open3.capture3(
+          interpreter,
+          "-c",
+          "import importlib.metadata; print(importlib.metadata.version('lattice-cli'))"
+        )
+        installed_version = python_version_out.strip if python_version_status.success?
+      end
+    end
+    if installed_version.nil? && lattice["implementation"] == "ruby"
+      gem_spec = Gem::Specification.find_all_by_name("lattice-cli").max_by(&:version)
+      installed_version = gem_spec.version.to_s if gem_spec
+    end
+    errors << "live: lattice-cli #{lattice['version']} required, found #{installed_version || 'unknown'}" unless installed_version == lattice["version"].to_s
+  end
+
+  support = lock["support_tools"] || {}
+  {
+    "jq" => [ "jq", "--version" ],
+    "node" => [ "node", "--version" ],
+    "npm" => [ "npm", "--version" ]
+  }.each do |name, command|
+    stdout, _stderr, status = Open3.capture3(*command)
+    normalized = stdout.strip.sub(/\Ajq-/, "").sub(/\Av/, "").sub(/-apple\z/, "")
+    errors << "live: #{name} #{support[name]} required, found #{normalized}" unless status.success? && normalized == support[name].to_s
+  rescue Errno::ENOENT
+    errors << "live: #{name} executable not found"
+  end
+end
+
+if errors.any?
+  warn errors.join("\n")
+  exit 1
+end
+
+mode = live ? "locked and live" : "locked"
+puts "Verified #{mode} MCP toolchain: SDK #{sdk['version']}, conformance #{conformance['version']}, Lattice #{lattice['version']}"

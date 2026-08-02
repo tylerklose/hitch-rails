@@ -1,0 +1,40 @@
+schema_version: 1
+model: hitch_mcp_tool_authorization
+rows:
+  - id: 1
+    terminal: success
+    expected: {http_status: 200, protocol_code: null, result: complete, request_events: 1, invocation_events: 1, host_calls: 1}
+  - id: 2
+    terminal: token_missing
+    expected: {http_status: 401, protocol_code: null, result: challenge, request_events: 1, invocation_events: 0, host_calls: 0}
+  - id: 3
+    terminal: token_expired_or_revoked
+    concrete_variants: [expired, revoked]
+    expected: {http_status: 401, protocol_code: null, result: challenge, request_events: 1, invocation_events: 0, host_calls: 0}
+  - id: 4
+    terminal: token_wrong_audience
+    expected: {http_status: 401, protocol_code: null, result: challenge, request_events: 1, invocation_events: 0, host_calls: 0}
+  - id: 5
+    terminal: authenticated_admission_reject
+    expected: {http_status: 429, protocol_code: null, result: retry_after, request_events: 1, invocation_events: 0, host_calls: 0}
+  - id: 6
+    terminal: tool_unregistered
+    expected: {http_status: 200, protocol_code: -32602, result: unknown_tool, request_events: 1, invocation_events: 0, host_calls: 0}
+  - id: 7
+    terminal: tool_unavailable
+    expected: {http_status: 200, protocol_code: -32602, result: unknown_tool, request_events: 1, invocation_events: 0, host_calls: 0}
+  - id: 8
+    terminal: static_scope_insufficient
+    expected: {http_status: 403, protocol_code: null, result: step_up, request_events: 1, invocation_events: 0, host_calls: 0}
+  - id: 9
+    terminal: input_schema_invalid
+    expected: {http_status: 200, protocol_code: null, result: generic_tool_error, request_events: 1, invocation_events: 0, host_calls: 0}
+  - id: 10
+    terminal: argument_policy_deny
+    expected: {http_status: 200, protocol_code: null, result: generic_tool_error, request_events: 1, invocation_events: 1, host_calls: 0}
+  - id: 11
+    terminal: host_safe_error
+    expected: {http_status: 200, protocol_code: null, result: explicit_safe_tool_error, request_events: 1, invocation_events: 1, host_calls: 1}
+  - id: 12
+    terminal: host_raises
+    expected: {http_status: 200, protocol_code: null, result: generic_tool_error, request_events: 1, invocation_events: 1, host_calls: 1}

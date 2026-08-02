@@ -1,0 +1,146 @@
+schema_version: 1
+invariants:
+  - id: INV-MCP-001
+    statement: Every POST bearer is active and bound to the exact canonical resource and client before request admission.
+    owner_issue: M2.2
+    source_targets: [app/controllers/concerns/hitch/mcp/endpoint.rb]
+    mutation: Remove active, audience, or client binding predicate independently.
+    killing_tests: [test/integration/mcp_wire_contract_test.rb#test_token_terminal_vectors]
+  - id: INV-MCP-002
+    statement: Callback order is observation, Host/Origin, method, POST authentication, then POST rate admission.
+    owner_issue: M2.2
+    source_targets: [app/controllers/concerns/hitch/mcp/endpoint.rb]
+    mutation: Swap or remove each callback and force an early halt.
+    killing_tests: [test/integration/mcp_wire_contract_test.rb#test_callback_chain_and_zero_work]
+  - id: INV-MCP-003
+    statement: The capped raw body is parsed exactly once and the verified Hash is dispatched exactly once.
+    owner_issue: M2.2
+    source_targets: [app/models/hitch/mcp/internal/verified_request.rb, app/models/hitch/mcp/internal/sdk_adapter.rb]
+    mutation: Reparse, dispatch twice, or read beyond the cap.
+    killing_tests: [test/integration/mcp_wire_contract_test.rb#test_single_parse_and_dispatch]
+  - id: INV-MCP-004
+    statement: Final request metadata and standard method/name/version headers are type-valid and equal before registry work.
+    owner_issue: M2.2
+    source_targets: [app/models/hitch/mcp/internal/verified_request.rb]
+    mutation: Accept a missing, malformed, duplicated, or mismatched metadata/header value.
+    killing_tests: [test/integration/mcp_wire_contract_test.rb#test_modern_envelope_and_header_vectors]
+  - id: INV-MCP-005
+    statement: Only server/discover, tools/list, and tools/call reach the SDK.
+    owner_issue: M2.2
+    source_targets: [app/models/hitch/mcp/internal/sdk_adapter.rb]
+    mutation: Remove the pre-SDK method allowlist or add initialize/prompts/resources.
+    killing_tests: [test/hitch/mcp/sdk_contract_test.rb#test_tools_only_method_allowlist_precedes_sdk]
+  - id: INV-MCP-006
+    statement: A literal top-level arguments.server_context is rejected before SDK dispatch under every schema form; nested occurrences are valid.
+    owner_issue: M2.2
+    source_targets: [app/models/hitch/mcp/internal/verified_request.rb, app/models/hitch/mcp/registry.rb]
+    mutation: Strip/overwrite the key, check after SDK dispatch, or recurse into nested objects.
+    killing_tests: [test/integration/mcp_wire_contract_test.rb#test_reserved_server_context_forms]
+  - id: INV-MCP-007
+    statement: Only fixed structural request keys become symbols; attacker-controlled metadata/arguments never undergo recursive symbolization.
+    owner_issue: M2.1
+    source_targets: [app/models/hitch/mcp/internal/sdk_adapter.rb]
+    mutation: Call JSON.parse with symbolize_names or recursively intern arbitrary keys.
+    killing_tests: [test/hitch/mcp/sdk_contract_test.rb#test_selective_symbolization_preserves_untrusted_string_keys]
+  - id: INV-MCP-008
+    statement: Every request receives fresh verified request, Context, SDKAdapter, and MCP::Server state.
+    owner_issue: M2.1
+    source_targets: [app/models/hitch/mcp/internal/sdk_adapter.rb, app/models/hitch/mcp/context.rb]
+    mutation: Memoize any request object/server/context at class or process scope.
+    killing_tests: [test/hitch/mcp/sdk_contract_test.rb#test_fresh_server_per_request_isolates_principals]
+  - id: INV-MCP-009
+    statement: Hitch explicitly replaces all SDK request, instrumentation, and exception callbacks and never mutates globals.
+    owner_issue: M2.1
+    source_targets: [app/models/hitch/mcp/internal/sdk_adapter.rb]
+    mutation: Omit one per-server override or forward raw SDK callback data.
+    killing_tests: [test/hitch/mcp/sdk_contract_test.rb#test_hostile_global_callbacks_receive_no_hitch_request_data]
+  - id: INV-MCP-010
+    statement: Context is a frozen request-local envelope and client metadata has no authority over principal, token, scope, client, or resource.
+    owner_issue: M3.1
+    source_targets: [app/models/hitch/mcp/context.rb]
+    mutation: Shallow-copy meta, merge client fields into authority, or use Rails Current.
+    killing_tests: [test/hitch/mcp/context_test.rb#test_untrusted_meta_is_recursively_copied_and_frozen]
+  - id: INV-MCP-011
+    statement: Registry prepare validation is all-or-nothing and retains class names rather than reloadable class objects.
+    owner_issue: M3.2
+    source_targets: [app/models/hitch/mcp/registry.rb]
+    mutation: Commit entries incrementally, rescue invalid reload, or store constants.
+    killing_tests: [test/hitch/mcp/registry_reload_test.rb#test_invalid_reload_serves_no_stale_snapshot]
+  - id: INV-MCP-012
+    statement: Tool availability defaults false and is evaluated for list and call on the current request.
+    owner_issue: M3.3
+    source_targets: [app/models/hitch/mcp/tool.rb, app/models/hitch/mcp/registry.rb]
+    mutation: Default true, evaluate only for list, or memoize across principals.
+    killing_tests: [test/integration/mcp_listing_test.rb#test_availability_is_deny_default_and_request_local]
+  - id: INV-MCP-013
+    statement: Static scope filtering follows registration/availability and never discloses scope for unknown or unavailable tools.
+    owner_issue: M3.3
+    source_targets: [app/models/hitch/mcp/registry.rb]
+    mutation: Check scope before registration/availability or disclose hidden scopes.
+    killing_tests: [test/integration/mcp_tool_authorization_lattice_test.rb#test_exhaustive_terminal_paths]
+  - id: INV-MCP-014
+    statement: SDK input schema validation completes before argument-aware host policy runs.
+    owner_issue: M4.1
+    source_targets: [app/models/hitch/mcp/tool.rb]
+    mutation: Invoke authorize before/without SDK schema validation.
+    killing_tests: [test/hitch/mcp/tool_test.rb#test_schema_precedes_argument_policy]
+  - id: INV-MCP-015
+    statement: Argument policy defaults to Forbidden, and denial executes no host behavior or public policy message.
+    owner_issue: M4.1
+    source_targets: [app/models/hitch/mcp/tool.rb, app/models/hitch/mcp/forbidden.rb]
+    mutation: Default allow, continue after denial, or expose exception message.
+    killing_tests: [test/hitch/mcp/tool_test.rb#test_default_policy_denies_without_execution]
+  - id: INV-MCP-016
+    statement: Host execution returns only Hitch::MCP::Result; no arbitrary object is implicitly serialized.
+    owner_issue: M4.2
+    source_targets: [app/models/hitch/mcp/result.rb]
+    mutation: Accept Hash, model, exception, or object responding to to_h/to_json.
+    killing_tests: [test/hitch/mcp/result_test.rb#test_only_result_is_accepted]
+  - id: INV-MCP-017
+    statement: Structured success has an output schema and passes Hitch validation and exact serialized byte cap before SDK validation.
+    owner_issue: M4.2
+    source_targets: [app/models/hitch/mcp/result.rb]
+    mutation: Disable schema validation, cap the pre-serialized object, or use a non-strict boundary.
+    killing_tests: [test/hitch/mcp/result_test.rb#test_output_schema_and_exact_wire_cap]
+  - id: INV-MCP-018
+    statement: Only Result.error preserves a host-approved message; every other failure and SDK error detail is generic externally.
+    owner_issue: M4.2
+    source_targets: [app/models/hitch/mcp/internal/error_normalizer.rb, app/models/hitch/mcp/result.rb]
+    mutation: Return exception, validation, registry, scope, or policy detail.
+    killing_tests: [test/hitch/mcp/result_test.rb#test_failure_canaries_never_cross_hitch_boundaries]
+  - id: INV-MCP-019
+    statement: One Redis Lua operation increments and sets first expiry for the HMAC principal/client fixed-window key; store errors deny with 503.
+    owner_issue: M4.3
+    source_targets: [app/models/hitch/mcp/internal/redis_rate_store.rb]
+    mutation: Split increment/expiry, use token/raw IDs, reset per method/tool, or allow on error.
+    killing_tests: [test/integration/mcp_rate_limit_test.rb#test_cross_process_atomic_window_and_fail_closed_store]
+  - id: INV-MCP-020
+    statement: request.hitch_mcp fires exactly once for every non-OPTIONS request, including early halts.
+    owner_issue: M4.4
+    source_targets: [app/controllers/concerns/hitch/mcp/endpoint.rb]
+    mutation: Move observation inside authentication/dispatch or emit twice.
+    killing_tests: [test/hitch/mcp/observation_test.rb#test_request_event_once_on_every_terminal_path]
+  - id: INV-MCP-021
+    statement: invocation.hitch_mcp fires only after SDK input validation reaches a registered executable tool.
+    owner_issue: M4.4
+    source_targets: [app/models/hitch/mcp/tool.rb]
+    mutation: Emit for auth/rate/unknown/unavailable/scope/schema terminals or omit policy/host terminals.
+    killing_tests: [test/integration/mcp_tool_authorization_lattice_test.rb#test_exhaustive_terminal_paths]
+  - id: INV-MCP-022
+    statement: Hitch events and SDK callbacks contain no credentials, bodies, arguments, results, exception messages, or backtraces; subscriber failure cannot change response.
+    owner_issue: M4.4
+    source_targets: [app/models/hitch/mcp/internal/observation.rb, app/models/hitch/mcp/internal/sdk_adapter.rb]
+    mutation: Add sensitive payload data, forward SDK callbacks, or propagate subscriber exception.
+    killing_tests: [test/hitch/mcp/observation_test.rb#test_sensitive_canaries_and_subscriber_failure_are_isolated]
+  - id: INV-MCP-023
+    statement: The authorization lattice has exactly twelve valid terminal rows and strength-8 generation yields the identical scenario set.
+    owner_issue: M1.3
+    source_targets: [test/lattice/mcp_tool_authorization.json, test/lattice/mcp_tool_authorization_scenarios.json]
+    mutation: Remove/reorder a gate constraint, alter a forced row, or compare only scenario count.
+    killing_tests: [test/contracts/mcp_contract_artifacts_test.rb#test_lattice_is_exhaustive_at_strength_eight]
+  - id: INV-MCP-024
+    statement: Canonical resource_uri is the sole public origin; request Host/port and forwarded host/proto validate ingress only and never derive issuer, discovery, iss, challenges, or MCP identity.
+    owner_issue: M2.2
+    source_targets: [app/controllers/concerns/hitch/issuer_url.rb, app/controllers/concerns/hitch/mcp/endpoint.rb]
+    mutation: Derive any public URL or challenge resource from request.host, request.port, Forwarded, X-Forwarded-Host, or X-Forwarded-Proto.
+    killing_tests: [test/integration/mcp_wire_contract_test.rb#test_forwarded_host_proto_and_port_cannot_change_canonical_origin]

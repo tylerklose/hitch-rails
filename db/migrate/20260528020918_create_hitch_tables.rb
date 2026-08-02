@@ -9,7 +9,12 @@ class CreateHitchTables < ActiveRecord::Migration[7.1]
   def change
     unless table_exists?(:hitch_access_tokens)
       create_table :hitch_access_tokens do |t|
-        t.references :principal, polymorphic: true, null: false, index: true
+        # Polymorphic principals may use integer, UUID, ULID, or other
+        # string-shaped primary keys. A numeric foreign-key column silently
+        # truncates those values on SQLite and rejects them on PostgreSQL, so
+        # keep the shared representation lossless and let each principal model
+        # cast its own primary key when Rails resolves the association.
+        t.references :principal, polymorphic: true, type: :string, null: false, index: true
 
         t.string :client_id, null: false
         t.string :client_name
@@ -37,9 +42,47 @@ class CreateHitchTables < ActiveRecord::Migration[7.1]
       create_table :hitch_clients do |t|
         t.string :client_id, null: false, index: { unique: true }
         t.string :client_name, null: false
-        t.string :redirect_uris, array: true, default: [], null: false
 
         t.timestamps
+      end
+    end
+
+    unless table_exists?(:hitch_client_redirect_uris)
+      create_table :hitch_client_redirect_uris do |t|
+        t.references :hitch_client,
+          null: false,
+          index: false,
+          foreign_key: { to_table: :hitch_clients, on_delete: :cascade }
+        t.string :uri, null: false
+        t.timestamps
+      end
+
+      add_index :hitch_client_redirect_uris,
+        [ :hitch_client_id, :uri ],
+        unique: true,
+        name: "index_hitch_client_redirect_uris_on_client_and_uri"
+    end
+
+    unless table_exists?(:hitch_schema_states)
+      create_table :hitch_schema_states do |t|
+        t.string :key, null: false
+        t.integer :version, null: false
+        t.timestamps
+      end
+
+      add_index :hitch_schema_states, :key, unique: true
+      add_check_constraint :hitch_schema_states,
+        "version IN (1, 2)",
+        name: "hitch_schema_states_version_check"
+    end
+
+    up_only do
+      key = connection.quote("redirect_uris")
+      unless select_value("SELECT 1 FROM hitch_schema_states WHERE key = #{key} LIMIT 1")
+        execute <<~SQL.squish
+          INSERT INTO hitch_schema_states (key, version, created_at, updated_at)
+          VALUES (#{key}, 2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        SQL
       end
     end
   end

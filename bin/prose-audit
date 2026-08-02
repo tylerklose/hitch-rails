@@ -1,0 +1,83 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+root = File.expand_path("..", __dir__)
+patterns = {
+  "removed principal model option" => /\bprincipal_(?:model|class)\b/,
+  "removed post-login redirect option" => /\bpost_login_redirect\b/,
+  "wrong consent override path" => %r{app/views/hitch/oauth/authorizations},
+  "obsolete RFC 9207 gap" => /does not yet send the RFC 9207/i,
+  "PostgreSQL-only support claim" => /Postgres(?:QL)? (?:only|required)|PostgreSQL \(the clients table uses an array column\)/i,
+  "obsolete SDK version claim" => /\b0\.24\.0\b/,
+  "obsolete MCP revision" => /2025-11-25/,
+  "preflight routed through token exchange" => /tokens#preflight/,
+  "missing host MCP preflight action" => /mcp_server#preflight/,
+  "hard-coded origin constant" => /\bALLOWED_ORIGINS\b/,
+  "unconditional DCR alongside CIMD" => /DCR (?:keeps working|continues to work unchanged)/i,
+  "PostgreSQL-only code consumption" => /FOR UPDATE SKIP LOCKED/,
+  "blanket installation conformance claim" => /(?:new installations?|fresh install) (?:become|is|are) (?:spec-)?conformant/i
+}.freeze
+
+release_patterns = {
+  "obsolete public 0.1 install" => /gem "hitch-rails", "~> 0\.1\.0"/,
+  "obsolete M0 publication gate" => /M0 tags and publishes auth-only|published auth-only gem/i,
+  "obsolete pre-M5 publication" => /Publish `0\.2\.0\.pre\.[123]`/,
+  "obsolete M0 downloaded-gem gate" => /bin\/release-check 0\.1\.0/,
+  "obsolete published M0 predecessor" => /M0\.5 and published `0\.1\.0`/i
+}.freeze
+
+files = [
+  "README.md",
+  "SECURITY.md",
+  "CHANGELOG.md",
+  "hitch-rails.gemspec"
+].flat_map do |entry|
+  path = File.join(root, entry)
+  File.file?(path) ? [ path ] : []
+end
+files.concat(Dir[File.join(root, "{app,lib,test}/**/*.rb")])
+files.concat(Dir[File.join(root, "docs/{public_api,upgrading}/**/*.md")])
+files << File.join(root, "docs/removing.md") if File.file?(File.join(root, "docs/removing.md"))
+files.reject! { |path| path.include?("/test/dummy/log/") }
+files.uniq!
+files.sort!
+
+matches = patterns.flat_map do |label, pattern|
+  found = files.flat_map do |path|
+    File.readlines(path, chomp: true).filter_map.with_index(1) do |line, line_number|
+      next unless line.match?(pattern)
+
+      "#{path.delete_prefix("#{root}/")}:#{line_number}: #{line.strip}"
+    end
+  end
+
+  puts %(pattern=#{label.inspect} regex=#{pattern.inspect} matches=#{found.length})
+  found.map { |match| [ label, match ] }
+end
+
+release_files = (files + [ File.join(root, "ROADMAP.md") ] +
+  Dir[File.join(root, "docs/work_packets/*.md")]).uniq.sort
+release_matches = release_patterns.flat_map do |label, pattern|
+  found = release_files.flat_map do |path|
+    File.readlines(path, chomp: true).filter_map.with_index(1) do |line, line_number|
+      next unless line.match?(pattern)
+
+      "#{path.delete_prefix("#{root}/")}:#{line_number}: #{line.strip}"
+    end
+  end
+
+  puts %(pattern=#{label.inspect} regex=#{pattern.inspect} matches=#{found.length})
+  found.map { |match| [ label, match ] }
+end
+matches.concat(release_matches)
+
+puts "allowlisted_historical_fixtures=0"
+puts "searched_files=#{files.length}"
+puts "release_policy_searched_files=#{release_files.length}"
+
+if matches.any?
+  matches.each { |label, match| warn "#{label}: #{match}" }
+  exit 1
+end
+
+puts "stale_matches=0"

@@ -1,0 +1,238 @@
+{
+  "checkpoint": "0.1.0",
+  "recorded_on": "2026-08-01",
+  "config_profile": {
+    "hosts": "canonical resource host plus exact allowed_hosts",
+    "origins": "exact allowed_origins; loopback inference limited to development and test",
+    "preflight_headers": [
+      "Content-Type",
+      "Authorization",
+      "MCP-Protocol-Version",
+      "Mcp-Method",
+      "Mcp-Name"
+    ],
+    "library_dcr_fallback": true,
+    "generated_dcr_default": false,
+    "production_rate_store": "shared? == true and atomic increment_with_expiry(key:, expires_in:) returning a positive post-increment Integer"
+  },
+  "request_vectors": [
+    {
+      "name": "canonical_host_discovery",
+      "status": 200
+    },
+    {
+      "name": "explicit_proxy_host_discovery",
+      "status": 200
+    },
+    {
+      "name": "invalid_host_discovery",
+      "status": 400,
+      "attacker_host_reflected": false
+    },
+    {
+      "name": "valid_configured_preflight",
+      "status": 204
+    },
+    {
+      "name": "missing_origin_preflight",
+      "status": 403,
+      "cors_headers": false
+    },
+    {
+      "name": "disallowed_origin_preflight",
+      "status": 403,
+      "cors_headers": false
+    },
+    {
+      "name": "disallowed_method_preflight",
+      "status": 403,
+      "cors_headers": false
+    },
+    {
+      "name": "disallowed_header_preflight",
+      "status": 403,
+      "cors_headers": false
+    },
+    {
+      "name": "unknown_oauth_options_path",
+      "status": 404
+    },
+    {
+      "name": "disabled_dcr",
+      "status": 404,
+      "advertised": false
+    },
+    {
+      "name": "dcr_strict_json_single_parse",
+      "status": 201,
+      "rails_reparse": false
+    },
+    {
+      "name": "dcr_duplicate_json_name",
+      "status": 400,
+      "controller_instrumented": false
+    },
+    {
+      "name": "dcr_form_media_type",
+      "status": 415,
+      "controller_instrumented": false
+    },
+    {
+      "name": "dcr_oversized_body",
+      "status": 413,
+      "controller_instrumented": false
+    },
+    {
+      "name": "dcr_limit_exceeded",
+      "status": 429
+    },
+    {
+      "name": "dcr_store_failure_before_malformed_json",
+      "status": 503,
+      "controller_instrumented": false
+    },
+    {
+      "name": "production_store_missing",
+      "status": 503
+    },
+    {
+      "name": "production_store_not_shared",
+      "status": 503
+    },
+    {
+      "name": "store_increment_error",
+      "status": 503,
+      "raw_error_disclosed": false
+    },
+    {
+      "name": "store_invalid_return",
+      "status": 503
+    },
+    {
+      "name": "oversized_authorize_form",
+      "status": 413,
+      "controller_instrumented": false
+    },
+    {
+      "name": "oversized_token_form",
+      "status": 413,
+      "controller_instrumented": false
+    },
+    {
+      "name": "oversized_revoke_form",
+      "status": 200,
+      "controller_instrumented": false
+    },
+    {
+      "name": "allowed_origin_early_rejection",
+      "status": 413,
+      "cors_headers": true
+    },
+    {
+      "name": "disallowed_origin_early_rejection",
+      "status": 413,
+      "cors_headers": false
+    },
+    {
+      "name": "non_rewindable_form_input",
+      "status": 400,
+      "action_received_cached_body": true
+    },
+    {
+      "name": "non_rewindable_json_input",
+      "status": 201,
+      "action_received_cached_body": true
+    },
+    {
+      "name": "malformed_pkce_challenge",
+      "status": 400,
+      "token_persisted": false
+    },
+    {
+      "name": "malformed_pkce_verifier",
+      "status": 400,
+      "code_lookup": false
+    },
+    {
+      "name": "short_reading_duplicate_form_input",
+      "status": 200,
+      "token_lookup": false,
+      "body_read": "through_eof"
+    },
+    {
+      "name": "short_reading_oversized_form_input",
+      "status": 413,
+      "bytes_read": "request_body_limit_plus_one"
+    },
+    {
+      "name": "short_reading_json_input",
+      "status": 201,
+      "action_received_cached_body": true,
+      "body_read": "through_eof"
+    },
+    {
+      "name": "rails_path_variant_body_caps",
+      "status": 413,
+      "variants": [
+        "/oauth/token.json",
+        "/oauth/token/",
+        "/oauth//token",
+        "/oauth/token//"
+      ],
+      "bytes_read_each": "request_body_limit_plus_one"
+    },
+    {
+      "name": "host_route_shadow_body_preservation",
+      "status": 200,
+      "variants": [
+        "/oauth/token",
+        "/oauth/./token"
+      ],
+      "ordinary_form_body_preserved": true
+    },
+    {
+      "name": "authorization_code_redirect_log_suppression",
+      "status": 302,
+      "redirect_instrumentation_events": 0,
+      "cache_control": "no-store",
+      "pragma": "no-cache"
+    }
+  ],
+  "zero_work_assertions": [
+    "invalid Host does not call client registration",
+    "disabled DCR creates no client",
+    "rate rejection creates no excess client",
+    "missing, incapable, non-shared, failed, and malformed stores create no client",
+    "DCR duplicate names, wrong media type, oversized bodies, and a failed rate store halt before Action Controller instrumentation",
+    "accepted DCR JSON is parsed exactly once and reused by Rails",
+    "invalid Host is rejected before a Rack body stream is read",
+    "accepted form and JSON requests read a Rack-compliant non-rewindable stream once and replay only the bounded cached bytes",
+    "allowed-origin admission failures retain exact CORS and Vary headers while denied origins receive none",
+    "token and revocation instrumentation contains no code, code_verifier, or token body parameter",
+    "oversized authorize, token, and revoke forms halt before controller instrumentation",
+    "malformed PKCE challenges persist no code and malformed verifiers do no code lookup",
+    "short-reading Rack inputs cannot hide duplicate form parameters or body overflow",
+    "Rails-normalized OAuth path variants retain the same pre-parser cap while host-owned shadow routes retain ordinary form bodies",
+    "successful authorization-code redirects bypass Rails redirect instrumentation and carry no-store/no-cache"
+  ],
+  "commands": [
+    {
+      "command": "bin/ci-http",
+      "result": "119 runs, 562 assertions, 0 failures, 0 errors, 0 skips"
+    },
+    {
+      "command": "bin/rubocop",
+      "result": "135 files inspected, no offenses"
+    },
+    {
+      "command": "RAILS_ENV=test bundle exec rake app:zeitwerk:check",
+      "result": "All is good"
+    }
+  ],
+  "versions": {
+    "ruby": "3.4.7",
+    "rails": "8.1.3.1",
+    "database_adapter": "PostgreSQL"
+  },
+  "redactions": "No request bodies, authorization headers, tokens, client secrets, raw IP addresses, or raw backend exceptions are recorded."
+}

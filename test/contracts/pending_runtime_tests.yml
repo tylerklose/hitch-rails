@@ -1,0 +1,27 @@
+schema_version: 1
+runtime_status: pending_m2
+tests:
+  - path: test/hitch/mcp/sdk_contract_test.rb
+    owner_issue: M2.1
+    activation_constant: Hitch::MCP::SDKAdapter
+    test_names:
+      - test_handle_requires_structural_symbol_keys
+      - test_final_meta_accepts_absent_client_info
+      - test_hostile_global_callbacks_receive_no_hitch_request_data
+      - test_tool_name_host_subset_documents_sdk_1_1_divergence
+  - path: test/integration/mcp_wire_contract_test.rb
+    owner_issue: M2.2
+    activation_constant: Hitch::MCP::Endpoint
+    test_names:
+      - test_modern_envelope_and_header_vectors
+      - test_reserved_server_context_forms
+      - test_exact_http_and_protocol_mapping
+      - test_single_parse_and_dispatch
+      - test_forwarded_host_proto_and_port_cannot_change_canonical_origin
+  - path: test/integration/mcp_tool_authorization_lattice_test.rb
+    owner_issue: M4.5
+    activation_constant: Hitch::MCP::Tool
+    test_names:
+      - test_exhaustive_terminal_paths
+      - test_expired_and_revoked_concrete_variants
+      - test_event_and_host_work_counts

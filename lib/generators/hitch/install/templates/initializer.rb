@@ -3,15 +3,18 @@
 # hitch-rails configuration. See github.com/tylerklose/hitch-rails for
 # the full reference. Edit values then run `bin/rails db:migrate`.
 Hitch.configure do |config|
-  # Which AR model is the OAuth principal (the user/account/client being
-  # identified by the token). Default "User". Override if your host app
-  # has a different identity model (e.g. "Account", "MCPClient").
-  config.principal_model = "User"
-
   # This MCP server's canonical resource URI for RFC 8707 audience
   # binding. MUST match what MCP clients send when requesting tokens
   # via the `resource` parameter. Required for spec conformance.
   config.resource_uri = "https://your-app.example.com/mcp"
+
+  # The resource URI host is accepted automatically. Add only exact public
+  # proxy hosts that may legitimately reach Hitch's engine routes.
+  config.allowed_hosts = []
+
+  # Browser origins are denied by default. Add exact origins, including scheme
+  # and non-default port. Development/test also accept loopback origins.
+  config.allowed_origins = []
 
   # Display name shown on the consent screen.
   config.brand_name = "Your App"
@@ -32,8 +35,7 @@ Hitch.configure do |config|
   # SHOULD for authorization servers, having deprecated Dynamic Client
   # Registration. Clients read `client_id_metadata_document_supported`
   # from your discovery document to decide which to use, so leaving this
-  # off keeps every client on the deprecated path. DCR keeps working
-  # either way.
+  # off keeps clients from selecting CIMD. DCR is controlled separately below.
   #
   # This needs your app to reach arbitrary https hosts on port 443
   # DIRECTLY. Hitch deliberately ignores http_proxy — honouring it would
@@ -48,6 +50,16 @@ Hitch.configure do |config|
   # exercises the real fetch path against a document you trust, to
   # confirm egress before you rely on it.
   config.client_id_metadata_enabled = true
+
+  # Dynamic Client Registration is unauthenticated and deprecated by the MCP
+  # specification, so new installations do not expose it. If you enable it in
+  # production, also configure a fleet-shared store whose
+  # increment_with_expiry(key:, expires_in:) atomically increments and sets the
+  # first-write expiry, returns the post-increment Integer, and whose shared?
+  # method returns true. Missing or failed stores make registration unavailable.
+  config.dynamic_client_registration_enabled = false
+  config.dynamic_client_registration_limit = { to: 20, within: 1.minute }
+  # config.dynamic_client_registration_rate_store = MyDcrRateStore.new
 
   # Bounds on outbound metadata fetches. Both are per process, so a fleet
   # ceiling is the value times your worker count.

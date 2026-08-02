@@ -1,0 +1,219 @@
+{
+  "meta": {
+    "model_name": "hitch_mcp_tool_authorization",
+    "strength": 2,
+    "test_count": 12,
+    "exhaustive_count": 11664,
+    "reduction": "972x",
+    "coverage": "100.0%",
+    "seed": 42
+  },
+  "coverage_curve": [
+    {
+      "scenario": 1,
+      "cumulative_pct": 19.0
+    },
+    {
+      "scenario": 2,
+      "cumulative_pct": 38.1
+    },
+    {
+      "scenario": 3,
+      "cumulative_pct": 42.9
+    },
+    {
+      "scenario": 4,
+      "cumulative_pct": 47.6
+    },
+    {
+      "scenario": 5,
+      "cumulative_pct": 56.5
+    },
+    {
+      "scenario": 6,
+      "cumulative_pct": 64.6
+    },
+    {
+      "scenario": 7,
+      "cumulative_pct": 72.1
+    },
+    {
+      "scenario": 8,
+      "cumulative_pct": 78.9
+    },
+    {
+      "scenario": 9,
+      "cumulative_pct": 85.0
+    },
+    {
+      "scenario": 10,
+      "cumulative_pct": 90.5
+    },
+    {
+      "scenario": 11,
+      "cumulative_pct": 95.2
+    },
+    {
+      "scenario": 12,
+      "cumulative_pct": 100.0
+    }
+  ],
+  "scenarios": [
+    {
+      "id": 1,
+      "values": {
+        "token_state": "valid",
+        "request_admission": "allow",
+        "registration": "registered",
+        "tool_availability": "available",
+        "oauth_scope": "sufficient",
+        "input_schema": "valid",
+        "argument_policy": "allow",
+        "host_outcome": "success"
+      }
+    },
+    {
+      "id": 2,
+      "values": {
+        "token_state": "missing",
+        "request_admission": "not_applicable",
+        "registration": "not_applicable",
+        "tool_availability": "not_applicable",
+        "oauth_scope": "not_applicable",
+        "input_schema": "not_applicable",
+        "argument_policy": "not_applicable",
+        "host_outcome": "not_applicable"
+      }
+    },
+    {
+      "id": 3,
+      "values": {
+        "token_state": "expired_or_revoked",
+        "request_admission": "not_applicable",
+        "registration": "not_applicable",
+        "tool_availability": "not_applicable",
+        "oauth_scope": "not_applicable",
+        "input_schema": "not_applicable",
+        "argument_policy": "not_applicable",
+        "host_outcome": "not_applicable"
+      }
+    },
+    {
+      "id": 4,
+      "values": {
+        "token_state": "wrong_audience",
+        "request_admission": "not_applicable",
+        "registration": "not_applicable",
+        "tool_availability": "not_applicable",
+        "oauth_scope": "not_applicable",
+        "input_schema": "not_applicable",
+        "argument_policy": "not_applicable",
+        "host_outcome": "not_applicable"
+      }
+    },
+    {
+      "id": 5,
+      "values": {
+        "token_state": "valid",
+        "request_admission": "reject",
+        "registration": "not_applicable",
+        "tool_availability": "not_applicable",
+        "oauth_scope": "not_applicable",
+        "input_schema": "not_applicable",
+        "argument_policy": "not_applicable",
+        "host_outcome": "not_applicable"
+      }
+    },
+    {
+      "id": 6,
+      "values": {
+        "token_state": "valid",
+        "request_admission": "allow",
+        "registration": "unregistered",
+        "tool_availability": "not_applicable",
+        "oauth_scope": "not_applicable",
+        "input_schema": "not_applicable",
+        "argument_policy": "not_applicable",
+        "host_outcome": "not_applicable"
+      }
+    },
+    {
+      "id": 7,
+      "values": {
+        "token_state": "valid",
+        "request_admission": "allow",
+        "registration": "registered",
+        "tool_availability": "unavailable",
+        "oauth_scope": "not_applicable",
+        "input_schema": "not_applicable",
+        "argument_policy": "not_applicable",
+        "host_outcome": "not_applicable"
+      }
+    },
+    {
+      "id": 8,
+      "values": {
+        "token_state": "valid",
+        "request_admission": "allow",
+        "registration": "registered",
+        "tool_availability": "available",
+        "oauth_scope": "insufficient",
+        "input_schema": "not_applicable",
+        "argument_policy": "not_applicable",
+        "host_outcome": "not_applicable"
+      }
+    },
+    {
+      "id": 9,
+      "values": {
+        "token_state": "valid",
+        "request_admission": "allow",
+        "registration": "registered",
+        "tool_availability": "available",
+        "oauth_scope": "sufficient",
+        "input_schema": "invalid",
+        "argument_policy": "not_applicable",
+        "host_outcome": "not_applicable"
+      }
+    },
+    {
+      "id": 10,
+      "values": {
+        "token_state": "valid",
+        "request_admission": "allow",
+        "registration": "registered",
+        "tool_availability": "available",
+        "oauth_scope": "sufficient",
+        "input_schema": "valid",
+        "argument_policy": "deny",
+        "host_outcome": "not_applicable"
+      }
+    },
+    {
+      "id": 11,
+      "values": {
+        "token_state": "valid",
+        "request_admission": "allow",
+        "registration": "registered",
+        "tool_availability": "available",
+        "oauth_scope": "sufficient",
+        "input_schema": "valid",
+        "argument_policy": "allow",
+        "host_outcome": "safe_error"
+      }
+    },
+    {
+      "id": 12,
+      "values": {
+        "token_state": "valid",
+        "request_admission": "allow",
+        "registration": "registered",
+        "tool_availability": "available",
+        "oauth_scope": "sufficient",
+        "input_schema": "valid",
+        "argument_policy": "allow",
+        "host_outcome": "raises"
+      }
+    }
+  ]
+}

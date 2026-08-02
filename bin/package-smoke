@@ -1,0 +1,438 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "base64"
+require "digest"
+require "fileutils"
+require "json"
+require "open3"
+require "pathname"
+require "rubygems/package"
+require "securerandom"
+require "tmpdir"
+require "uri"
+require "yaml"
+
+ROOT = File.expand_path("..", __dir__)
+GEMSPEC_PATH = File.join(ROOT, "hitch-rails.gemspec")
+
+PROFILES = {
+  "rails_7_2_sqlite" => {
+    appraisal: File.join(ROOT, "gemfiles/rails_7_2_sqlite.gemfile"),
+    rails: "~> 7.2.0",
+    adapter: "sqlite3",
+    adapter_gem: 'gem "sqlite3", ">= 2.1", "< 3"'
+  },
+  "rails_8_1_postgresql" => {
+    appraisal: File.join(ROOT, "gemfiles/rails_8_1_postgresql.gemfile"),
+    rails: "~> 8.1.0",
+    adapter: "postgresql",
+    adapter_gem: 'gem "pg", ">= 1.5", "< 2"'
+  }
+}.freeze
+
+FORBIDDEN_PACKAGE_PATHS = [
+  %r{\A(?:test|spec|tmp|log)/},
+  %r{\Adocs/(?:evidence|work_packets)/},
+  %r{\A\.git},
+  %r{(?:\A|/)\.env(?:\.|\z)},
+  %r{(?:\A|/)master\.key\z},
+  %r{(?:\A|/)credentials\.ya?ml\.enc\z},
+  %r{\.(?:pem|key)\z}
+].freeze
+
+REQUIRED_PACKAGE_FILES = %w[
+  CHANGELOG.md
+  MIT-LICENSE
+  README.md
+  ROADMAP.md
+  SECURITY.md
+  config/routes.rb
+  docs/public_api/0.1.0.md
+  docs/removing.md
+  docs/upgrading/0.1.0.md
+  lib/generators/hitch/install/install_generator.rb
+  lib/generators/hitch/install/templates/initializer.rb
+  lib/hitch/version.rb
+].freeze
+
+def capture!(*command, environment: {}, chdir: ROOT)
+  output, status = Open3.capture2e(environment, *command, chdir: chdir)
+  return output if status.success?
+
+  warn output
+  raise "command failed (#{status.exitstatus}): #{command.join(' ')}"
+end
+
+def run!(*command, environment: {}, chdir: ROOT)
+  puts "+ #{command.join(' ')}"
+  return if system(environment, *command, chdir: chdir)
+
+  raise "command failed: #{command.join(' ')}"
+end
+
+def postgresql_url
+  base = URI.parse(ENV.fetch("HITCH_PACKAGE_POSTGRES_URL", "postgresql:///postgres"))
+  unless %w[postgres postgresql].include?(base.scheme)
+    raise "HITCH_PACKAGE_POSTGRES_URL must use postgres:// or postgresql://"
+  end
+
+  base.path = "/hitch_package_#{Process.pid}_#{SecureRandom.hex(6)}_test"
+  base.to_s
+end
+
+def app_gemfile(local_repository, specification, profile)
+  <<~RUBY
+    source "https://rubygems.org"
+
+    gem "rails", "#{profile.fetch(:rails)}"
+    #{profile.fetch(:adapter_gem)}
+
+    source "file://#{local_repository}" do
+      gem "#{specification.name}", "=#{specification.version}"
+    end
+  RUBY
+end
+
+def application_controller
+  <<~RUBY
+    # frozen_string_literal: true
+
+    class ApplicationController < ActionController::Base
+      def current_user
+        Hitch::Client.first
+      end
+    end
+  RUBY
+end
+
+def adoption_commands(profile)
+  rails_new_options = %w[
+    --skip-bundle --skip-git --skip-keeps --skip-bootsnap
+    --skip-javascript --skip-hotwire --skip-asset-pipeline
+    --skip-action-mailer --skip-action-mailbox --skip-action-text
+    --skip-active-storage --skip-action-cable --skip-jbuilder
+    --skip-test --skip-system-test
+  ].join(" ")
+
+  [
+    "bundle exec rails new <temporary-app> #{rails_new_options} --database=#{profile.fetch(:adapter)}",
+    "bundle install # hitch-rails pinned to the exact local gem repository artifact",
+    "bundle exec rails generate hitch:install",
+    "bundle exec rails db:create",
+    "bundle exec rails db:migrate",
+    "bundle exec rails runner <discovery-and-authorization-code-smoke>"
+  ]
+end
+
+def smoke_runner(profile_name, expected_adapter)
+  <<~RUBY
+    require "base64"
+    require "digest"
+    require "json"
+    require "securerandom"
+    require "uri"
+
+    Rails.application.eager_load!
+    loaded = Gem.loaded_specs.fetch("hitch-rails")
+    source_root = File.expand_path(ENV.fetch("HITCH_SOURCE_ROOT"))
+    loaded_root = File.expand_path(loaded.full_gem_path)
+    abort "smoke loaded the checkout instead of the built artifact" if
+      loaded_root == source_root || loaded_root.start_with?("\#{source_root}/")
+
+    actual_adapter = ActiveRecord::Base.connection_db_config.adapter
+    abort "expected #{expected_adapter}, booted \#{actual_adapter}" unless
+      actual_adapter == "#{expected_adapter}"
+
+    redirect_uri = "https://client.example/callback"
+    resource_uri = Hitch.configuration.resource_uri
+    client = Hitch::Client.register!(
+      client_id: "package-smoke-client",
+      client_name: "Package smoke",
+      redirect_uris: [ redirect_uri ]
+    )
+
+    verifier = SecureRandom.urlsafe_base64(64)
+    challenge = Base64.urlsafe_encode64(Digest::SHA256.digest(verifier), padding: false)
+    authorization = {
+      response_type: "code",
+      client_id: client.client_id,
+      redirect_uri: redirect_uri,
+      scope: "mcp",
+      state: "package-smoke-state",
+      code_challenge: challenge,
+      code_challenge_method: "S256",
+      resource: resource_uri
+    }
+
+    session = ActionDispatch::Integration::Session.new(Rails.application)
+    session.https!
+    session.host! "your-app.example.com"
+
+    session.get "/.well-known/oauth-authorization-server"
+    abort "authorization discovery failed: \#{session.response.status}" unless
+      session.response.status == 200
+    metadata = JSON.parse(session.response.body)
+    abort "artifact issuer drifted" unless metadata.fetch("issuer") == "https://your-app.example.com"
+    abort "new install unexpectedly advertised DCR" if metadata.key?("registration_endpoint")
+
+    session.get "/oauth/authorize", params: authorization
+    abort "consent render failed: \#{session.response.status}" unless session.response.status == 200
+
+    session.post "/oauth/authorize", params: authorization
+    abort "authorization failed: \#{session.response.status}" unless session.response.redirect?
+    redirect = URI.parse(session.response.location)
+    response_parameters = URI.decode_www_form(redirect.query.to_s).to_h
+    code = response_parameters.fetch("code")
+    abort "authorization issuer drifted" unless
+      response_parameters.fetch("iss") == "https://your-app.example.com"
+
+    session.post "/oauth/token", params: {
+      grant_type: "authorization_code",
+      code: code,
+      client_id: client.client_id,
+      redirect_uri: redirect_uri,
+      code_verifier: verifier,
+      resource: resource_uri
+    }
+    abort "token exchange failed: \#{session.response.status} \#{session.response.body}" unless
+      session.response.status == 200
+    token_body = JSON.parse(session.response.body)
+    token = Hitch::AccessToken.find_by_token(token_body.fetch("access_token"))
+    abort "issued token was not usable" unless
+      token&.accessible? && token.valid_for_resource?(resource_uri) && token.has_scope?("mcp")
+
+    puts "HITCH_SMOKE_RESULT=" + JSON.generate(
+      profile: "#{profile_name}",
+      ruby: RUBY_VERSION,
+      rails: Rails.version,
+      adapter: actual_adapter,
+      artifact_version: loaded.version.to_s,
+      artifact_install: "local_gem_repository",
+      generator: "ok",
+      migrations: "ok",
+      boot: "ok",
+      discovery: "ok",
+      authorization_code: "ok",
+      token_exchange: "ok"
+    )
+  RUBY
+end
+
+def package_input_snapshot
+  specification = Gem::Specification.load(GEMSPEC_PATH) || raise("could not load #{GEMSPEC_PATH}")
+  appraisal_files = PROFILES.values.map { |profile| Pathname(profile.fetch(:appraisal)).relative_path_from(Pathname(ROOT)).to_s }
+  relative_paths = (specification.files + appraisal_files +
+    %w[bin/package-smoke docs/work_packets/index.yml hitch-rails.gemspec]).uniq.sort
+
+  {
+    "manifest" => specification.files.sort,
+    "files" => relative_paths.to_h do |relative_path|
+      absolute_path = File.join(ROOT, relative_path)
+      value = if File.file?(absolute_path) && !File.symlink?(absolute_path)
+        { "bytes" => File.size(absolute_path), "sha256" => Digest::SHA256.file(absolute_path).hexdigest }
+      else
+        nil
+      end
+      [ relative_path, value ]
+    end
+  }
+end
+
+def artifact_policy_for(version)
+  manifest = YAML.safe_load_file(
+    File.join(ROOT, "docs/work_packets/index.yml"),
+    permitted_classes: [],
+    aliases: false
+  )
+  matches = manifest.fetch("nodes").filter_map do |issue, metadata|
+    artifact = metadata["artifact"]
+    [ issue, artifact ] if artifact&.fetch("version") == version
+  end
+  raise "work-packet policy must own exactly one #{version} artifact" unless matches.one?
+
+  matches.first
+end
+
+def verify_package_contract!(extraction, version, policy)
+  escaped_version = Regexp.escape(version)
+
+  version_source = File.read(File.join(extraction, "lib/hitch/version.rb"))
+  unless version_source.match?(/VERSION\s*=\s*["']#{escaped_version}["']/)
+    raise "Hitch::VERSION does not equal #{version}"
+  end
+
+  changelog = File.read(File.join(extraction, "CHANGELOG.md"))
+  unless changelog.match?(/^## \[#{escaped_version}\] - \d{4}-\d{2}-\d{2}$/)
+    raise "CHANGELOG has no dated #{version} checkpoint heading"
+  end
+
+  readme = File.read(File.join(extraction, "README.md"))
+  security = File.read(File.join(extraction, "SECURITY.md"))
+  if policy.fetch("distribution") == "internal_only"
+    raise "README must state that no public RubyGems release exists" unless
+      readme.include?("There is no public RubyGems release yet")
+    raise "README must require an immutable source ref" unless
+      readme.include?('ref: ENV.fetch("HITCH_CHECKPOINT_SHA")')
+    raise "README must not advertise internal #{version} through RubyGems" if
+      readme.include?(%(gem "hitch-rails", "~> #{version}"))
+    raise "CHANGELOG must identify #{version} as internal-only" unless
+      changelog.include?("Internal verified checkpoint only")
+    raise "SECURITY must identify the absence of a public RubyGems release" unless
+      security.include?("has no public RubyGems release")
+  end
+
+  public_api = File.read(File.join(extraction, "docs/public_api/#{version}.md"))
+  raise "public API manifest does not identify #{version}" unless public_api.include?(version)
+end
+
+before_status = capture!("git", "status", "--porcelain=v1", "-z", "--untracked-files=all")
+before_package_inputs = package_input_snapshot
+report = nil
+
+Dir.mktmpdir("hitch-package-smoke-") do |directory|
+  specification = Gem::Specification.load(GEMSPEC_PATH) || raise("could not load #{GEMSPEC_PATH}")
+  policy_issue, artifact_policy = artifact_policy_for(specification.version.to_s)
+  artifact = File.join(directory, "#{specification.full_name}.gem")
+  run!("gem", "build", GEMSPEC_PATH, "--output", artifact)
+
+  package = Gem::Package.new(artifact)
+  artifact_specification = package.spec
+  expected_files = specification.files.sort
+  packaged_files = artifact_specification.files.sort
+  artifact_contents = package.contents.sort
+
+  raise "built version does not match gemspec" unless artifact_specification.version == specification.version
+  raise "built name does not match gemspec" unless artifact_specification.name == specification.name
+  raise "built manifest does not match the explicit gemspec allowlist" unless packaged_files == expected_files
+  raise "built contents do not match the embedded gem manifest" unless artifact_contents == packaged_files
+
+  missing = REQUIRED_PACKAGE_FILES - packaged_files
+  raise "required package files are missing: #{missing.join(', ')}" if missing.any?
+
+  forbidden = packaged_files.select do |path|
+    FORBIDDEN_PACKAGE_PATHS.any? { |pattern| pattern.match?(path) }
+  end
+  raise "forbidden package files are present: #{forbidden.join(', ')}" if forbidden.any?
+
+  symlinks = expected_files.select { |path| File.symlink?(File.join(ROOT, path)) }
+  raise "package allowlist must not contain symlinks: #{symlinks.join(', ')}" if symlinks.any?
+
+  extraction = File.join(directory, "extracted")
+  FileUtils.mkdir_p(extraction)
+  package.extract_files(extraction)
+  mismatched = packaged_files.reject do |path|
+    Digest::SHA256.file(File.join(ROOT, path)).hexdigest ==
+      Digest::SHA256.file(File.join(extraction, path)).hexdigest
+  end
+  raise "built artifact bytes differ from the allowlisted source: #{mismatched.join(', ')}" if mismatched.any?
+
+  verify_package_contract!(extraction, specification.version.to_s, artifact_policy)
+
+  local_repository = File.join(directory, "gem-repository")
+  FileUtils.mkdir_p(File.join(local_repository, "gems"))
+  FileUtils.cp(artifact, File.join(local_repository, "gems"))
+  run!("gem", "generate_index", "--directory", local_repository)
+
+  applications = PROFILES.map do |profile_name, profile|
+    app = File.join(directory, profile_name)
+    run!(
+      "bundle", "exec", "rails", "new", app,
+      "--skip-bundle", "--skip-git", "--skip-keeps", "--skip-bootsnap",
+      "--skip-javascript", "--skip-hotwire", "--skip-asset-pipeline",
+      "--skip-action-mailer", "--skip-action-mailbox", "--skip-action-text",
+      "--skip-active-storage", "--skip-action-cable", "--skip-jbuilder",
+      "--skip-test", "--skip-system-test", "--database=#{profile.fetch(:adapter)}",
+      environment: { "BUNDLE_GEMFILE" => profile.fetch(:appraisal) },
+      chdir: directory
+    )
+
+    File.write(File.join(app, "Gemfile"), app_gemfile(local_repository, specification, profile))
+    File.write(File.join(app, "app/controllers/application_controller.rb"), application_controller)
+    run!("bundle", "config", "set", "--local", "path", "vendor/bundle", chdir: app)
+    run!("bundle", "install", chdir: app)
+    run!("bundle", "exec", "rails", "generate", "hitch:install", chdir: app)
+
+    database_url = if profile.fetch(:adapter) == "sqlite3"
+      "sqlite3:#{File.join(directory, "#{profile_name}.sqlite3")}"
+    else
+      postgresql_url
+    end
+    database_environment = {
+      "DATABASE_URL" => database_url,
+      "RAILS_ENV" => "test",
+      "SCHEMA" => File.join(directory, "#{profile_name}_schema.rb")
+    }
+    database_created = false
+
+    begin
+      run!("bundle", "exec", "rails", "db:create", environment: database_environment, chdir: app)
+      database_created = true
+      run!("bundle", "exec", "rails", "db:migrate", environment: database_environment, chdir: app)
+
+      output = capture!(
+        "bundle", "exec", "rails", "runner",
+        smoke_runner(profile_name, profile.fetch(:adapter)),
+        environment: database_environment.merge("HITCH_SOURCE_ROOT" => ROOT),
+        chdir: app
+      )
+      result_line = output.lines.reverse.find { |line| line.start_with?("HITCH_SMOKE_RESULT=") }
+      raise "disposable app did not report a smoke result\n#{output}" unless result_line
+
+      JSON.parse(result_line.delete_prefix("HITCH_SMOKE_RESULT=")).merge(
+        "commands" => adoption_commands(profile)
+      )
+    ensure
+      if profile.fetch(:adapter) == "postgresql" && database_created
+        system(database_environment, "bundle", "exec", "rails", "db:drop", chdir: app)
+      end
+    end
+  end
+
+  manifest = artifact_contents.map do |path|
+    source = File.join(extraction, path)
+    {
+      "path" => path,
+      "size" => File.size(source),
+      "sha256" => Digest::SHA256.file(source).hexdigest
+    }
+  end
+
+  report = {
+    "release" => specification.version.to_s,
+    "milestone" => policy_issue,
+    "distribution" => artifact_policy.fetch("distribution"),
+    "artifact" => {
+      "name" => File.basename(artifact),
+      "sha256" => Digest::SHA256.file(artifact).hexdigest,
+      "source" => "locally_built_gem",
+      "checks" => {
+        "embedded_manifest" => "matches_explicit_allowlist",
+        "archive_contents" => "match_embedded_manifest",
+        "source_bytes" => "match_checkout",
+        "forbidden_paths" => "absent",
+        "checkpoint_contract" => "ready"
+      },
+      "manifest" => manifest
+    },
+    "disposable_apps" => applications
+  }
+end
+
+after_status = capture!("git", "status", "--porcelain=v1", "-z", "--untracked-files=all")
+raise "package smoke changed the worktree" unless after_status == before_status
+raise "package inputs changed during smoke" unless package_input_snapshot == before_package_inputs
+
+json = JSON.pretty_generate(report)
+report_path = ENV["HITCH_PACKAGE_REPORT"]
+if report_path
+  expanded_report = File.expand_path(report_path)
+  if expanded_report == ROOT || expanded_report.start_with?("#{ROOT}/")
+    raise "HITCH_PACKAGE_REPORT must be outside the repository so the smoke stays read-only"
+  end
+  File.write(expanded_report, "#{json}\n")
+else
+  puts json
+end
+
+puts "Package manifest and disposable Rails adoption smoke passed."

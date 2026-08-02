@@ -8,8 +8,11 @@ Hitch::Engine.routes.draw do
   post "oauth/register",  to: "registrations#create", as: :oauth_register
   post "oauth/revoke",    to: "revocations#create",   as: :oauth_revoke
 
-  # CORS preflight for any /oauth/* endpoint
-  match "oauth/*path", to: "tokens#preflight", via: :options
+  # Route only real engine endpoints to the dedicated preflight validator.
+  match "oauth/authorize", to: "preflights#show", via: :options, defaults: { target_methods: "GET,POST" }
+  match "oauth/token",     to: "preflights#show", via: :options, defaults: { target_methods: "POST" }
+  match "oauth/register",  to: "preflights#show", via: :options, defaults: { target_methods: "POST" }
+  match "oauth/revoke",    to: "preflights#show", via: :options, defaults: { target_methods: "POST" }
 
   # Discovery (RFC 8414 + RFC 9728)
   get ".well-known/oauth-authorization-server", to: "metadata#show",     as: :oauth_authorization_server_metadata
@@ -25,9 +28,10 @@ Hitch::Engine.routes.draw do
   # after the bare route (glob-last).
   get ".well-known/oauth-protected-resource/*resource_path", to: "metadata#resource", format: false
 
-  # CORS preflight for discovery — browser MCP clients (claude.ai,
-  # chatgpt.com) preflight discovery before issuing the GET.
-  match ".well-known/oauth-authorization-server", to: "tokens#preflight", via: :options
-  match ".well-known/oauth-protected-resource",   to: "tokens#preflight", via: :options
-  match ".well-known/oauth-protected-resource/*resource_path", to: "tokens#preflight", via: :options, format: false
+  match ".well-known/oauth-authorization-server", to: "preflights#show", via: :options,
+    defaults: { target_methods: "GET" }
+  match ".well-known/oauth-protected-resource", to: "preflights#show", via: :options,
+    defaults: { target_methods: "GET" }
+  match ".well-known/oauth-protected-resource/*resource_path", to: "preflights#show", via: :options,
+    defaults: { target_methods: "GET" }, format: false
 end

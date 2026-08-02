@@ -1,0 +1,17 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+root = File.expand_path("..", __dir__)
+tests = %w[
+  test/integration/cors_and_host_test.rb
+  test/integration/oauth_form_admission_test.rb
+  test/integration/registration_admission_test.rb
+  test/integration/dynamic_registration_posture_test.rb
+  test/integration/pkce_boundary_test.rb
+  test/integration/oauth_flow_test.rb
+  test/integration/csrf_protection_test.rb
+  test/hitch/configuration_test.rb
+  test/hitch/install_generator_test.rb
+]
+
+exec(File.join(root, "bin/ci-test"), *tests, chdir: root)

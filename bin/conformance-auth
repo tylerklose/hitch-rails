@@ -1,0 +1,24 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "optparse"
+require "json"
+require_relative "../test/conformance/authorization/harness"
+
+profile = nil
+OptionParser.new do |parser|
+  parser.banner = "Usage: bin/conformance-auth --profile PROFILE"
+  parser.on("--profile PROFILE", %w[metadata resource-aware-grants]) { |value| profile = value }
+end.parse!
+
+profiles = %w[metadata resource-aware-grants]
+abort "Choose --profile metadata or --profile resource-aware-grants" unless profiles.include?(profile)
+
+root = File.expand_path("..", __dir__)
+begin
+  summary = Hitch::Conformance::AuthorizationHarness.new(root: root, profile: profile).run
+  puts JSON.pretty_generate(summary)
+rescue Hitch::Conformance::AuthorizationHarness::Failure => error
+  warn "Authorization conformance failed: #{error.message}"
+  exit 1
+end

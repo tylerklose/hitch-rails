@@ -41,6 +41,7 @@ module Hitch
           429 => "rate_limited",
           503 => "service_unavailable"
         }.freeze
+        HTTP_TERMINAL_OUTCOMES = [ 406, 413, 415 ].freeze
 
         class ReportedFailure < StandardError
           def initialize
@@ -149,6 +150,8 @@ module Hitch
           private
 
           def outcome(http_status)
+            return HTTP_OUTCOMES.fetch(http_status) if HTTP_TERMINAL_OUTCOMES.include?(http_status)
+
             PROTOCOL_OUTCOMES.fetch(@protocol_code) do
               HTTP_OUTCOMES.fetch(http_status, "http_error")
             end
@@ -350,7 +353,8 @@ module Hitch
         private_constant :ReportedFailure, :RequestState, :InvocationState,
           :REQUEST_EVENT, :INVOCATION_EVENT, :IDENTITY_SALT,
           :CURRENT_REQUEST_KEY, :TOOL_NAME_PATTERN, :PRINCIPAL_TYPE_PATTERN,
-          :MAX_IDENTITY_BYTES, :PROTOCOL_OUTCOMES, :HTTP_OUTCOMES
+          :MAX_IDENTITY_BYTES, :PROTOCOL_OUTCOMES, :HTTP_OUTCOMES,
+          :HTTP_TERMINAL_OUTCOMES
       end
     end
   end

@@ -144,32 +144,42 @@ class Hitch::MCP::ObservationTest < ActionDispatch::IntegrationTest
 
   test "request event once on every terminal path" do
     cases = [
-      [ "allowed options", 204, 0, 0, -> { options_mcp } ],
-      [ "bad host", 400, 1, 0, -> { post_call("observation.success", host: "attacker.test") } ],
-      [ "bad origin", 403, 1, 0, -> { post_call("observation.success", origin: "https://attacker.test") } ],
-      [ "wrong HTTP method", 405, 1, 0, -> { get_mcp } ],
-      [ "missing token", 401, 1, 0, -> { post_call("observation.success", token: nil) } ],
-      [ "rate rejected", 429, 1, 0, -> { post_call("observation.success", admission: "reject") } ],
-      [ "rate store failed", 503, 1, 0, -> { post_call("observation.success", admission: "raise") } ],
-      [ "unsupported media", 415, 1, 0, -> { post_call("observation.success", content_type: "text/plain") } ],
-      [ "invalid JSON", 400, 1, 0, -> { post_raw("{\"jsonrpc\":", method: "tools/list") } ],
-      [ "discovery", 200, 1, 0, -> { post_request(method: "server/discover") } ],
-      [ "unknown tool", 200, 1, 0, -> { post_call("observation.unknown") } ],
-      [ "unavailable tool", 200, 1, 0, -> { post_call("observation.unavailable") } ],
-      [ "static scope", 403, 1, 0, -> { post_call("observation.admin") } ],
-      [ "input schema", 200, 1, 0, -> { post_call("observation.success", arguments: { "message" => 7 }) } ],
-      [ "argument policy", 200, 1, 1, -> { post_call("observation.policy_denied") } ],
-      [ "explicit error", 200, 1, 1, -> { post_call("observation.explicit_error") } ],
-      [ "host failure", 200, 1, 1, -> { post_call("observation.host_failure") } ],
-      [ "success", 200, 1, 1, -> { post_call("observation.success") } ]
+      [ "allowed options", 204, nil, 0, 0, -> { options_mcp } ],
+      [ "bad host", 400, "bad_request", 1, 0, -> { post_call("observation.success", host: "attacker.test") } ],
+      [ "bad origin", 403, "forbidden", 1, 0, -> { post_call("observation.success", origin: "https://attacker.test") } ],
+      [ "wrong HTTP method", 405, "method_not_allowed", 1, 0, -> { get_mcp } ],
+      [ "missing token", 401, "unauthorized", 1, 0, -> { post_call("observation.success", token: nil) } ],
+      [ "rate rejected", 429, "rate_limited", 1, 0, -> { post_call("observation.success", admission: "reject") } ],
+      [ "rate store failed", 503, "service_unavailable", 1, 0, -> { post_call("observation.success", admission: "raise") } ],
+      [ "unsupported media", 415, "unsupported_media_type", 1, 0, -> { post_call("observation.success", content_type: "text/plain") } ],
+      [ "unacceptable response", 406, "not_acceptable", 1, 0, -> { post_call("observation.success", accept: "application/json") } ],
+      [ "oversized body", 413, "request_too_large", 1, 0, -> { post_raw("x" * 8_193, method: "tools/list") } ],
+      [ "invalid JSON", 400, "parse_error", 1, 0, -> { post_raw("{\"jsonrpc\":", method: "tools/list") } ],
+      [ "invalid envelope", 400, "invalid_request", 1, 0, -> { post_raw("[]", method: "tools/list") } ],
+      [ "header mismatch", 400, "header_mismatch", 1, 0, -> { post_request(method: "tools/list", header_method: "server/discover") } ],
+      [ "unsupported protocol", 400, "unsupported_protocol", 1, 0, -> { post_request(method: "tools/list", protocol_version: "2099-01-01") } ],
+      [ "unknown method", 404, "method_not_found", 1, 0, -> { post_request(method: "prompts/list") } ],
+      [ "discovery", 200, "complete", 1, 0, -> { post_request(method: "server/discover") } ],
+      [ "listing", 200, "complete", 1, 0, -> { post_request(method: "tools/list") } ],
+      [ "internal dispatch", 200, "internal_error", 1, 0, -> { post_scope_failure } ],
+      [ "unknown tool", 200, "invalid_params", 1, 0, -> { post_call("observation.unknown") } ],
+      [ "unavailable tool", 200, "invalid_params", 1, 0, -> { post_call("observation.unavailable") } ],
+      [ "static scope", 403, "forbidden", 1, 0, -> { post_call("observation.admin") } ],
+      [ "input schema", 200, "complete", 1, 0, -> { post_call("observation.success", arguments: { "message" => 7 }) } ],
+      [ "argument policy", 200, "complete", 1, 1, -> { post_call("observation.policy_denied") } ],
+      [ "explicit error", 200, "complete", 1, 1, -> { post_call("observation.explicit_error") } ],
+      [ "host failure", 200, "complete", 1, 1, -> { post_call("observation.host_failure") } ],
+      [ "success", 200, "complete", 1, 1, -> { post_call("observation.success") } ]
     ]
 
-    cases.each do |label, status, request_count, invocation_count, action|
+    cases.each do |label, status, outcome, request_count, invocation_count, action|
       events = capture_events { action.call }
+      request_events = events.select { |event| event.name == "request.hitch_mcp" }
 
       assert_equal status, response.status, label
-      assert_equal request_count, events.count { |event| event.name == "request.hitch_mcp" }, label
+      assert_equal request_count, request_events.length, label
       assert_equal invocation_count, events.count { |event| event.name == "invocation.hitch_mcp" }, label
+      assert_equal outcome, request_events.fetch(0).payload.fetch(:outcome), label if outcome
     end
   end
 
@@ -346,7 +356,8 @@ class Hitch::MCP::ObservationTest < ActionDispatch::IntegrationTest
     host: "dummy.test",
     origin: nil,
     admission: nil,
-    content_type: "application/json"
+    content_type: "application/json",
+    accept: "application/json, text/event-stream"
   )
     post_request(
       method: "tools/call",
@@ -356,7 +367,8 @@ class Hitch::MCP::ObservationTest < ActionDispatch::IntegrationTest
       host:,
       origin:,
       admission:,
-      content_type:
+      content_type:,
+      accept:
     )
   end
 
@@ -368,11 +380,14 @@ class Hitch::MCP::ObservationTest < ActionDispatch::IntegrationTest
     host: "dummy.test",
     origin: nil,
     admission: nil,
-    content_type: "application/json"
+    content_type: "application/json",
+    accept: "application/json, text/event-stream",
+    protocol_version: PROTOCOL_VERSION,
+    header_method: method
   )
     params = {
       "_meta" => {
-        "io.modelcontextprotocol/protocolVersion" => PROTOCOL_VERSION,
+        "io.modelcontextprotocol/protocolVersion" => protocol_version,
         "io.modelcontextprotocol/clientCapabilities" => {}
       }
     }
@@ -383,13 +398,15 @@ class Hitch::MCP::ObservationTest < ActionDispatch::IntegrationTest
     body = JSON.generate(jsonrpc: "2.0", id: SecureRandom.hex(4), method:, params:)
     post_raw(
       body,
-      method:,
+      method: header_method,
       name:,
       token:,
       host:,
       origin:,
       admission:,
-      content_type:
+      content_type:,
+      accept:,
+      protocol_version:
     )
     body
   end
@@ -402,7 +419,9 @@ class Hitch::MCP::ObservationTest < ActionDispatch::IntegrationTest
     host: "dummy.test",
     origin: nil,
     admission: nil,
-    content_type: "application/json"
+    content_type: "application/json",
+    accept: "application/json, text/event-stream",
+    protocol_version: PROTOCOL_VERSION
   )
     headers = request_headers(
       method:,
@@ -411,7 +430,9 @@ class Hitch::MCP::ObservationTest < ActionDispatch::IntegrationTest
       host:,
       origin:,
       admission:,
-      content_type:
+      content_type:,
+      accept:,
+      protocol_version:
     )
     post "/mcp", params: body, headers:
   end
@@ -430,18 +451,26 @@ class Hitch::MCP::ObservationTest < ActionDispatch::IntegrationTest
     }
   end
 
-  def request_headers(method:, name:, token:, host:, origin:, admission:, content_type:)
+  def request_headers(method:, name:, token:, host:, origin:, admission:, content_type:, accept:, protocol_version:)
     {
       "Host" => host,
       "Authorization" => ("Bearer #{token}" if token),
       "Content-Type" => content_type,
-      "Accept" => "application/json, text/event-stream",
-      "MCP-Protocol-Version" => PROTOCOL_VERSION,
+      "Accept" => accept,
+      "MCP-Protocol-Version" => protocol_version,
       "Mcp-Method" => method,
       "Mcp-Name" => name,
       "Origin" => origin,
       "X-Hitch-Wire-Admission" => admission
     }.compact
+  end
+
+  def post_scope_failure
+    original = Hitch.configuration.mcp.scope_resolver
+    Hitch.configuration.mcp.scope_resolver = ->(**) { raise "scope-failure-canary" }
+    post_call("observation.success")
+  ensure
+    Hitch.configuration.mcp.scope_resolver = original
   end
 
   def mint_token(principal, client_id:)

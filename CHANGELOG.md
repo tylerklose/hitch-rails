@@ -5,10 +5,10 @@ All notable changes to hitch-rails will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0.pre.4] - 2026-08-02
 
-Internal development build only. The active version is `0.2.0.pre.4.dev`; it
-is not tagged, GitHub-released, or published to RubyGems.
+Internal verified checkpoint only. `0.2.0.pre.4` is not tagged, GitHub-released,
+or published to RubyGems. Public publication is deferred to final `0.2.0`.
 
 ### Added
 
@@ -41,6 +41,26 @@ is not tagged, GitHub-released, or published to RubyGems.
 - Added production Redis, doctor, 0.2 adoption, and expanded removal guidance.
   Production examples now require a protected fleet-shared Redis URL; the
   private memory store is documented only for development/test.
+- Added built-gem acceptance through disposable Rails 7.2/SQLite and Rails
+  8.1/PostgreSQL applications. Both apps install through an isolated local gem
+  repository, run the documented generators and doctor, and use a digest-pinned
+  ephemeral Redis service with enforced cleanup.
+- Added an exhaustive official-client matrix covering TypeScript and Python MCP
+  SDK 2.0.0 with public and confidential OAuth clients on both supported
+  database profiles. Every row completes discovery, least-privilege consent,
+  listing, calls, and scope step-up without storing credentials in evidence.
+
+### Changed
+
+- The initial MCP bearer challenge now names only the first configured base
+  scope; protected-resource metadata still advertises the full supported set,
+  and known tools request their complete static scopes during 403 step-up.
+- Confidential token exchange accepts the official Python SDK's repeated body
+  `client_id` only when it exactly matches the Basic username. Body secrets and
+  mismatched, duplicate, or structured IDs still fail before code consumption.
+- Deferred public prerelease publication. M6 consumes the exact accepted
+  internal `0.2.0.pre.4` gem bytes; no tag, GitHub release, RubyGems upload, or
+  downloaded-artifact claim exists for this checkpoint.
 
 ## [0.2.0.pre.3] - 2026-08-02
 

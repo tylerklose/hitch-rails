@@ -50,7 +50,7 @@ Redis-backed authenticated fixed window spans discovery, listing, and calls for
 each principal/client. Versioned structural request and invocation events are
 active, with HMAC identities and subscriber-failure isolation. Integrated
 mutation/concurrency acceptance is complete for the internal pre.3 checkpoint.
-The active pre.4 development line now adds the Rails MCP installer: it creates
+The accepted internal pre.4 checkpoint adds the Rails MCP installer: it creates
 the host endpoint, empty explicit registry, deny-default settings, and ordered
 route with collision-safe rollback metadata. It does not discover or register
 tools automatically. The explicit tool generator and public integration-test
@@ -58,7 +58,9 @@ helper are active too; generated tools remain unavailable and unregistered
 until the host reviews and opts them in. The read-only `hitch:doctor` task now
 checks the loaded versions, configuration, discovery, route order, migrations,
 Registry, host/origin posture, Redis, package contents, and legacy endpoint
-without exposing credentials or mutating application data.
+without exposing credentials or mutating application data. The exact built gem
+also passes fresh Rails 7.2/SQLite and Rails 8.1/PostgreSQL installs plus all
+eight official TypeScript/Python SDK 2.0.0 public/confidential OAuth rows.
 Existing integrations may keep using the
 deprecated `Hitch::ServerEndpoint` compatibility helper for bearer validation
 and response shaping while moving toward the 0.2 endpoint.
@@ -97,7 +99,7 @@ normalized `hitch_client_redirect_uris` table on both adapters. Access-token
 principal IDs use lossless string storage, so host models with integer, UUID,
 or ULID primary keys round-trip on either adapter.
 
-**Runtime:** The internal 0.1 checkpoint and current 0.2 development line target Ruby `>= 3.3, < 4.1`
+**Runtime:** The internal checkpoints target Ruby `>= 3.3, < 4.1`
 and Rails `>= 7.2, < 8.2`. Its matrix is Ruby 3.3/Rails 7.2/SQLite and Ruby
 4.0/Rails 8.1/PostgreSQL. Other adapters and runtime versions are outside that
 checkpoint contract.
@@ -108,9 +110,10 @@ There is no public RubyGems release yet. `0.1.0` identifies the verified
 auth-only checkpoint; `0.2.0.pre.1` identifies the verified authenticated-wire
 checkpoint; and `0.2.0.pre.2` identifies the verified request-context,
 registry, and filtered-listing checkpoint. `0.2.0.pre.3` identifies the verified
-safe-invocation, result, admission, and observation checkpoint. The active
-installer work uses the internal `0.2.0.pre.4.dev` identity. None is tagged or
-published. An approved source adopter must pin an accepted checkpoint's
+safe-invocation, result, admission, and observation checkpoint. `0.2.0.pre.4`
+identifies the verified built-gem Rails golden path and exact official-client
+matrix. None is tagged or published; public publication is deferred to final
+`0.2.0`. An approved source adopter must pin the accepted checkpoint's
 full commit SHA rather than a branch or a nonexistent RubyGems version:
 
 ```ruby
@@ -599,18 +602,15 @@ informed).
 
 ## Status
 
-**Internal checkpoint 0.1.0; not a public release.** The auth substrate is
-exercised end-to-end through
-the gem's own test suite (OAuth dance, RFC 8707 audience binding, PKCE,
-DCR, revocation, CORS, the MCP Streamable HTTP response contract, plus
-redirect-uri-enforcement and scope-clamping security regression tests),
-and the full OAuth + MCP handshake has been verified against a live
-third-party MCP client. The public API may still change before v1.0.0.
+**Internal checkpoint 0.2.0.pre.4; not a public release.** The accepted built
+gem installs without a checkout path dependency in fresh Rails 7.2/SQLite and
+Rails 8.1/PostgreSQL apps. Exact official TypeScript and Python MCP SDK 2.0.0
+clients exercise public and confidential OAuth, discovery, listing, calls, and
+scope step-up across both apps. The public API may still change before v1.0.0.
 
-No `hitch-rails` version is available from RubyGems today. The first artifact
-eligible for public distribution is the useful end-to-end
-`0.2.0.pre.4` checkpoint at M5; the maintainer may instead make final `0.2.0`
-the first public release.
+No `hitch-rails` version is available from RubyGems today. The useful
+end-to-end `0.2.0.pre.4` checkpoint was eligible for public distribution, but
+publication was deferred. Final `0.2.0` is the first planned public release.
 
 Hitch is implemented against the MCP 2026-07-28 authorization profile.
 Conformance evidence distinguishes the unmodified official metadata runner

@@ -115,7 +115,7 @@ class PackageContractTest < ActiveSupport::TestCase
     refute_includes source, 'gem "hitch-rails", path:'
   end
 
-  test "active development artifact does not claim public distribution" do
+  test "sealed pre4 artifact remains internal after publication deferral" do
     version = @specification.version.to_s
     changelog = REPOSITORY_ROOT.join("CHANGELOG.md").read
     readme = REPOSITORY_ROOT.join("README.md").read
@@ -126,16 +126,12 @@ class PackageContractTest < ActiveSupport::TestCase
 
     assert_equal "M5.4", @artifact_issue
     assert_equal "public_optional", @artifact_policy.fetch("distribution")
-    assert development, "the active pre.4.dev build must remain an internal development artifact"
-    if development
-      assert_equal version, @artifact_policy.fetch("development_version")
-      assert_match(/^## \[Unreleased\]$/, changelog)
-      assert_includes changelog, "Internal development build only"
-    else
-      assert_equal version, @artifact_policy.fetch("version")
-      assert_match(/^## \[#{Regexp.escape(version)}\] - \d{4}-\d{2}-\d{2}$/, changelog)
-      assert_includes changelog, "Internal verified checkpoint only"
-    end
+    assert_equal "0.2.0.pre.4", version
+    refute development, "the accepted pre.4 build must use its sealed identity"
+    assert_equal version, @artifact_policy.fetch("version")
+    assert_match(/^## \[#{Regexp.escape(version)}\] - \d{4}-\d{2}-\d{2}$/, changelog)
+    assert_includes changelog, "Internal verified checkpoint only"
+    assert_includes changelog, "Public publication is deferred to final `0.2.0`"
     assert_includes readme, "There is no public RubyGems release yet"
     assert_includes readme, 'ref: ENV.fetch("HITCH_CHECKPOINT_SHA")'
     refute_includes readme, %(gem "hitch-rails", "~> #{version}")

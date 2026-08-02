@@ -49,7 +49,7 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     end
 
     def versions
-      { "hitch" => "0.2.0.pre.4.dev", "rails" => "8.1.3", "ruby" => "3.4.7", "mcp" => "1.1.0" }
+      { "hitch" => "0.2.0.pre.4", "rails" => "8.1.3", "ruby" => "3.4.7", "mcp" => "1.1.0" }
     end
 
     def environment_name
@@ -181,7 +181,7 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     def package_facts
       missing = values.fetch("package") == "missing" ? [ "lib/hitch/doctor.rb" ] : []
       {
-        "artifact_version" => "0.2.0.pre.4.dev",
+        "artifact_version" => "0.2.0.pre.4",
         "missing_required_files" => missing,
         "missing_on_disk_files" => [],
         "forbidden_files" => []
@@ -345,7 +345,7 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
         File.write(absolute_path, "fixture\n")
       end
       specification = Struct.new(:version, :full_gem_path, :files).new(
-        Gem::Version.new("0.2.0.pre.4.dev"),
+        Gem::Version.new("0.2.0.pre.4"),
         root,
         []
       )

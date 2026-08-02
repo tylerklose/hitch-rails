@@ -8,18 +8,20 @@ project.
 ## Supported versions
 
 The gem is pre-1.0 and has no public RubyGems release. Security fixes land on
-`main`. Approved source adopters pinning the internal 0.1 checkpoint by a full
-commit `ref:` should expect to move that ref when a fix lands; `0.1.0` is an
-evidence identity, not a supported public patch line.
+`main`. Approved source adopters pinning the internal `0.2.0.pre.4` checkpoint
+by a full commit `ref:` should expect to move that ref when a fix lands;
+`0.2.0.pre.4` is an evidence identity, not a supported public patch line.
 
 | Version | Supported |
 | ------- | --------- |
 | `main`  | ✅        |
 
-The internal 0.1 checkpoint verification matrix is Ruby `>= 3.3, < 4.1`, Rails
-`>= 7.2, < 8.2`, and SQLite or PostgreSQL. Reports that reproduce only on an
-unsupported runtime or adapter may still reveal a real bug, but the maintainer
-will first confirm them on that matrix.
+The internal checkpoint verification matrix is Ruby `>= 3.3, < 4.1`, Rails
+`>= 7.2, < 8.2`, and SQLite or PostgreSQL. The accepted pre.4 artifact also
+pins official TypeScript and Python MCP SDK 2.0.0 client smokes; those exact
+pins are interoperability evidence, not evergreen client support. Reports that
+reproduce only on an unsupported runtime, adapter, or client version may still
+reveal a real bug, but the maintainer will first confirm them on that matrix.
 
 ## Reporting a vulnerability
 

@@ -316,6 +316,10 @@ class MCPListingTest < ActionDispatch::IntegrationTest
   test "simultaneous principals do not share scope or availability" do
     configure_runtime("HitchMcpListingFixtures::ConcurrentRegistry")
     HitchMcpListingFixtures::Concurrent.barrier = Barrier.new(2)
+    # Force Rails' lazy route set to load before the requests race. Otherwise
+    # one thread can transiently observe an empty route set while the other is
+    # loading it, producing a false 404 instead of exercising Hitch isolation.
+    Rails.application.routes.routes.to_a
 
     responses = Queue.new
     threads = [ [ @alpha_mcp, "alpha" ], [ @beta_mcp, "beta" ] ].map do |token, label|

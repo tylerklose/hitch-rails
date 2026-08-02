@@ -1,0 +1,387 @@
+{
+  "schema_version": 1,
+  "schema": "hitch.m4.2-result-normalization-evidence.v1",
+  "milestone": "M4.2",
+  "status": "accepted_internal_result_boundary",
+  "verified_at": "2026-08-02T09:46:29Z",
+  "source": {
+    "commit": "6e5474b5dc8ef2f4439f971837619d3acc1a6860",
+    "tree": "770fea53ef32ff4024a31eaf29c2310c5a92ae3d",
+    "predecessor_commit": "1105335a53c24f6088b2666bf03ff8e9cad2998e",
+    "state": "immutable_implementation_candidate",
+    "worktree_clean_at_capture": true
+  },
+  "artifact": {
+    "version": "0.2.0.pre.3.dev",
+    "target_checkpoint": "0.2.0.pre.3",
+    "distribution": "internal_only",
+    "checkpoint_sealed": false,
+    "published": false,
+    "tag_created": false,
+    "github_release_created": false,
+    "rubygems_publication_performed": false
+  },
+  "result_contract": {
+    "public_constructors": [
+      "Hitch::MCP::Result.text",
+      "Hitch::MCP::Result.structured",
+      "Hitch::MCP::Result.error"
+    ],
+    "public_generic_constructor": false,
+    "public_allocate": false,
+    "accepted_host_return": "exact_Hitch_MCP_Result_instance",
+    "result_subclasses_accepted": false,
+    "implicit_hash_or_model_serialization": false,
+    "constructor_inputs_copied": true,
+    "constructor_values_deeply_frozen": true,
+    "structured_json_values": [
+      "null",
+      "boolean",
+      "integer",
+      "finite_number",
+      "string",
+      "array",
+      "string_keyed_object"
+    ],
+    "structured_output_schema_required": true,
+    "hitch_schema_validation_before_sdk": true,
+    "sdk_result_validation_backstop_enabled": true,
+    "serialized_cap_expression": "JSON.generate(canonical_result).bytesize <= max_result_bytes",
+    "cap_boundary": "inclusive",
+    "max_result_bytes_default": 1048576,
+    "explicit_public_error_source": "Result.error_only",
+    "all_other_failures": "generic_tool_error",
+    "generic_public_text": "Tool execution failed"
+  },
+  "serialized_boundaries": [
+    {
+      "vector_id": "text_exact_cap",
+      "result_path": "text",
+      "serialized_bytes": 74,
+      "accepted_limit_bytes": 74,
+      "rejected_limit_bytes": 73,
+      "exact_outcome": "success",
+      "over_outcome": "generic_error"
+    },
+    {
+      "vector_id": "structured_exact_cap",
+      "result_path": "structured_schema_accepts",
+      "serialized_bytes": 113,
+      "accepted_limit_bytes": 113,
+      "rejected_limit_bytes": 112,
+      "exact_outcome": "success",
+      "over_outcome": "generic_error"
+    },
+    {
+      "vector_id": "explicit_error_exact_cap",
+      "result_path": "explicit_error",
+      "serialized_bytes": 75,
+      "accepted_limit_bytes": 75,
+      "rejected_limit_bytes": 74,
+      "exact_outcome": "explicit_safe_error",
+      "over_outcome": "generic_error"
+    }
+  ],
+  "lattice": {
+    "model": "test/lattice/mcp_result_normalization.json",
+    "command": "lattice generate test/lattice/mcp_result_normalization.json --format json --seed 42 --strength 3",
+    "seed": 42,
+    "strength": 3,
+    "valid_terminal_paths": 14,
+    "exhaustive_assignments_considered": 96,
+    "coverage": "100.0%",
+    "rows": [
+      {
+        "id": 1,
+        "result_path": "text",
+        "wire_size": "within",
+        "public_outcome": "success"
+      },
+      {
+        "id": 2,
+        "result_path": "text",
+        "wire_size": "exact",
+        "public_outcome": "success"
+      },
+      {
+        "id": 3,
+        "result_path": "text",
+        "wire_size": "over",
+        "public_outcome": "generic_error"
+      },
+      {
+        "id": 4,
+        "result_path": "structured_schema_accepts",
+        "wire_size": "within",
+        "public_outcome": "success"
+      },
+      {
+        "id": 5,
+        "result_path": "structured_schema_accepts",
+        "wire_size": "exact",
+        "public_outcome": "success"
+      },
+      {
+        "id": 6,
+        "result_path": "structured_schema_accepts",
+        "wire_size": "over",
+        "public_outcome": "generic_error"
+      },
+      {
+        "id": 7,
+        "result_path": "explicit_error",
+        "wire_size": "within",
+        "public_outcome": "explicit_safe_error"
+      },
+      {
+        "id": 8,
+        "result_path": "explicit_error",
+        "wire_size": "exact",
+        "public_outcome": "explicit_safe_error"
+      },
+      {
+        "id": 9,
+        "result_path": "explicit_error",
+        "wire_size": "over",
+        "public_outcome": "generic_error"
+      },
+      {
+        "id": 10,
+        "result_path": "structured_schema_missing",
+        "wire_size": "not_applicable",
+        "public_outcome": "generic_error"
+      },
+      {
+        "id": 11,
+        "result_path": "structured_schema_rejects",
+        "wire_size": "not_applicable",
+        "public_outcome": "generic_error"
+      },
+      {
+        "id": 12,
+        "result_path": "invalid_return",
+        "wire_size": "not_applicable",
+        "public_outcome": "generic_error"
+      },
+      {
+        "id": 13,
+        "result_path": "serialization_failure",
+        "wire_size": "not_applicable",
+        "public_outcome": "generic_error"
+      },
+      {
+        "id": 14,
+        "result_path": "host_raises",
+        "wire_size": "not_applicable",
+        "public_outcome": "generic_error"
+      }
+    ]
+  },
+  "failure_categories": {
+    "invalid_return": "invalid_result_type",
+    "missing_output_schema": "missing_output_schema",
+    "schema_rejection": "output_schema_mismatch",
+    "oversize_result": "result_too_large",
+    "serialization_failure": "serialization_failure",
+    "host_exception": "host_execution"
+  },
+  "error_reporting": {
+    "reporter": "Rails.error",
+    "reported_exception": "synthetic_framework_wrapper",
+    "original_exception_reported": false,
+    "reported_wrapper_cause_present": false,
+    "reported_context_keys": [
+      "hitch_mcp_category",
+      "hitch_mcp_tool",
+      "hitch_mcp_request_id"
+    ],
+    "tool_name_validation": "ASCII letters digits underscore dot dash; 1-64 characters",
+    "request_id_validation": "ASCII letters digits underscore dot colon dash; 1-128 characters",
+    "unsafe_request_id_reported": false,
+    "expected_forbidden_reported": false,
+    "reporter_failure_changes_public_response": false,
+    "system_stack_failure_escapes_boundary": false,
+    "global_sdk_callback_observations": 0,
+    "response_canary_matches": 0,
+    "subscriber_log_canary_matches": 0,
+    "reported_backtrace_canary_matches": 0,
+    "ephemeral_rails_log_canary_matches": 0,
+    "raw_log_retained_in_repository": false
+  },
+  "mutation_oracles": {
+    "runner_executed": false,
+    "runner_owner": "M4.5",
+    "classification": "named_test_oracles_not_an_executed_mutation_score",
+    "oracles": [
+      {
+        "mutant": "accept_arbitrary_host_return",
+        "oracle_status": "would_fail_named_test",
+        "test": "test_only_Result_is_accepted"
+      },
+      {
+        "mutant": "skip_hitch_output_schema_validation",
+        "oracle_status": "would_fail_named_test",
+        "test": "test_structured_results_require_and_satisfy_the_registered_output_schema"
+      },
+      {
+        "mutant": "reject_exact_cap_boundary",
+        "oracle_status": "would_fail_named_test",
+        "test": "test_output_schema_and_exact_wire_cap"
+      },
+      {
+        "mutant": "publish_non_Result_error_message",
+        "oracle_status": "would_fail_named_test",
+        "test": "test_failure_canaries_never_cross_Hitch_boundaries"
+      },
+      {
+        "mutant": "report_original_host_exception",
+        "oracle_status": "would_fail_named_test",
+        "test": "test_failure_canaries_never_cross_Hitch_boundaries"
+      },
+      {
+        "mutant": "report_unbounded_request_id",
+        "oracle_status": "would_fail_named_test",
+        "test": "test_unsafe_request_IDs_are_omitted_from_error_reporting"
+      },
+      {
+        "mutant": "disable_sdk_result_validation_backstop",
+        "oracle_status": "would_fail_named_test",
+        "test": "test_SDK_output_validation_is_explicitly_enabled"
+      }
+    ]
+  },
+  "acceptance": {
+    "focused_default": {
+      "command": "bin/ci-test test/hitch/mcp/result_test.rb",
+      "runs": 12,
+      "assertions": 204,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0
+    },
+    "runtime_regression": {
+      "command": "bin/ci-test test/hitch/mcp/context_test.rb test/hitch/mcp/registry_test.rb test/hitch/mcp/registry_reload_test.rb test/hitch/mcp/result_test.rb test/hitch/mcp/sdk_contract_test.rb test/hitch/mcp/tool_test.rb test/integration/mcp_listing_test.rb test/integration/mcp_server_endpoint_test.rb test/integration/real_mcp_handshake_test.rb test/hitch/configuration_test.rb test/tooling/package_contract_test.rb",
+      "runs": 98,
+      "assertions": 1537,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0
+    },
+    "sdk_lanes": [
+      {
+        "name": "min",
+        "selector": "= 1.1.0",
+        "resolved": "1.1.0",
+        "lock_sha256": "29d8acb3a46c921ee0611d572c41f89961b788f75f502abf3e4d274f892f9afc",
+        "runs": 19,
+        "assertions": 321,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      {
+        "name": "latest",
+        "selector": ">= 1.1, < 2",
+        "resolution_claim": "latest_compatible_as_last_locked",
+        "resolved": "1.1.0",
+        "lock_sha256": "cf997dd83b752466543a38875e84130384447d7162d8563990fc68e6e7705b0e",
+        "runs": 19,
+        "assertions": 320,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      }
+    ],
+    "rails_profiles": [
+      {
+        "name": "rails_7_2_sqlite",
+        "rails": "7.2.3.2",
+        "adapter": "sqlite3",
+        "runs": 52,
+        "assertions": 641,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      {
+        "name": "rails_8_1_postgresql",
+        "rails": "8.1.3.1",
+        "adapter": "postgresql",
+        "runs": 52,
+        "assertions": 827,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      }
+    ],
+    "contract": {
+      "command": "bin/contract",
+      "runs": 43,
+      "assertions": 686,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "result_lattice_terminal_rows": 14
+    },
+    "wire_lanes": [
+      {
+        "name": "min",
+        "resolved_mcp": "1.1.0",
+        "vectors": 44,
+        "runs": 16,
+        "assertions": 1549,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      {
+        "name": "latest",
+        "resolved_mcp": "1.1.0",
+        "vectors": 44,
+        "runs": 16,
+        "assertions": 1549,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      }
+    ],
+    "server_conformance": {
+      "source_commit": "6e5474b5dc8ef2f4439f971837619d3acc1a6860",
+      "source_tree": "770fea53ef32ff4024a31eaf29c2310c5a92ae3d",
+      "worktree_clean_at_run": true,
+      "success": 49,
+      "expected_failure": 2,
+      "capability_gated_skip": 5,
+      "unexpected_failure": 0,
+      "credential_in_output_or_logs": false
+    },
+    "rubocop": {
+      "files": 175,
+      "offenses": 0
+    },
+    "full_ci": "deferred_to_M4.5_checkpoint",
+    "package_smoke": "deferred_to_M4.5_checkpoint",
+    "mutation_runner": "deferred_to_M4.5_checkpoint"
+  },
+  "checksums": {
+    "result_sha256": "f8a049480471c23e9eb8bcc3871f5abd4c7deee8e8076b60f1aed62fb4a19e17",
+    "result_normalizer_sha256": "f7309e25685a981a760dcc8347d442cec6c8bcaff0c8aa8922a57be8ed824642",
+    "error_normalizer_sha256": "9e92c70e60ba970dc0b64975a2083f5a29490d8d507315470b5a4d571772758c",
+    "response_normalizer_sha256": "b72ecfc11f64b6276a44fbc4f5f3538ce1cd989b529044aa856e8cb12caed91c",
+    "tool_sha256": "470f7b3aee68e48b838f0b15d8bf5c28d7a441ec1e6bf70f949e7b75dacbde63",
+    "configuration_sha256": "51d3d9a4aa548e62af20d95df67544067782d2e54d5152b99eec09af1596c266",
+    "result_test_sha256": "47c60da9d1d823d6ee93f93aa2a8965430f7456f6ae1d5b8cbf0dd1f8b4ed37d",
+    "lattice_sha256": "3d160a6067c118f7721d6e5d6433e255a83e3b813b7cfcebe5deaeacde167d3c",
+    "work_packet_sha256": "2d7bf25f3271fb7a81effc44a8ee5cc7d7741ef4f14277300959714977cd77c4",
+    "conformance_fixture_sha256": "c086a5b833e4096d67a0dc400138b5bba5c642360326870eeff688b054157cb3",
+    "wire_fixture_sha256": "52c968f07b487e9dc59682e2c511ece47e4ecd1a38ec67a664fe20714ca47e0d"
+  },
+  "sensitive_data": {
+    "contains_credentials": false,
+    "contains_raw_arguments": false,
+    "contains_host_results": false,
+    "contains_original_exceptions": false,
+    "contains_principal_records": false,
+    "contains_access_token_records": false
+  }
+}

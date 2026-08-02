@@ -48,12 +48,16 @@ class VerifyToolchainTest < ActiveSupport::TestCase
     assert_includes stderr, "separately named min/latest lanes are required"
   end
 
-  test "rejects a floating Redis image" do
-    mutate_lock { |lock| lock.fetch("redis")["index_digest"] = "latest" }
+  test "rejects a floating Redis image or gem range" do
+    mutate_lock do |lock|
+      lock.fetch("redis")["index_digest"] = "latest"
+      lock.fetch("redis")["gem_requirement"] = ">= 5"
+    end
 
     _stdout, stderr, status = run_verifier
     assert_not status.success?
     assert_includes stderr, "immutable image index digest is required"
+    assert_includes stderr, "exact >= 5, < 7 gem requirement is required"
   end
 
   test "rejects any expected-failure drift" do

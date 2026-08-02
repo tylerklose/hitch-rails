@@ -101,14 +101,15 @@ module Hitch
     config.to_prepare do
       configuration = Hitch.configuration
       next unless configuration.resource_uri.present?
-      next if configuration.mcp.registry.nil? &&
-        configuration.mcp.server_info.nil? &&
-        configuration.mcp.scope_resolver.nil?
+      next unless configuration.mcp.__send__(:runtime_configured?)
+
+      configuration.mcp.validate!
 
       configuration.mcp.__send__(
         :prepare_registry!,
         supported_scopes: configuration.supported_scopes
       )
+      configuration.mcp.__send__(:prepare_rate_store!)
     end
 
     # Filter OAuth secrets out of Rails request logs. Without this, a

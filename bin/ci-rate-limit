@@ -1,0 +1,194 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "fileutils"
+require "json"
+require "open3"
+require "rbconfig"
+require "redis"
+require "securerandom"
+require "time"
+require "timeout"
+require "tmpdir"
+require "yaml"
+
+ROOT = File.expand_path("..", __dir__)
+LOCK_PATH = File.join(ROOT, "test/conformance/toolchain.lock.yml")
+DEFAULT_EVIDENCE_PATH = File.join(ROOT, "docs/evidence/0.2.0/rate-limit/cross-process.json")
+LANES = %w[rails_7_2_sqlite rails_8_1_postgresql].freeze
+MINIMUM_TEST_RUNS = 27
+TEST_FILES = %w[
+  test/hitch/configuration_test.rb
+  test/hitch/mcp/rate_limit_test.rb
+  test/integration/mcp_rate_limit_cross_process_contract.rb
+  test/integration/mcp_rate_limit_test.rb
+].freeze
+
+def capture!(*command, environment: {}, timeout_seconds: 180, stream: true)
+  output = +""
+  status = nil
+  Open3.popen2e(environment, *command, chdir: ROOT, pgroup: true) do |_stdin, io, wait_thread|
+    reader = Thread.new do
+      io.each do |chunk|
+        output << chunk
+        $stdout.write(chunk) if stream
+      end
+    end
+    status = Timeout.timeout(timeout_seconds) { wait_thread.value }
+    reader.join
+  rescue Timeout::Error
+    Process.kill("TERM", -wait_thread.pid)
+    begin
+      Timeout.timeout(5) { wait_thread.value }
+    rescue Timeout::Error
+      Process.kill("KILL", -wait_thread.pid)
+      wait_thread.value
+    end
+    abort "Timed out after #{timeout_seconds}s: #{command.join(' ')}"
+  end
+  abort "Command failed (#{status.exitstatus}): #{command.join(' ')}" unless status.success?
+
+  output
+end
+
+lock = YAML.safe_load_file(LOCK_PATH, permitted_classes: [], aliases: false)
+redis_lock = lock.fetch("redis")
+image = redis_lock.fetch("image")
+index_digest = redis_lock.fetch("index_digest")
+architecture = RbConfig::CONFIG.fetch("host_cpu")
+platform, digest_key = case architecture
+when /arm64|aarch64/ then [ "linux/arm64", "linux_arm64_digest" ]
+when /x86_64|amd64/ then [ "linux/amd64", "linux_amd64_digest" ]
+else
+  abort "Unsupported Docker architecture for the pinned Redis lane: #{architecture}"
+end
+platform_digest = redis_lock.fetch(digest_key)
+repository = image.sub(/:[^\/:]+\z/, "")
+pinned_image = "#{repository}@#{platform_digest}"
+container_name = "hitch-m43-#{Process.pid}-#{SecureRandom.hex(4)}"
+evidence_path = File.expand_path(ENV.fetch("HITCH_RATE_LIMIT_EVIDENCE_PATH", DEFAULT_EVIDENCE_PATH), ROOT)
+
+capture!("docker", "pull", "--platform", platform, pinned_image, timeout_seconds: 300)
+container_id = capture!(
+  "docker", "run", "--detach", "--rm",
+  "--name", container_name,
+  "--platform", platform,
+  "--publish", "127.0.0.1::6379",
+  pinned_image,
+  "redis-server", "--save", "", "--appendonly", "no",
+  timeout_seconds: 60,
+  stream: false
+).strip
+
+begin
+  port_output = capture!("docker", "port", container_name, "6379/tcp", timeout_seconds: 30, stream: false)
+  port = port_output[/:(\d+)\s*\z/, 1]
+  abort "Could not resolve the pinned Redis container port" unless port
+  redis_url = "redis://127.0.0.1:#{port}/0"
+  redis = Redis.new(url: redis_url, timeout: 0.25, connect_timeout: 0.25, reconnect_attempts: 0)
+  deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 20
+  loop do
+    break if redis.ping == "PONG"
+  rescue Redis::BaseError, RedisClient::Error, SystemCallError
+    abort "Pinned Redis did not become ready" if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+    sleep 0.05
+  end
+  redis_version = redis.info("server").fetch("redis_version")
+
+  Dir.mktmpdir("hitch-rate-limit-lanes-") do |directory|
+    rails_log = File.join(directory, "rails.log")
+    File.open(rails_log, File::WRONLY | File::CREAT | File::EXCL, 0o600) { }
+    lane_evidence = LANES.map do |lane|
+      lane_path = File.join(directory, "#{lane}.json")
+      environment = {
+        "HITCH_MCP_REDIS_URL" => redis_url,
+        "HITCH_MCP_REQUEST_LIMIT_TO" => "12",
+        "HITCH_MCP_REQUEST_LIMIT_WITHIN" => "30",
+        "HITCH_RATE_LIMIT_PROCESS_COUNT" => "4",
+        "HITCH_RATE_LIMIT_CALLS" => "5",
+        "HITCH_RATE_LIMIT_LANE_EVIDENCE" => lane_path,
+        "HITCH_CONFORMANCE_RAILS_LOG" => rails_log,
+        "HITCH_FAIL_ON_SKIPS" => "1"
+      }
+      output = capture!(
+        File.join(ROOT, "bin/ci-appraisal"), lane, "--",
+        File.join(ROOT, "bin/rails"), "test", *TEST_FILES,
+        environment:,
+        timeout_seconds: 240
+      )
+      summary = output.scan(/(\d+) runs, (\d+) assertions, (\d+) failures, (\d+) errors, (\d+) skips/).last
+      abort "Missing Minitest summary for #{lane}" unless summary
+      abort "#{lane} did not run every rate-limit suite" if summary.fetch(0).to_i < MINIMUM_TEST_RUNS
+      abort "#{lane} rate-limit suite was not clean" unless summary.drop(2).map(&:to_i) == [ 0, 0, 0 ]
+
+      JSON.parse(File.read(lane_path)).merge(
+        "test_summary" => {
+          "runs" => summary.fetch(0).to_i,
+          "assertions" => summary.fetch(1).to_i,
+          "failures" => summary.fetch(2).to_i,
+          "errors" => summary.fetch(3).to_i,
+          "skips" => summary.fetch(4).to_i
+        }
+      )
+    end
+
+    source_commit = capture!("git", "rev-parse", "HEAD", stream: false).strip
+    source_tree = capture!("git", "rev-parse", "HEAD^{tree}", stream: false).strip
+    worktree_clean = capture!("git", "status", "--porcelain", stream: false).empty?
+    evidence = {
+      schema_version: 1,
+      schema: "hitch.m4.3-rate-limit-cross-process-evidence.v1",
+      milestone: "M4.3",
+      status: "verified_internal_rate_boundary",
+      verified_at: Time.now.utc.iso8601,
+      source: {
+        commit: source_commit,
+        tree: source_tree,
+        worktree_clean_before_evidence_write: worktree_clean
+      },
+      artifact: {
+        version: "0.2.0.pre.3.dev",
+        target_checkpoint: "0.2.0.pre.3",
+        distribution: "internal_only",
+        checkpoint_sealed: false,
+        published: false,
+        tag_created: false,
+        github_release_created: false,
+        rubygems_publication_performed: false
+      },
+      redis: {
+        image:,
+        index_digest:,
+        platform:,
+        platform_digest:,
+        pulled_reference: pinned_image,
+        container_id: container_id[0, 12],
+        server_version: redis_version,
+        gem_requirement: redis_lock.fetch("gem_requirement"),
+        gem_version: Redis::VERSION
+      },
+      contract: {
+        algorithm: "fixed_window",
+        identity: "HMAC-SHA256(canonical JSON principal base class, principal id, client id)",
+        bearer_token_in_key: false,
+        raw_identifiers_in_key: false,
+        increment_and_first_expiry: "one Redis Lua invocation",
+        shared_methods: %w[server/discover tools/list tools/call],
+        exact_limit_status: 200,
+        exceeded_status: 429,
+        retry_after: "conservative window seconds",
+        nil_or_store_error_status: 503,
+        store_error_downstream_body_registry_sdk_host_calls: 0,
+        production_without_redis_url: "boot_refused",
+        nonproduction_memory_store_only: true
+      },
+      lanes: lane_evidence
+    }
+    FileUtils.mkdir_p(File.dirname(evidence_path))
+    File.write(evidence_path, JSON.pretty_generate(evidence) + "\n")
+    puts "Rate-limit evidence written to #{evidence_path}"
+  end
+ensure
+  redis&.close
+  Open3.capture3("docker", "stop", "--time", "1", container_name) if container_id
+end

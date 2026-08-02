@@ -160,7 +160,6 @@ module Hitch
       def hitch_mcp_rate_admission!
         admission = hitch_mcp_admit_authenticated_request(
           principal: @hitch_mcp_principal,
-          access_token: @hitch_mcp_access_token,
           client_id: @hitch_mcp_client_id
         )
         return if admission == :allow
@@ -171,6 +170,7 @@ module Hitch
         end
 
         response.headers["Retry-After"] = retry_after.to_s
+        response.headers["Access-Control-Expose-Headers"] = "Retry-After"
         head :too_many_requests
       rescue StandardError
         head :service_unavailable
@@ -471,11 +471,11 @@ module Hitch
         Registry.__send__(:runtime_listing, snapshot:, context:)
       end
 
-      # Private staging seams. M4 owns production rate admission and public
-      # observation events.
+      # Private test/observation seams. Admission is production-owned here;
+      # M4.4 replaces the no-op observation hooks with public safe events.
 
-      def hitch_mcp_admit_authenticated_request(**)
-        :allow
+      def hitch_mcp_admit_authenticated_request(principal:, client_id:)
+        RequestRateLimiter.call(principal:, client_id:)
       end
 
       def hitch_mcp_body_parse_started!; end

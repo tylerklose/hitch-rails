@@ -26,6 +26,13 @@ GitHub-released, or published to RubyGems.
   backstop. Only `Result.error` preserves its explicit safe message; invalid,
   oversize, serialization, and unexpected host failures are generic on the wire
   and report only a sanitized wrapper through `Rails.error`.
+- Added the authenticated endpoint-wide fixed-window request limit. One HMAC key
+  per validated principal/client spans discovery, listing, and calls, so bearer
+  rotation cannot reset quota and Redis never receives raw identity values. One
+  Lua invocation increments and sets first expiry; the exact limit is admitted,
+  over-limit requests return 429 with conservative `Retry-After`, and Redis
+  nil/errors return 503 before body, Registry, SDK, or host work. Production
+  requires Redis while development/test may use the private memory store.
 
 ## [0.2.0.pre.2] - 2026-08-02
 

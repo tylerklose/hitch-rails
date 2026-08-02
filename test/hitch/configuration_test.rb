@@ -23,6 +23,8 @@ class Hitch::ConfigurationTest < ActiveSupport::TestCase
     configuration.mcp.registry = "McpToolRegistry"
     assert_raises(ArgumentError) { configuration.mcp.validate! }
     configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { nil }
+    assert_raises(ArgumentError) { configuration.mcp.validate! }
+    configuration.mcp.request_limit = { to: 120, within: 1.minute }
     assert configuration.mcp.validate!
   end
 
@@ -50,6 +52,69 @@ class Hitch::ConfigurationTest < ActiveSupport::TestCase
     assert_nil Hitch.configuration.mcp.registry
     assert_nil Hitch.configuration.mcp.server_info
     assert_nil Hitch.configuration.mcp.scope_resolver
+    assert_nil Hitch.configuration.mcp.request_limit
+    assert_nil Hitch.configuration.mcp.rate_limit_redis_url
+  end
+
+  test "MCP request limit normalizes a copied whole-second fixed window" do
+    source = { "to" => 12, "within" => 2.minutes }
+    Hitch.configuration.mcp.request_limit = source
+    source["to"] = 99
+
+    assert_equal({ to: 12, within: 120 }, Hitch.configuration.mcp.request_limit)
+    assert_predicate Hitch.configuration.mcp.request_limit, :frozen?
+
+    invalid = [
+      nil,
+      {},
+      { to: 1 },
+      { to: 1, within: 60, extra: true },
+      { to: 1, "to" => 2, within: 60 },
+      { to: 0, within: 60 },
+      { to: 1.0, within: 60 },
+      { to: 1, within: 0 },
+      { to: 1, within: 1.5 },
+      { to: 1, within: 1.5.seconds }
+    ]
+    invalid.each do |value|
+      assert_raises(ArgumentError, value.inspect) do
+        Hitch.configuration.mcp.request_limit = value
+      end
+    end
+  end
+
+  test "MCP Redis URL accepts copied Redis URLs and rejects ambiguous endpoints" do
+    source = +"rediss://user:password@redis.example.test:6380/2?timeout=1"
+    Hitch.configuration.mcp.rate_limit_redis_url = source
+    source.replace("redis://attacker.example.test/0")
+
+    assert_equal "rediss://user:password@redis.example.test:6380/2?timeout=1",
+      Hitch.configuration.mcp.rate_limit_redis_url
+    assert_predicate Hitch.configuration.mcp.rate_limit_redis_url, :frozen?
+
+    [ "", "http://redis.example.test", "redis:/missing-host", "redis://redis.example.test/db",
+      "redis://redis.example.test/0#fragment", "redis://redis.example.test/0 bad" ].each do |value|
+      assert_raises(ArgumentError, value) do
+        Hitch.configuration.mcp.rate_limit_redis_url = value
+      end
+    end
+  end
+
+  test "production MCP runtime refuses a missing Redis URL" do
+    configuration = Hitch.configuration.mcp
+    configuration.registry = "McpToolRegistry"
+    configuration.server_info = ->(_context) { { name: "example", version: "1" } }
+    configuration.scope_resolver = ->(principal:, access_token:, request:) { principal }
+    configuration.request_limit = { to: 10, within: 60 }
+    production = ActiveSupport::EnvironmentInquirer.new("production")
+
+    stub_class_method(Rails, :env, -> { production }) do
+      error = assert_raises(ArgumentError) { configuration.validate! }
+      assert_includes error.message, "rate_limit_redis_url is required in production"
+
+      configuration.rate_limit_redis_url = "redis://redis.example.test/0"
+      assert configuration.validate!
+    end
   end
 
   test "resource URI and supported scopes have explicit persistence-work bounds" do

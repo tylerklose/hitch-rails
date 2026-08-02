@@ -161,6 +161,7 @@ class Hitch::MCP::ContextEndpointTest < ActionDispatch::IntegrationTest
         { name: "hitch-context", version: "0.2.0" }
       }
       configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { nil }
+      configuration.mcp.request_limit = { to: 120, within: 60 }
     end
     Hitch.configuration.validate!
     Hitch.configuration.mcp.__send__(

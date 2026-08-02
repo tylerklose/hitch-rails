@@ -193,6 +193,12 @@ class Hitch::EngineTest < ActiveSupport::TestCase
     Hitch.configuration.mcp.scope_resolver = lambda do |principal:, access_token:, request:|
       nil
     end
+    error = assert_raises(ArgumentError) do
+      configuration_initializer.run(Rails.application)
+    end
+    assert_includes error.message, "request_limit"
+
+    Hitch.configuration.mcp.request_limit = { to: 120, within: 60 }
     assert_nothing_raised { configuration_initializer.run(Rails.application) }
   ensure
     Hitch.reset_configuration!

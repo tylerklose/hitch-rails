@@ -128,6 +128,8 @@ class Hitch::MCP::RegistryReloadTest < ActiveSupport::TestCase
       configuration.supported_scopes = [ "mcp" ]
       configuration.mcp.registry = "McpToolRegistry"
       configuration.mcp.server_info = ->(_context) { { name: "dummy", version: "1" } }
+      configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
+      configuration.mcp.request_limit = { to: 120, within: 60 }
     end
 
     Rails.application.eager_load!
@@ -149,6 +151,9 @@ class Hitch::MCP::RegistryReloadTest < ActiveSupport::TestCase
     Hitch.configure do |configuration|
       configuration.resource_uri = "https://dummy.test/mcp"
       configuration.mcp.registry = "MissingMcpToolRegistry"
+      configuration.mcp.server_info = ->(_context) { { name: "dummy", version: "1" } }
+      configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
+      configuration.mcp.request_limit = { to: 120, within: 60 }
     end
 
     assert_raises(ArgumentError) { Rails.application.reloader.prepare! }

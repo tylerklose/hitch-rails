@@ -66,10 +66,11 @@ class McpController < ActionController::API
 
   private
 
-  def hitch_mcp_admit_authenticated_request(**)
+  def hitch_mcp_admit_authenticated_request(**identity)
     case request.get_header("HTTP_X_HITCH_WIRE_ADMISSION")
     when "reject" then { retry_after: 60 }
     when "raise" then raise "wire-admission-secret"
+    when "runtime" then super(**identity)
     else :allow
     end
   end

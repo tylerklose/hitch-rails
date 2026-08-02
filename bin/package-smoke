@@ -204,12 +204,14 @@ def smoke_runner(profile_name, expected_adapter)
     Hitch.configuration.mcp.scope_resolver = lambda do |principal:, access_token:, request:|
       principal
     end
+    Hitch.configuration.mcp.request_limit = { to: 120, within: 60 }
     Hitch.configuration.mcp.max_request_bytes = 8_192
     Hitch.configuration.validate!
     Hitch.configuration.mcp.__send__(
       :prepare_registry!,
       supported_scopes: Hitch.configuration.supported_scopes
     )
+    Hitch.configuration.mcp.__send__(:prepare_rate_store!)
 
     redirect_uri = "https://client.example/callback"
     resource_uri = Hitch.configuration.resource_uri

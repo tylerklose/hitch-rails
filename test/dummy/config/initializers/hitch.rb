@@ -20,6 +20,11 @@ Hitch.configure do |config|
     }
   }
   config.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
+  config.mcp.request_limit = {
+    to: Integer(ENV.fetch("HITCH_MCP_REQUEST_LIMIT_TO", "120"), 10),
+    within: Integer(ENV.fetch("HITCH_MCP_REQUEST_LIMIT_WITHIN", "60"), 10).seconds
+  }
+  config.mcp.rate_limit_redis_url = ENV["HITCH_MCP_REDIS_URL"]
   config.mcp.max_request_bytes = 1_024
   config.mcp.max_result_bytes = 1_024
 end

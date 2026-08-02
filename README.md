@@ -45,8 +45,10 @@ compatibility boundary, authenticated endpoint, public request Context, and
 validated host Registry descriptors. Per-principal registry resolution,
 filtered listing, and deny-default argument policy are active; the closed Result
 channel with schema validation, an exact byte cap, and sanitized failure
-reporting is active too. The production request store and public observation
-events remain later roadmap milestones. Existing integrations may keep using the
+reporting is active too. The production request boundary is active as well: one
+Redis-backed authenticated fixed window spans discovery, listing, and calls for
+each principal/client. Public observation events remain later roadmap work.
+Existing integrations may keep using the
 deprecated `Hitch::ServerEndpoint` compatibility helper for bearer validation
 and response shaping while moving toward the 0.2 endpoint.
 
@@ -69,7 +71,8 @@ The official Ruby MCP SDK (the `mcp` gem) ships *client-side* OAuth but no
 server-side auth helpers, and no Ruby/Rails gem packaged the server-side
 OAuth 2.1 + PKCE plumbing an MCP server needs. Hitch fills that gap. It
 now directly depends on `mcp >= 1.1, < 2` and isolates it behind a private
-adapter. Hitch still provides the accepted auth substrate plus optional
+adapter. The 0.2 runtime also directly bounds `redis >= 5, < 7` for its
+production admission store. Hitch still provides the accepted auth substrate plus optional
 legacy response-shaping helpers during the internal 0.2 migration.
 
 It is opinionated about **what** to implement (the [2026-07-28 MCP
@@ -134,7 +137,10 @@ Hitch.configure do |config|
   config.mcp.scope_resolver = ->(principal:, access_token:, request:) {
     principal.account
   }
+  config.mcp.request_limit = { to: 120, within: 1.minute }
+  config.mcp.rate_limit_redis_url = ENV["HITCH_MCP_REDIS_URL"]
   config.mcp.max_request_bytes = 1.megabyte
+  config.mcp.max_result_bytes = 1.megabyte
   # Optional:
   config.principal_method = :current_user  # method on controllers
   config.login_path = "/sign_in"           # where to redirect when unauth'd
@@ -215,9 +221,12 @@ cannot replace framework-owned `.call`.
 
 Auth-only 0.1 adopters that configure no MCP runtime setting keep booting
 unchanged during this staged line. Configuring any MCP runtime setting requires
-the named registry plus callable `server_info` and `scope_resolver` settings at
-boot. The resolver receives the validated principal, access-token record, and
-request exactly once and returns one opaque host scope object or `nil`.
+the named registry, callable `server_info` and `scope_resolver`, and a positive
+`request_limit` at boot. Production also requires a `redis://` or `rediss://`
+`rate_limit_redis_url`; development and test may use the private in-process
+memory store. The resolver receives the validated principal, access-token
+record, and request exactly once and returns one opaque host scope object or
+`nil`.
 
 The validated Registry is the endpoint's only packaged admission path. Each
 request resolves current tool classes, applies deny-default
@@ -237,6 +246,14 @@ all results are measured after JSON serialization against
 `Result.error` message is public. Every other invalid, oversize, serialization,
 or unexpected host failure is generic and reports only sanitized structural
 context through `Rails.error`.
+
+Every authenticated `server/discover`, `tools/list`, and `tools/call` request
+shares one fixed-window quota for the validated principal and client. The Redis
+key is an HMAC of those stable identifiers, so bearer-token rotation does not
+reset quota and raw identifiers are not stored as keys. Hitch increments and
+assigns first expiry in one Lua call. The exact configured count is admitted;
+the next request receives `429` plus `Retry-After`. Redis nil/errors return
+`503` before body, Registry, SDK, or host work.
 
 ### Client ID Metadata Documents
 

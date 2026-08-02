@@ -99,6 +99,7 @@ scenario_lock = contract["lattice_scenarios"] || {}
 errors << "lattice contract: strength 8 and 12 expected rows are required" unless scenario_lock["seed"] == 42 && scenario_lock["exhaustive_strength"] == 8 && scenario_lock["expected_rows"] == 12
 
 redis = lock["redis"] || {}
+errors << "redis: exact >= 5, < 7 gem requirement is required" unless redis["gem_requirement"] == ">= 5, < 7"
 errors << "redis: immutable image index digest is required" unless redis["image"].to_s.include?("redis:7.4.5-alpine") && redis["index_digest"].to_s.match?(/\Asha256:[0-9a-f]{64}\z/)
 errors << "redis: linux amd64/arm64 digests are required" unless %w[linux_amd64_digest linux_arm64_digest].all? { |key| redis[key].to_s.match?(/\Asha256:[0-9a-f]{64}\z/) }
 

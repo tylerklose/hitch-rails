@@ -428,6 +428,7 @@ class MCPListingTest < ActionDispatch::IntegrationTest
         end
         principal.email.dup.freeze
       end
+      configuration.mcp.request_limit = { to: 120, within: 60 }
       configuration.mcp.max_request_bytes = 8_192
     end
     Hitch.configuration.validate!

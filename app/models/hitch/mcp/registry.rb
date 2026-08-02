@@ -45,6 +45,18 @@ module Hitch
         :scopes
       )
       Snapshot = Data.define(:registry_name, :entries)
+      CallResolution = Data.define(:status, :tool, :required_scopes)
+      RuntimeTool = Data.define(:entry, :tool_class) do
+        def name = entry.name
+        def description = entry.description
+        def input_schema = entry.input_schema
+        def output_schema = entry.output_schema
+        def annotations = entry.annotations
+
+        def call(arguments:, context:)
+          tool_class.call(arguments:, context:)
+        end
+      end
 
       class SchemaContract
         def initialize(value, label:, input:)
@@ -293,6 +305,74 @@ module Hitch
           raise ArgumentError, "mcp.registry or one of its tools could not be resolved"
         end
 
+        def runtime_listing(snapshot:, context:)
+          validate_snapshot!(snapshot)
+
+          snapshot.entries.filter_map do |entry|
+            runtime_tool = available_runtime_tool(entry, context)
+            runtime_tool if runtime_tool && scopes_granted?(entry.scopes, context)
+          end.freeze
+        end
+
+        def runtime_call(snapshot:, name:, context:)
+          validate_snapshot!(snapshot)
+          entry = snapshot.entries.find { |candidate| candidate.name == name }
+          return hidden_call_resolution unless entry
+
+          runtime_tool = available_runtime_tool(entry, context)
+          return hidden_call_resolution unless runtime_tool
+
+          unless scopes_granted?(entry.scopes, context)
+            return CallResolution.new(
+              status: :insufficient_scope,
+              tool: nil,
+              required_scopes: entry.scopes
+            )
+          end
+
+          CallResolution.new(
+            status: :available,
+            tool: runtime_tool,
+            required_scopes: [].freeze
+          )
+        end
+
+        def available_runtime_tool(entry, context)
+          tool_class = resolve_named_constant(entry.class_name, "mcp.registry tool")
+          unless tool_class.is_a?(Class) && tool_class < Tool &&
+              tool_class.name == entry.class_name && tool_class.tool_name == entry.name &&
+              tool_class.method(:call).owner == Tool.singleton_class
+            raise ArgumentError, "MCP registry is unavailable"
+          end
+
+          available = tool_class.available_to?(context)
+          unless available == true || available == false
+            raise ArgumentError, "MCP tool availability must return a Boolean"
+          end
+          return unless available
+
+          RuntimeTool.new(entry:, tool_class:)
+        rescue NameError
+          raise ArgumentError, "MCP registry is unavailable"
+        end
+
+        def scopes_granted?(required_scopes, context)
+          granted_scopes = context.granted_scopes
+          unless granted_scopes.is_a?(Array) && granted_scopes.all?(String)
+            raise ArgumentError, "MCP context scopes are unavailable"
+          end
+
+          required_scopes.all? { |scope| granted_scopes.include?(scope) }
+        end
+
+        def hidden_call_resolution
+          CallResolution.new(status: :hidden, tool: nil, required_scopes: [].freeze)
+        end
+
+        def validate_snapshot!(snapshot)
+          raise ArgumentError, "MCP registry is unavailable" unless snapshot.is_a?(Snapshot)
+        end
+
         def build_entry(declaration, index:, supported_scopes:)
           label = "mcp.registry entry #{index + 1}"
           class_name = declaration.class_name
@@ -443,7 +523,8 @@ module Hitch
         end
       end
 
-      private_constant :Declaration, :Entry, :Snapshot, :SchemaContract,
+      private_constant :Declaration, :Entry, :Snapshot, :CallResolution,
+        :RuntimeTool, :SchemaContract,
         :TOOL_NAME_PATTERN, :CONSTANT_NAME_PATTERN, :OAUTH_SCOPE_PATTERN,
         :MAX_TOOL_NAME_LENGTH, :MAX_SCOPE_BYTES, :MAX_SCHEMA_DEPTH,
         :MAX_SCHEMA_OBJECTS, :MAX_SCHEMA_BYTES, :JSON_SCHEMA_2020_12,

@@ -101,7 +101,9 @@ module Hitch
     config.to_prepare do
       configuration = Hitch.configuration
       next unless configuration.resource_uri.present?
-      next if configuration.mcp.registry.nil? && configuration.mcp.server_info.nil?
+      next if configuration.mcp.registry.nil? &&
+        configuration.mcp.server_info.nil? &&
+        configuration.mcp.scope_resolver.nil?
 
       configuration.mcp.__send__(
         :prepare_registry!,

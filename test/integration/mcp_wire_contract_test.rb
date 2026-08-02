@@ -41,6 +41,7 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
       configuration.allowed_origins = [ "https://allowed.example" ]
       configuration.supported_scopes = [ "mcp" ]
       configuration.mcp.max_request_bytes = MAX_REQUEST_BYTES
+      configuration.mcp.registry = "McpToolRegistry"
       configuration.mcp.server_info = ->(_context) {
         {
           name: "hitch-wire",
@@ -49,7 +50,13 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
           instructions: "Use the authenticated private slice."
         }
       }
+      configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
     end
+    Hitch.configuration.mcp.__send__(
+      :prepare_registry!,
+      supported_scopes: Hitch.configuration.supported_scopes
+    )
+    McpController.wire_slice_enabled = true
 
     @user = User.create!(email: "wire@example.test")
     @tokens = {
@@ -63,6 +70,7 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
   end
 
   teardown do
+    McpController.wire_slice_enabled = false
     Hitch.reset_configuration!
   end
 

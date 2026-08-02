@@ -3,7 +3,7 @@ contract:
   protocol_version: "2026-07-28"
   roadmap:
     path: ROADMAP.md
-    sha256: af095ce49cd03407723a41eca8a0fdc52ec6ae66c6ac6c3c4d4af2c423643bee
+    sha256: de9067b06382ac6cfdf24ee6d909e176d833ed77f0a13a922fa32a445ef76e4b
   lattice_schema:
     path: test/lattice/mcp_tool_authorization.json
     sha256: 70aec37011d2be7a1b7ed8e72118cd7d4c2305848b645c6745cdf1ba385710e7

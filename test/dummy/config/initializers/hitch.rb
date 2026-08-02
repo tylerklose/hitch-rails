@@ -16,8 +16,9 @@ Hitch.configure do |config|
       name: "hitch-dummy",
       version: "0.2.0",
       title: "Hitch Dummy",
-      instructions: "Use the private M2 transport slice."
+      instructions: "Use only tools available to the signed-in principal."
     }
   }
+  config.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
   config.mcp.max_request_bytes = 1_024
 end

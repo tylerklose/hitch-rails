@@ -814,7 +814,8 @@ reload-safe tool list. Seal internal `0.2.0.pre.2` checkpoint evidence.
 
 Ship context and SDK handoff, string-configured registry, atomic `to_prepare`
 validation, scope resolver, deny-default `.available_to?`, static scope
-filtering, deterministic order, and test helpers.
+filtering, deterministic order, and host-integration acceptance support. The
+frozen public `Hitch::MCP::TestHelper` API remains owned by M5.2.
 
 Exit gates cover unknown/unavailable/scope-hidden behavior and precedence;
 invalid registry boot/reload; no stale classes; eager loading; simultaneous
@@ -970,7 +971,7 @@ never rewritten.
 | M2.3 | M2.2 | pinned server/auth conformance scripts | `bin/conformance-server`; redacted checks.json and internal pre.1 checkpoint | 3d/high | R1 |
 | M3.1 | M2.3 | Context and SDK handoff | `bin/ci-test test/hitch/mcp/context_test.rb`; min/latest SDK results | 2d/medium | R1 |
 | M3.2 | M3.1 | Registry/to_prepare validation | `bin/ci-test test/hitch/mcp/registry_*`; reload evidence | 4d/high | R1 |
-| M3.3 | M3.2 | availability, scopes, listing, helpers | `bin/ci-test test/integration/mcp_listing_test.rb`; isolation evidence | 3d/high | R1 |
+| M3.3 | M3.2 | availability, scopes, listing, integration support | `bin/ci-test test/integration/mcp_listing_test.rb`; isolation evidence | 3d/high | R1 |
 | M4.1 | M3.3 | final Tool call/argument policy | `bin/ci-test test/hitch/mcp/tool_test.rb`; denial mutations | 3d/high | R1 |
 | M4.2 | M4.1 | Result/output cap/error normalization | `bin/ci-test test/hitch/mcp/result_test.rb`; canary evidence | 3d/high | R1 |
 | M4.3 | M4.1 | authenticated rate limit/Redis Lua contract | `bin/ci-rate-limit`; cross-process evidence | 4d/high | R1 |

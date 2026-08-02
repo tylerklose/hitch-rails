@@ -137,8 +137,9 @@ module Hitch
         return hitch_mcp_unauthorized! unless raw_token
 
         access_token = Hitch::AccessToken.find_by_token(raw_token)
+        resource = Hitch.configuration.resource_uri
         client_id = access_token&.client_id
-        valid = access_token&.valid_for_resource?(Hitch.configuration.resource_uri) &&
+        valid = access_token&.valid_for_resource?(resource) &&
           client_id.is_a?(String) && !client_id.empty?
         return hitch_mcp_unauthorized! unless valid
 
@@ -148,6 +149,8 @@ module Hitch
         @hitch_mcp_access_token = access_token
         @hitch_mcp_principal = principal
         @hitch_mcp_client_id = client_id.dup.freeze
+        @hitch_mcp_resource = resource.dup.freeze
+        @hitch_mcp_granted_scopes = access_token.scopes.to_s.split.map { |scope| scope.dup.freeze }.freeze
       rescue ActiveRecord::RecordNotFound, NameError
         hitch_mcp_unauthorized!
       rescue StandardError
@@ -188,11 +191,14 @@ module Hitch
       end
 
       def hitch_mcp_dispatch!(verified_request)
-        context = hitch_mcp_context(verified_request)
+        scope = hitch_mcp_resolve_scope
+        context = hitch_mcp_context(verified_request, scope:)
         server_info = hitch_mcp_server_info(context)
 
+        snapshot = Hitch.configuration.mcp.__send__(:registry_snapshot!)
         hitch_mcp_registry_resolved!
-        tools = hitch_mcp_tools
+        tools = hitch_mcp_tools(verified_request:, context:, snapshot:)
+        return if performed?
 
         hitch_mcp_sdk_dispatch_started!
         protocol_response = SDKAdapter.call(
@@ -204,15 +210,26 @@ module Hitch
         hitch_mcp_render_protocol!(protocol_response, status: 200)
       end
 
-      def hitch_mcp_context(verified_request)
+      def hitch_mcp_resolve_scope
+        resolver = Hitch.configuration.mcp.scope_resolver
+        raise ArgumentError, "mcp.scope_resolver is required" unless resolver.respond_to?(:call)
+
+        resolver.call(
+          principal: @hitch_mcp_principal,
+          access_token: @hitch_mcp_access_token,
+          request: request
+        )
+      end
+
+      def hitch_mcp_context(verified_request, scope:)
         metadata = verified_request.fetch("params").fetch("_meta")
         Context.new(
           principal: @hitch_mcp_principal,
           access_token: @hitch_mcp_access_token,
-          scope: nil,
-          granted_scopes: @hitch_mcp_access_token.scopes.to_s.split,
+          scope: scope,
+          granted_scopes: @hitch_mcp_granted_scopes,
           client_id: @hitch_mcp_client_id,
-          resource: Hitch.configuration.resource_uri,
+          resource: @hitch_mcp_resource,
           request_id: verified_request.fetch("id"),
           remote_ip: request.remote_ip,
           user_agent: request.user_agent,
@@ -408,6 +425,14 @@ module Hitch
         head :unauthorized
       end
 
+      def hitch_mcp_insufficient_scope!(required_scopes)
+        response.headers["WWW-Authenticate"] = "Bearer error=\"insufficient_scope\", " \
+          "scope=\"#{required_scopes.join(' ')}\", " \
+          "resource_metadata=\"#{hitch_mcp_resource_metadata_url}\""
+        response.headers["Access-Control-Expose-Headers"] = "WWW-Authenticate"
+        head :forbidden
+      end
+
       def hitch_mcp_bearer_challenge
         scope = Array.wrap(Hitch.configuration.supported_scopes).join(" ")
         %(Bearer resource_metadata="#{hitch_mcp_resource_metadata_url}", scope="#{scope}")
@@ -427,14 +452,27 @@ module Hitch
         response.headers["Vary"] = values.join(", ")
       end
 
-      # Private staging seams. M3 owns the registry/context replacement; M4
-      # owns production rate admission and public observation events.
-      def hitch_mcp_tools
-        [ SliceTool.new(on_invoke: lambda {
-          hitch_mcp_invocation_observed!
-          hitch_mcp_host_called!
-        }) ]
+      def hitch_mcp_tools(verified_request:, context:, snapshot:)
+        if verified_request.fetch("method") == "tools/call"
+          resolution = Registry.__send__(
+            :runtime_call,
+            snapshot:,
+            name: verified_request.fetch("params").fetch("name"),
+            context:
+          )
+          if resolution.status == :insufficient_scope
+            hitch_mcp_insufficient_scope!(resolution.required_scopes)
+            return [].freeze
+          end
+
+          return resolution.status == :available ? [ resolution.tool ].freeze : [].freeze
+        end
+
+        Registry.__send__(:runtime_listing, snapshot:, context:)
       end
+
+      # Private staging seams. M4 owns production rate admission and public
+      # observation events.
 
       def hitch_mcp_admit_authenticated_request(**)
         :allow

@@ -177,6 +177,27 @@ class Hitch::EngineTest < ActiveSupport::TestCase
     Hitch.reset_configuration!
   end
 
+  test "boot refuses a partial MCP runtime without a scope resolver" do
+    Hitch.reset_configuration!
+    Hitch.configure do |configuration|
+      configuration.resource_uri = "https://dummy.test/mcp"
+      configuration.mcp.registry = "McpToolRegistry"
+      configuration.mcp.server_info = ->(_context) { { name: "dummy", version: "1" } }
+    end
+
+    error = assert_raises(ArgumentError) do
+      configuration_initializer.run(Rails.application)
+    end
+    assert_includes error.message, "scope_resolver"
+
+    Hitch.configuration.mcp.scope_resolver = lambda do |principal:, access_token:, request:|
+      nil
+    end
+    assert_nothing_raised { configuration_initializer.run(Rails.application) }
+  ensure
+    Hitch.reset_configuration!
+  end
+
   test "only the install generator may boot before its initializer exists" do
     Hitch.reset_configuration!
     original_arguments = ARGV.dup

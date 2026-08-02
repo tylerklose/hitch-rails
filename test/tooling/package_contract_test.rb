@@ -50,7 +50,6 @@ class PackageContractTest < ActiveSupport::TestCase
       app/models/hitch/mcp/internal/verified_request.rb
       app/models/hitch/mcp/context.rb
       app/models/hitch/mcp/registry.rb
-      app/models/hitch/mcp/slice_tool.rb
       app/models/hitch/mcp/tool.rb
       app/models/hitch/mcp/verified_request.rb
       lib/generators/hitch/install/install_generator.rb

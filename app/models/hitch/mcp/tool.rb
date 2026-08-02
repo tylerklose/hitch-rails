@@ -48,6 +48,12 @@ module Hitch
           @annotations = copy_declaration(combine_value_and_keywords(value, keywords))
         end
 
+        # Coarse request-local admission. Host applications must opt each tool
+        # in explicitly; argument-aware authorization remains a later gate.
+        def available_to?(_context)
+          false
+        end
+
         # Framework-owned until M4 installs argument policy and host behavior.
         # Registry validation rejects any subclass that replaces this boundary.
         def call(arguments:, context:)

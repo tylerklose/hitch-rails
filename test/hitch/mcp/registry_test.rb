@@ -199,6 +199,8 @@ class Hitch::MCP::RegistryTest < ActiveSupport::TestCase
     assert_raises(ArgumentError) { @configuration.validate! }
 
     @configuration.registry = "MissingRegistry"
+    assert_raises(ArgumentError) { @configuration.validate! }
+    @configuration.scope_resolver = ->(principal:, access_token:, request:) { nil }
     assert @configuration.validate!
     assert_raises(ArgumentError) { prepare_registry }
 
@@ -208,6 +210,22 @@ class Hitch::MCP::RegistryTest < ActiveSupport::TestCase
 
     @configuration.registry = "::#{plain.name}"
     assert_raises(ArgumentError) { prepare_registry }
+  end
+
+  test "runtime configuration requires callable server identity and scope resolver together" do
+    registry = define_registry([ define_tool, [ "mcp" ] ])
+    @configuration.registry = registry.name
+
+    error = assert_raises(ArgumentError) { @configuration.validate! }
+    assert_includes error.message, "server_info"
+
+    @configuration.server_info = ->(_context) { { name: "fixture", version: "1" } }
+    error = assert_raises(ArgumentError) { @configuration.validate! }
+    assert_includes error.message, "scope_resolver"
+
+    @configuration.scope_resolver = ->(principal:, access_token:, request:) { nil }
+    assert @configuration.validate!
+    assert_raises(ArgumentError) { @configuration.scope_resolver = Object.new }
   end
 
   private

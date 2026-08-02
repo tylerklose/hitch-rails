@@ -59,7 +59,6 @@ REQUIRED_PACKAGE_FILES = %w[
   app/models/hitch/mcp/internal/verified_request.rb
   app/models/hitch/mcp/context.rb
   app/models/hitch/mcp/registry.rb
-  app/models/hitch/mcp/slice_tool.rb
   app/models/hitch/mcp/tool.rb
   app/models/hitch/mcp/verified_request.rb
   lib/generators/hitch/install/install_generator.rb
@@ -175,6 +174,25 @@ def smoke_runner(profile_name, expected_adapter)
     abort "MCP endpoint did not load from the built artifact" unless
       endpoint_source == File.join(loaded_root, "app/controllers/concerns/hitch/mcp/endpoint.rb")
 
+    package_tool = Class.new(Hitch::MCP::Tool)
+    Object.const_set(:HitchPackageSmokeTool, package_tool)
+    package_tool.tool_name "package.echo"
+    package_tool.description "Prove packaged registry listing and call admission"
+    package_tool.input_schema(
+      type: "object",
+      properties: { message: { type: "string" } },
+      required: [ "message" ],
+      additionalProperties: false
+    )
+    package_tool.define_singleton_method(:available_to?) do |context|
+      context.scope.equal?(context.principal)
+    end
+
+    package_registry = Class.new(Hitch::MCP::Registry)
+    Object.const_set(:HitchPackageSmokeRegistry, package_registry)
+    package_registry.register package_tool, scopes: [ "mcp" ]
+
+    Hitch.configuration.mcp.registry = "HitchPackageSmokeRegistry"
     Hitch.configuration.mcp.server_info = ->(_context) {
       {
         name: "hitch-package-smoke",
@@ -183,7 +201,15 @@ def smoke_runner(profile_name, expected_adapter)
         instructions: "Exercise the packaged authenticated endpoint."
       }
     }
+    Hitch.configuration.mcp.scope_resolver = lambda do |principal:, access_token:, request:|
+      principal
+    end
     Hitch.configuration.mcp.max_request_bytes = 8_192
+    Hitch.configuration.validate!
+    Hitch.configuration.mcp.__send__(
+      :prepare_registry!,
+      supported_scopes: Hitch.configuration.supported_scopes
+    )
 
     redirect_uri = "https://client.example/callback"
     resource_uri = Hitch.configuration.resource_uri
@@ -268,19 +294,15 @@ def smoke_runner(profile_name, expected_adapter)
 
     session.post "/mcp", params: JSON.generate(
       jsonrpc: "2.0",
-      id: "package/call",
-      method: "tools/call",
-      params: {
-        "_meta" => request_meta,
-        "name" => "hitch.echo",
-        "arguments" => { "message" => "artifact endpoint ok" }
-      }
-    ), headers: mcp_headers.merge("Mcp-Method" => "tools/call", "Mcp-Name" => "hitch.echo")
-    abort "packaged MCP call failed: \#{session.response.status} \#{session.response.body}" unless
+      id: "package/list",
+      method: "tools/list",
+      params: { "_meta" => request_meta }
+    ), headers: mcp_headers.merge("Mcp-Method" => "tools/list")
+    abort "packaged MCP listing failed: \#{session.response.status} \#{session.response.body}" unless
       session.response.status == 200
-    mcp_call = JSON.parse(session.response.body)
-    abort "packaged MCP call result drifted" unless
-      mcp_call.dig("result", "content", 0, "text") == "artifact endpoint ok"
+    mcp_listing = JSON.parse(session.response.body)
+    abort "packaged MCP registry filtering drifted" unless
+      mcp_listing.dig("result", "tools").map { |tool| tool.fetch("name") } == [ "package.echo" ]
 
     puts "HITCH_SMOKE_RESULT=" + JSON.generate(
       profile: "#{profile_name}",
@@ -297,7 +319,7 @@ def smoke_runner(profile_name, expected_adapter)
       discovery: "ok",
       authorization_code: "ok",
       token_exchange: "ok",
-      mcp_endpoint: "authenticated_discover_and_call_ok"
+      mcp_endpoint: "authenticated_registry_discover_and_list_ok"
     )
   RUBY
 end

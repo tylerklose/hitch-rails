@@ -16,5 +16,9 @@ module McpTools
       destructive_hint: false,
       idempotent_hint: true,
       open_world_hint: false
+
+    def self.available_to?(context)
+      !context.principal.nil?
+    end
   end
 end

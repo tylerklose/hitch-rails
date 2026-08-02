@@ -128,6 +128,9 @@ Hitch.configure do |config|
       instructions: "Use tools only for the signed-in account."
     }
   }
+  config.mcp.scope_resolver = ->(principal:, access_token:, request:) {
+    principal.account
+  }
   config.mcp.max_request_bytes = 1.megabyte
   # Optional:
   config.principal_method = :current_user  # method on controllers
@@ -174,6 +177,10 @@ module McpTools
     description "Describe one signed-in account"
     input_schema type: "object", properties: {}, additionalProperties: false
     annotations read_only_hint: true, destructive_hint: false
+
+    def self.available_to?(context)
+      context.scope.can_use_echo?
+    end
   end
 end
 
@@ -190,13 +197,20 @@ partially valid snapshot. Schemas use JSON Schema 2020-12, same-document
 references only, and explicit depth/object/byte caps; registered tool classes
 cannot replace framework-owned `.call`.
 
-Auth-only 0.1 adopters that configure neither MCP runtime setting keep booting
-unchanged during this staged line. Once `config.mcp.server_info` activates the
-new endpoint runtime, `config.mcp.registry` is mandatory and validated at boot.
+Auth-only 0.1 adopters that configure no MCP runtime setting keep booting
+unchanged during this staged line. Configuring any MCP runtime setting requires
+the named registry plus callable `server_info` and `scope_resolver` settings at
+boot. The resolver receives the validated principal, access-token record, and
+request exactly once and returns one opaque host scope object or `nil`.
 
-The endpoint still exposes one private, read-only `hitch.echo` transport-proof
-tool during M3.2. It is checkpoint scaffolding, not an adopter extension point;
-M3.3 makes the validated Registry authoritative for listing and call admission.
+The validated Registry is the endpoint's only packaged admission path. Each
+request resolves current tool classes, applies deny-default
+`.available_to?(context)`, then filters by the registered static OAuth scopes.
+Listings are MCP-name sorted and private. Unknown and unavailable calls share
+one generic `-32602`; only a known available tool can return a 403
+`insufficient_scope` step-up. Resolver or availability failures become generic
+internal errors without registry or scope disclosure. Final tool execution and
+argument-aware policy arrive in M4.
 
 ### Client ID Metadata Documents
 

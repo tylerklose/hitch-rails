@@ -22,7 +22,16 @@ GitHub-released, or published to RubyGems.
   MCP-name-sorted snapshot containing only class names and frozen descriptor
   data. Invalid names, classes, schemas, annotations, scopes, reserved
   `server_context` declarations, or `.call` overrides clear the prior snapshot
-  and fail the entire reload. Registry-backed request filtering remains M3.3.
+  and fail the entire reload.
+- Made the validated Registry the endpoint's only packaged tool-admission path.
+  A configured scope resolver runs exactly once per request; current tool
+  classes then apply deny-default request-local availability before static OAuth
+  scope filtering against the granted-scope snapshot captured before host
+  callbacks. Listings are deterministic and private, unknown and
+  unavailable calls are indistinguishable, only known available tools can
+  return a 403 `insufficient_scope` step-up, and resolver/availability failures
+  become generic internal errors. The sealed M2 echo fixture now exists only in
+  the dummy test application, not the gem artifact.
 
 ## [0.2.0.pre.1] - 2026-08-02
 

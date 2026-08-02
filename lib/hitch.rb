@@ -16,9 +16,10 @@ require "hitch/dynamic_registration_rate_limit"
 # for browser-based MCP clients. The 0.2 development line owns an authenticated
 # host-mounted MCP endpoint, a public request-local Context, and a private Ruby
 # SDK compatibility boundary. The explicit Registry descriptor surface is also
-# active and stores only reload-safe names and frozen data. The
-# accepted auth substrate remains the authority the endpoint validates tokens
-# against; per-principal registry resolution and policy remain later milestones.
+# active: it stores only reload-safe names and frozen data, then resolves host
+# scope and deny-default availability for each request before static OAuth scope
+# filtering. The accepted auth substrate remains the authority the endpoint
+# validates tokens against; argument-aware policy remains a later milestone.
 #
 # Spec reference: https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization
 #

@@ -15,9 +15,10 @@ Gem::Specification.new do |spec|
     and CORS for browser-based MCP clients. The 0.2 development line directly
     integrates the Ruby MCP SDK behind a private compatibility boundary and
     provides a strict authenticated endpoint, a public request-local Context,
-    and an atomically validated host Registry descriptor surface around one
-    private read-only transport slice; per-principal registry resolution remains
-    milestone-gated. A deprecated ServerEndpoint
+    and an atomically validated host Registry with request-local scope
+    resolution, deny-default availability, static OAuth scope filtering, and
+    deterministic private listings. Safe host invocation remains milestone-
+    gated. A deprecated ServerEndpoint
     compatibility concern remains available through the 0.2 line for bearer
     validation and basic MCP Streamable HTTP response shaping. Principal lookup is
     host-configurable, browser origins are exact and default-deny, and both

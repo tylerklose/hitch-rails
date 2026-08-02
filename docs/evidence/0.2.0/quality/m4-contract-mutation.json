@@ -1,0 +1,363 @@
+{
+  "schema_version": 1,
+  "schema": "hitch.m4.5-contract-mutation-evidence.v1",
+  "milestone": "M4.5",
+  "status": "accepted_internal_quality_candidate",
+  "verified_at": "2026-08-02T11:46:08Z",
+  "source": {
+    "commit": "337e709e35a68badc70665924d2f53170e237cd4",
+    "tree": "35ec0c507d78e8460d1a9345fae5269d0f9d4a44",
+    "predecessor_commit": "dfde1a92d8e1f4bbc4c5b11e9296b2b9bd0daa1b",
+    "state": "immutable_implementation_candidate",
+    "acceptance_commands_ran_against_source_commit": true
+  },
+  "artifact": {
+    "version": "0.2.0.pre.3.dev",
+    "target_checkpoint": "0.2.0.pre.3",
+    "distribution": "internal_only",
+    "checkpoint_sealed": false,
+    "published": false,
+    "tag_created": false,
+    "github_release_created": false,
+    "rubygems_publication_performed": false
+  },
+  "authorization_lattice": {
+    "model": "hitch_mcp_tool_authorization",
+    "seed": 42,
+    "exhaustive_strength": 8,
+    "scenario_count": 12,
+    "default_generation_matched_checked_artifact": true,
+    "strength_8_generation_matched_checked_artifact": true,
+    "checked_artifact_unchanged_during_contract_run": true,
+    "scenarios": [
+      { "id": 1, "terminal": "success" },
+      { "id": 2, "terminal": "token_missing" },
+      {
+        "id": 3,
+        "terminal": "token_expired_or_revoked",
+        "concrete_variants": ["expired", "revoked"]
+      },
+      { "id": 4, "terminal": "token_wrong_audience" },
+      { "id": 5, "terminal": "authenticated_admission_reject" },
+      { "id": 6, "terminal": "tool_unregistered" },
+      { "id": 7, "terminal": "tool_unavailable" },
+      { "id": 8, "terminal": "static_scope_insufficient" },
+      { "id": 9, "terminal": "input_schema_invalid" },
+      { "id": 10, "terminal": "argument_policy_deny" },
+      { "id": 11, "terminal": "host_safe_error" },
+      { "id": 12, "terminal": "host_raises" }
+    ]
+  },
+  "forced_suites": {
+    "manifest_count": 13,
+    "required_boundaries": [
+      "audience",
+      "admission",
+      "registration",
+      "availability",
+      "scope",
+      "schema",
+      "policy",
+      "execution",
+      "result_redaction",
+      "context",
+      "callbacks",
+      "observation",
+      "concurrency",
+      "code_exchange"
+    ],
+    "outcomes": [
+      {
+        "id": "authorization_code_single_use",
+        "path": "test/integration/oauth_security_poc_test.rb",
+        "status": "passed"
+      },
+      {
+        "id": "wire_and_audience",
+        "path": "test/integration/mcp_wire_contract_test.rb",
+        "status": "passed"
+      },
+      {
+        "id": "sdk_boundary",
+        "path": "test/hitch/mcp/sdk_contract_test.rb",
+        "status": "passed"
+      },
+      {
+        "id": "immutable_context",
+        "path": "test/hitch/mcp/context_test.rb",
+        "status": "passed"
+      },
+      {
+        "id": "registry_validation",
+        "path": "test/hitch/mcp/registry_test.rb",
+        "status": "passed"
+      },
+      {
+        "id": "registry_reload",
+        "path": "test/hitch/mcp/registry_reload_test.rb",
+        "status": "passed"
+      },
+      {
+        "id": "listing_and_principal_isolation",
+        "path": "test/integration/mcp_listing_test.rb",
+        "status": "passed"
+      },
+      {
+        "id": "tool_authorization",
+        "path": "test/hitch/mcp/tool_test.rb",
+        "status": "passed"
+      },
+      {
+        "id": "result_boundary",
+        "path": "test/hitch/mcp/result_test.rb",
+        "status": "passed"
+      },
+      {
+        "id": "structural_observation",
+        "path": "test/hitch/mcp/observation_test.rb",
+        "status": "passed"
+      },
+      {
+        "id": "admission_store",
+        "path": "test/hitch/mcp/rate_limit_test.rb",
+        "status": "passed"
+      },
+      {
+        "id": "admission_integration",
+        "path": "test/integration/mcp_rate_limit_test.rb",
+        "status": "passed"
+      },
+      {
+        "id": "exhaustive_authorization_lattice",
+        "path": "test/integration/mcp_tool_authorization_lattice_test.rb",
+        "status": "passed"
+      }
+    ],
+    "deferred_generator_boundaries": [
+      {
+        "id": "generator_install_collisions",
+        "owner_issue": "M5.1",
+        "gate": "bin/ci-generators install",
+        "accepted": false,
+        "dispatcher_exit_status": 69
+      },
+      {
+        "id": "generator_tool_collisions",
+        "owner_issue": "M5.2",
+        "gate": "bin/ci-generators tool",
+        "accepted": false,
+        "dispatcher_exit_status": 69
+      }
+    ]
+  },
+  "mutation": {
+    "runner": "mutant",
+    "runner_version": "0.16.3",
+    "integration": "mutant-minitest",
+    "integration_version": "0.16.3",
+    "ruby_version": "3.4.7",
+    "runtime_seconds": 59.373997,
+    "killtime_seconds": 45.424609,
+    "subject_count": 15,
+    "domain_count": 13,
+    "evaluated_results": 818,
+    "criteria_satisfied_results": 818,
+    "survivors": 0,
+    "timeouts": 0,
+    "coverage_percent": 100.0,
+    "subjects": [
+      {
+        "domain": "audience",
+        "expression": "Hitch::AccessToken#valid_for_resource?",
+        "evaluated_results": 38,
+        "criteria_satisfied_results": 38,
+        "survivors": 0,
+        "timeouts": 0
+      },
+      {
+        "domain": "admission",
+        "expression": "Hitch::MCP::RequestRateLimiter.call",
+        "evaluated_results": 188,
+        "criteria_satisfied_results": 188,
+        "survivors": 0,
+        "timeouts": 0
+      },
+      {
+        "domain": "registration",
+        "expression": "Hitch::MCP::Registry.validate_snapshot!",
+        "evaluated_results": 22,
+        "criteria_satisfied_results": 22,
+        "survivors": 0,
+        "timeouts": 0
+      },
+      {
+        "domain": "availability",
+        "expression": "Hitch::MCP::Tool.available_to?",
+        "evaluated_results": 5,
+        "criteria_satisfied_results": 5,
+        "survivors": 0,
+        "timeouts": 0
+      },
+      {
+        "domain": "scope",
+        "expression": "Hitch::MCP::Registry.scopes_granted?",
+        "evaluated_results": 58,
+        "criteria_satisfied_results": 58,
+        "survivors": 0,
+        "timeouts": 0
+      },
+      {
+        "domain": "schema",
+        "expression": "Hitch::MCP::Registry::SchemaContract#call",
+        "evaluated_results": 73,
+        "criteria_satisfied_results": 73,
+        "survivors": 0,
+        "timeouts": 0
+      },
+      {
+        "domain": "schema",
+        "expression": "Hitch::MCP::Internal::SDKAdapter#reserved_server_context?",
+        "evaluated_results": 54,
+        "criteria_satisfied_results": 54,
+        "survivors": 0,
+        "timeouts": 0
+      },
+      {
+        "domain": "policy",
+        "expression": "Hitch::MCP::Tool.authorize!",
+        "evaluated_results": 7,
+        "criteria_satisfied_results": 7,
+        "survivors": 0,
+        "timeouts": 0
+      },
+      {
+        "domain": "execution",
+        "expression": "Hitch::MCP::Tool.perform",
+        "evaluated_results": 8,
+        "criteria_satisfied_results": 8,
+        "survivors": 0,
+        "timeouts": 0
+      },
+      {
+        "domain": "result",
+        "expression": "Hitch::MCP::Internal::ResultNormalizer#call",
+        "evaluated_results": 114,
+        "criteria_satisfied_results": 114,
+        "survivors": 0,
+        "timeouts": 0
+      },
+      {
+        "domain": "redaction",
+        "expression": "Hitch::MCP::Internal::ErrorNormalizer.generic_response",
+        "evaluated_results": 27,
+        "criteria_satisfied_results": 27,
+        "survivors": 0,
+        "timeouts": 0
+      },
+      {
+        "domain": "redaction",
+        "expression": "Hitch::MCP::Internal::ErrorNormalizer.expected_denial?",
+        "evaluated_results": 23,
+        "criteria_satisfied_results": 23,
+        "survivors": 0,
+        "timeouts": 0
+      },
+      {
+        "domain": "context",
+        "expression": "Hitch::MCP::Context#deep_copy_json",
+        "evaluated_results": 95,
+        "criteria_satisfied_results": 95,
+        "survivors": 0,
+        "timeouts": 0
+      },
+      {
+        "domain": "callbacks",
+        "expression": "Hitch::MCP::Internal::SDKAdapter#sdk_configuration",
+        "evaluated_results": 35,
+        "criteria_satisfied_results": 35,
+        "survivors": 0,
+        "timeouts": 0
+      },
+      {
+        "domain": "observation",
+        "expression": "Hitch::MCP::Internal::Observation.publish",
+        "evaluated_results": 71,
+        "criteria_satisfied_results": 71,
+        "survivors": 0,
+        "timeouts": 0
+      }
+    ],
+    "raw_session_artifact": {
+      "committed": false,
+      "retention": "destroyed_after_redacted_summary",
+      "reason": "raw per-mutation process logs are transient local test output"
+    }
+  },
+  "acceptance": {
+    "contract": {
+      "command": "bin/contract",
+      "scenario_rows": 12,
+      "forced_suites": 13,
+      "runs": 121,
+      "assertions": 3657,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0
+    },
+    "mutation": {
+      "command": "bin/mutation-mcp",
+      "subjects": 15,
+      "domains": 13,
+      "evaluated_results": 818,
+      "criteria_satisfied_results": 818,
+      "survivors": 0,
+      "timeouts": 0
+    },
+    "sdk_lanes": [
+      {
+        "name": "min",
+        "command": "bin/ci-sdk min",
+        "selector": "= 1.1.0",
+        "resolved": "1.1.0",
+        "runs": 21,
+        "assertions": 350,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      {
+        "name": "latest",
+        "command": "bin/ci-sdk latest",
+        "selector": ">= 1.1.0, < 2",
+        "resolved": "1.1.0",
+        "runs": 21,
+        "assertions": 349,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      }
+    ],
+    "full_ci": "deferred_to_sealed_checkpoint_acceptance",
+    "package_smoke": "deferred_to_sealed_checkpoint_acceptance"
+  },
+  "checksums": {
+    "toolchain_lock_sha256": "ff61efb67bb1956c3915f36d5c8e82ef98c199f7067524babf65215061086eef",
+    "lattice_schema_sha256": "70aec37011d2be7a1b7ed8e72118cd7d4c2305848b645c6745cdf1ba385710e7",
+    "lattice_scenarios_sha256": "f27346dd8cc8337f2cc599071e21e3bc73268a576e24b76fb2e83c040a67cd7e",
+    "lattice_oracles_sha256": "c54ca2e9922c7b4dd3436733390916e3dfbaf8b0f5a50fe6ec5067dafa207026",
+    "forced_suites_sha256": "ede0f893eceb381002d209984ba0934a3253809cc9516505f0df016fbd56e695",
+    "mutation_subjects_sha256": "83c3d5004eaa0a513d5761974e87d7290f1b240d1ab7d9365b4210a9bf484591",
+    "lattice_test_sha256": "f4df9391db073c3d35fcf9ecbd5f9d04f6204226adcae58492183027fb1a6b49",
+    "mutation_coverage_sha256": "5099523e5316bdc14e47dde0e3f01f49fdcad4f6e28618e64dc8803ed7978801",
+    "contract_runner_sha256": "d30214e06ecf24f886e387d1e04e4eaf7f59da955a24c284defce93a3fa18285",
+    "mutation_runner_sha256": "28fe035326a33fa35498543a728851f0b27e3f0c61cce3e64c7c2a1ac59223b6",
+    "generator_dispatcher_sha256": "7be80c78bc401ebe719e5cc0638e6cb852371d94188638952fe8f5e5840dbfc0",
+    "generator_dispatch_test_sha256": "5a3da2494369d5e93adaade2fb2328765a8f32983ff408f56e7854b8a3c70a67",
+    "gemfile_sha256": "9da637a89e4e1c5c89a1fce9371350bfd7cd9fcd22f9711f3d26ef04b8c410e6",
+    "work_packet_sha256": "b1a7ae404b3bf9865e4d45355fe026e8ae99ce04d81fa07f89c43539ce5dc0c9"
+  },
+  "contains_credentials": false,
+  "contains_request_bodies": false,
+  "contains_host_records": false,
+  "contains_raw_mutation_logs": false
+}

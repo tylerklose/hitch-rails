@@ -80,19 +80,26 @@ class PackageContractTest < ActiveSupport::TestCase
     refute_includes source, 'gem "hitch-rails", path:'
   end
 
-  test "internal development documentation does not claim public distribution" do
+  test "internal artifact documentation does not claim public distribution" do
     version = @specification.version.to_s
     changelog = REPOSITORY_ROOT.join("CHANGELOG.md").read
     readme = REPOSITORY_ROOT.join("README.md").read
     security = REPOSITORY_ROOT.join("SECURITY.md").read
     contract_path = @artifact_policy.fetch("contract_path", "docs/public_api/#{version}.md")
     public_api = REPOSITORY_ROOT.join(contract_path).read
+    development = @artifact_policy["development_version"] == version
 
     assert_equal "M2.3", @artifact_issue
-    assert_equal "0.2.0.pre.1.dev", version
-    assert_equal version, @artifact_policy.fetch("development_version")
-    assert_match(/^## \[Unreleased\]$/, changelog)
-    assert_includes changelog, "Internal development build only"
+    assert_equal "internal_only", @artifact_policy.fetch("distribution")
+    if development
+      assert_equal version, @artifact_policy.fetch("development_version")
+      assert_match(/^## \[Unreleased\]$/, changelog)
+      assert_includes changelog, "Internal development build only"
+    else
+      assert_equal version, @artifact_policy.fetch("version")
+      assert_match(/^## \[#{Regexp.escape(version)}\] - \d{4}-\d{2}-\d{2}$/, changelog)
+      assert_includes changelog, "Internal verified checkpoint only"
+    end
     assert_includes readme, "There is no public RubyGems release yet"
     assert_includes readme, 'ref: ENV.fetch("HITCH_CHECKPOINT_SHA")'
     refute_includes readme, %(gem "hitch-rails", "~> #{version}")

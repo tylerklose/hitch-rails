@@ -5,10 +5,10 @@ All notable changes to hitch-rails will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0.pre.1] - 2026-08-02
 
-Internal development build only. The checkout version is
-`0.2.0.pre.1.dev`; it is not a tag, GitHub release, or RubyGems publication.
+Internal verified checkpoint only. `0.2.0.pre.1` is not tagged, GitHub-released,
+or published to RubyGems.
 
 ### Added
 

@@ -5,6 +5,7 @@ require "hitch/rack_form_guard"
 require "hitch/engine"
 require "hitch/resource_uri"
 require "hitch/pkce"
+require "hitch/mcp/configuration"
 require "hitch/configuration"
 require "hitch/dynamic_registration_rate_limit"
 
@@ -12,9 +13,10 @@ require "hitch/dynamic_registration_rate_limit"
 # against the MCP 2026-07-28 authorization profile. OAuth 2.1 + PKCE (S256),
 # Resource Indicators with audience binding (RFC 8707), discovery
 # metadata (RFC 8414 + RFC 9728), token revocation (RFC 7009), and CORS
-# for browser-based MCP clients. The host owns the MCP transport
-# endpoint (/mcp); this gem provides the auth substrate the host queries
-# to validate tokens.
+# for browser-based MCP clients. The host owns the MCP transport endpoint
+# (/mcp) until the M2 endpoint milestone; this development line also owns a
+# private Ruby SDK compatibility boundary. The accepted auth substrate remains
+# the authority the endpoint validates tokens against.
 #
 # Spec reference: https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization
 #

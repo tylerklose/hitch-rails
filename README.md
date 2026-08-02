@@ -35,8 +35,10 @@ needs:
   bearer validation, the discovery challenge, and basic response shaping, but
   is not Hitch's forthcoming authenticated MCP endpoint (see below)
 
-The host owns the `/mcp` endpoint, SDK integration, and tool dispatch in 0.1;
-Hitch owns the auth substrate. Existing integrations may keep using the
+The accepted 0.1 checkpoint leaves the `/mcp` endpoint, SDK integration, and
+tool dispatch to the host. The 0.2 development line now owns a private SDK
+compatibility boundary; its authenticated endpoint and registry remain under
+construction. Existing integrations may keep using the
 deprecated `Hitch::ServerEndpoint` compatibility helper for bearer validation
 and response shaping while moving toward the 0.2 endpoint.
 
@@ -50,9 +52,9 @@ own its business logic and policy. See the [roadmap](ROADMAP.md).
 The official Ruby MCP SDK (the `mcp` gem) ships *client-side* OAuth but no
 server-side auth helpers, and no Ruby/Rails gem packaged the server-side
 OAuth 2.1 + PKCE plumbing an MCP server needs. Hitch fills that gap. It
-does **not** depend on the `mcp` SDK — the host owns the `/mcp` transport
-(and its `mcp` dependency); Hitch provides the auth substrate plus
-optional response-shaping helpers.
+now directly depends on `mcp >= 1.1, < 2` and isolates it behind a private
+adapter. Hitch still provides the accepted auth substrate plus optional
+legacy response-shaping helpers while the 0.2 endpoint is built.
 
 It is opinionated about **what** to implement (the [2026-07-28 MCP
 authorization spec](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization))
@@ -65,7 +67,7 @@ normalized `hitch_client_redirect_uris` table on both adapters. Access-token
 principal IDs use lossless string storage, so host models with integer, UUID,
 or ULID primary keys round-trip on either adapter.
 
-**Runtime:** The internal 0.1 checkpoint is verified on Ruby `>= 3.3, < 4.1`
+**Runtime:** The internal 0.1 checkpoint and current 0.2 development line target Ruby `>= 3.3, < 4.1`
 and Rails `>= 7.2, < 8.2`. Its matrix is Ruby 3.3/Rails 7.2/SQLite and Ruby
 4.0/Rails 8.1/PostgreSQL. Other adapters and runtime versions are outside that
 checkpoint contract.
@@ -73,7 +75,8 @@ checkpoint contract.
 ## Installation
 
 There is no public RubyGems release yet. `0.1.0` identifies the verified
-auth-only checkpoint; it is deliberately not tagged or published. An approved
+auth-only checkpoint; `0.2.0.pre.1.dev` identifies unsealed development work.
+Neither is tagged or published. An approved
 source adopter must pin the accepted checkpoint's full commit SHA rather than a
 branch or a nonexistent RubyGems version:
 

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Internal development build only. The checkout version is
+`0.2.0.pre.1.dev`; it is not a tag, GitHub release, or RubyGems publication.
+
+### Added
+
+- Began the 0.2 runtime with a direct, bounded `mcp` dependency, public
+  `Hitch::Configuration#mcp` access, and a private per-request SDK adapter.
+  The adapter owns only selective structural symbolization, callback isolation,
+  output-validation enablement, tools-only dispatch, and documented SDK 1.1
+  response gaps. The authenticated endpoint and registry remain later
+  milestones.
+
 ## [0.1.0] - 2026-08-01
 
 Internal verified checkpoint only. `0.1.0` was not tagged, GitHub-released, or

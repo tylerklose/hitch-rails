@@ -4,6 +4,13 @@ module Hitch
   class Engine < ::Rails::Engine
     isolate_namespace Hitch
 
+    initializer "hitch.zeitwerk_inflections", before: :set_autoloaders do
+      Rails.autoloaders.main.inflector.inflect(
+        "mcp" => "MCP",
+        "sdk_adapter" => "SDKAdapter"
+      )
+    end
+
     # Rack::MethodOverride would otherwise parse OAuth form bodies before the
     # controller-level strict admission boundary can cap or redact them.
     initializer "hitch.guard_oauth_forms", before: :build_middleware_stack do |app|

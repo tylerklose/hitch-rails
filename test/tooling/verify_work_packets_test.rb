@@ -141,6 +141,37 @@ class VerifyWorkPacketsTest < ActiveSupport::TestCase
     assert_includes stderr, "must name a bin/ public_verifier"
   end
 
+  test "accepts a distinct development artifact identity with a contract path" do
+    path = File.join(@root, "docs/work_packets/index.yml")
+    content = File.read(path).sub(
+      "      version: 0.2.0.pre.4\n",
+      "      version: 0.2.0.pre.4\n" \
+        "      development_version: 0.2.0.pre.4.dev\n" \
+        "      contract_path: docs/public_api/0.2.0.md\n"
+    )
+    File.write(path, content)
+
+    _stdout, stderr, status = run_verifier
+    assert_predicate status, :success?, stderr
+  end
+
+  test "rejects an ambiguous development artifact identity" do
+    path = File.join(@root, "docs/work_packets/index.yml")
+    content = File.read(path).sub(
+      "      version: 0.2.0.pre.4\n",
+      "      version: 0.2.0.pre.4\n" \
+        "      development_version: 0.2.0.pre.4\n" \
+        "      contract_path: ../wrong.md\n"
+    )
+    File.write(path, content)
+
+    _stdout, stderr, status = run_verifier
+    assert_not status.success?
+    assert_includes stderr, "must end in .dev"
+    assert_includes stderr, "must differ from its sealed version"
+    assert_includes stderr, "must name one docs/public_api markdown file"
+  end
+
   private
 
   def run_verifier(*arguments)

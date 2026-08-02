@@ -12,6 +12,14 @@ class Hitch::ConfigurationTest < ActiveSupport::TestCase
     assert_equal "https://example.com/mcp", Hitch.configuration.resource_uri
   end
 
+  test "MCP configuration has one stable top-level authority" do
+    configuration = Hitch.configuration
+
+    assert_instance_of Hitch::MCP::Configuration, configuration.mcp
+    assert_same configuration.mcp, Hitch.configuration.mcp
+    assert configuration.mcp.validate!
+  end
+
   test "resource URI and supported scopes have explicit persistence-work bounds" do
     too_long_resource = "https://example.test/#{'x' * Hitch::Configuration::MAX_RESOURCE_URI_BYTES}"
     assert_raises(Hitch::ResourceUri::Invalid) do

@@ -59,6 +59,8 @@ nodes:
     creates_commands: [bin/conformance-bootstrap, bin/conformance-server]
     artifact:
       version: 0.2.0.pre.1
+      development_version: 0.2.0.pre.1.dev
+      contract_path: docs/public_api/0.2.0.md
       distribution: internal_only
       verifier: bin/package-smoke
   M3.1:

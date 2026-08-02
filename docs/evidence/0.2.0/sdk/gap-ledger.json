@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "milestone": "M2.1",
+  "status": "verified_working_tree",
+  "verified_at": "2026-08-02T05:10:59Z",
+  "source": {
+    "predecessor_commit": "e663c33a66aef292373df4a14f7f77c98258a3b0",
+    "predecessor_tree": "e325a6b99c88af7d4c9006b18fee57396bde7ebe",
+    "state": "successor_working_tree"
+  },
+  "sdk": {
+    "gem": "mcp",
+    "requirement": ">= 1.1, < 2",
+    "pin": {
+      "version": "1.1.0",
+      "tag": "v1.1.0",
+      "revision": "72a929bbc00c512fbaad82f1e14d02fae2539032"
+    },
+    "probe_contract_sha256": "67142b3a0be42d1edce47080e91de9171cc403d0903d0e367e5b5a23e80976cb"
+  },
+  "lanes": [
+    {
+      "name": "min",
+      "selector": "= 1.1.0",
+      "resolved": "1.1.0",
+      "lock_sha256": "8eb28ba2c26e7ca798106a9087a7767b43b0cc1a4e319d01043b3a827d19d5d9",
+      "tests": 15,
+      "assertions": 133,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0
+    },
+    {
+      "name": "latest",
+      "selector": ">= 1.1, < 2",
+      "resolution_claim": "latest_compatible_as_last_locked",
+      "resolved": "1.1.0",
+      "lock_sha256": "71f286ac7bdd9bfc8b18d59721e5744424ea9ff91e48e818ad8bfb623baf5c1c",
+      "tests": 15,
+      "assertions": 132,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0
+    }
+  ],
+  "adapter": {
+    "sdk_servers_per_request": 1,
+    "handle_calls_per_request": 1,
+    "uses_handle_json": false,
+    "uses_sdk_transport": false,
+    "global_callback_mutations": 0,
+    "callbacks": {
+      "exception_reporter": "explicit_nonforwarding",
+      "around_request": "explicit_yield_without_forwarding",
+      "instrumentation_callback": "explicit_nonforwarding"
+    },
+    "output_validation": "explicitly_enabled",
+    "sdk_context_keys": [
+      "hitch_context"
+    ],
+    "sdk_request_meta_forwarded": false
+  },
+  "normalizers": [
+    {
+      "id": "sdk_1_1_final_discovery",
+      "sdk_requirement": ">= 1.1.0, < 1.2.0",
+      "upstream": "https://github.com/modelcontextprotocol/ruby-sdk/issues/389",
+      "removal_test": "test_sdk_1_1_final_discover_normalizer_issue_389"
+    },
+    {
+      "id": "sdk_1_1_final_result_fields",
+      "sdk_requirement": ">= 1.1.0, < 1.2.0",
+      "upstream": "https://github.com/modelcontextprotocol/modelcontextprotocol/issues/3040",
+      "removal_test": "test_sdk_1_1_final_discover_normalizer_issue_389"
+    },
+    {
+      "id": "permanent_public_error_sanitizer",
+      "sdk_requirement": ">= 1.1, < 2",
+      "upstream": "https://github.com/modelcontextprotocol/ruby-sdk/blob/v1.1.0/lib/mcp/server.rb",
+      "removal_test": "test_sdk_error_details_are_not_public"
+    }
+  ],
+  "probes": [
+    { "id": "structural_symbol_keys", "runtime_test": "test_handle_requires_structural_symbol_keys", "outcome": "passed_both_lanes" },
+    { "id": "selective_argument_symbolization", "runtime_test": "test_selective_symbolization_preserves_untrusted_string_keys", "outcome": "passed_both_lanes" },
+    { "id": "final_request_meta_shape", "runtime_test": "test_final_meta_accepts_absent_client_info", "outcome": "passed_both_lanes" },
+    { "id": "capability_handler_leak", "runtime_test": "test_tools_only_method_allowlist_precedes_sdk", "outcome": "passed_both_lanes" },
+    { "id": "final_discover_fields", "runtime_test": "test_sdk_1_1_final_discover_normalizer_issue_389", "outcome": "passed_both_lanes" },
+    { "id": "unsafe_error_detail", "runtime_test": "test_sdk_error_details_are_not_public", "outcome": "passed_both_lanes" },
+    { "id": "output_validation_default", "runtime_test": "test_sdk_output_validation_is_explicitly_enabled", "outcome": "passed_both_lanes" },
+    { "id": "callback_configuration_merge", "runtime_test": "test_hostile_global_callbacks_receive_no_hitch_request_data", "outcome": "passed_both_lanes" },
+    { "id": "instrumentation_contains_arguments", "runtime_test": "test_sdk_callbacks_cannot_observe_arguments_or_body", "outcome": "passed_both_lanes" },
+    { "id": "streamable_http_raw_body_callback", "runtime_test": "test_streamable_http_transport_is_not_used", "outcome": "passed_both_lanes" },
+    { "id": "reserved_server_context_collision", "runtime_test": "test_reserved_server_context_forms_fail_before_sdk_dispatch", "outcome": "passed_both_lanes" },
+    { "id": "hitch_context_wrapper", "runtime_test": "test_context_is_retrieved_from_hitch_context_wrapper", "outcome": "passed_both_lanes" },
+    { "id": "tool_name_validation_divergence", "runtime_test": "test_tool_name_host_subset_documents_sdk_1_1_divergence", "outcome": "passed_both_lanes" },
+    { "id": "mutable_server_request_state", "runtime_test": "test_fresh_server_per_request_isolates_principals", "outcome": "passed_both_lanes" },
+    { "id": "separately_named_sdk_lanes", "runtime_test": "test_sdk_lane_asserts_resolved_version", "outcome": "passed_both_lanes" }
+  ]
+}

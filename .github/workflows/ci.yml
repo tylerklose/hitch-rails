@@ -76,11 +76,40 @@ jobs:
       - name: Verify work-packet graph
         run: bin/verify-work-packets
 
+  sdk-lanes:
+    name: MCP SDK ${{ matrix.lane }} compatibility lane
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: min
+            gemfile: gemfiles/mcp_min.gemfile
+          - lane: latest
+            gemfile: gemfiles/mcp_latest.gemfile
+
+    env:
+      BUNDLE_GEMFILE: ${{ github.workspace }}/${{ matrix.gemfile }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Ruby 3.3
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Run SDK boundary contracts
+        run: bin/ci-sdk ${{ matrix.lane }}
+
   checkpoint-gates:
     name: Aggregate checkpoint and package gates
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    needs: supported-matrix
+    needs: [supported-matrix, sdk-lanes]
 
     services:
       postgres:
@@ -131,6 +160,16 @@ jobs:
           BUNDLE_GEMFILE: gemfiles/rails_8_1_postgresql.gemfile
         run: bundle install
 
+      - name: Install minimum MCP SDK lane
+        env:
+          BUNDLE_GEMFILE: gemfiles/mcp_min.gemfile
+        run: bundle install
+
+      - name: Install latest-compatible MCP SDK lane
+        env:
+          BUNDLE_GEMFILE: gemfiles/mcp_latest.gemfile
+        run: bundle install
+
       - name: Run official authorization metadata profile
         env:
           HITCH_CONFORMANCE_EVIDENCE_DIR: ${{ runner.temp }}/auth-conformance/metadata
@@ -147,7 +186,7 @@ jobs:
       - name: Upload internal checkpoint evidence
         uses: actions/upload-artifact@v7
         with:
-          name: hitch-rails-0.1.0-internal-checkpoint-evidence
+          name: hitch-rails-internal-development-evidence
           if-no-files-found: error
           retention-days: 30
           path: ${{ runner.temp }}/package-smoke.json

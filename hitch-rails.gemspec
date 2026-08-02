@@ -12,9 +12,9 @@ Gem::Specification.new do |spec|
     the MCP 2026-07-28 authorization profile. Bundles OAuth 2.1 + PKCE (S256), optional Dynamic Client
     Registration (RFC 7591), Resource Indicators with audience binding (RFC 8707),
     discovery metadata (RFC 8414 + RFC 9728), token revocation (RFC 7009),
-    and CORS for browser-based MCP clients. The host owns the /mcp
-    transport, SDK integration, and tool dispatch; Hitch provides the auth
-    substrate it validates tokens against. A deprecated ServerEndpoint
+    and CORS for browser-based MCP clients. The 0.2 development line directly
+    integrates the Ruby MCP SDK behind a private compatibility boundary; the
+    authenticated endpoint and registry remain milestone-gated. A deprecated ServerEndpoint
     compatibility concern remains available through the 0.2 line for bearer
     validation and basic MCP Streamable HTTP response shaping. Principal lookup is
     host-configurable, browser origins are exact and default-deny, and both
@@ -28,7 +28,7 @@ Gem::Specification.new do |spec|
   # same place.
   spec.metadata["changelog_uri"] = "https://github.com/tylerklose/hitch-rails/blob/main/CHANGELOG.md"
   spec.metadata["bug_tracker_uri"] = "https://github.com/tylerklose/hitch-rails/issues"
-  spec.metadata["documentation_uri"] = "https://github.com/tylerklose/hitch-rails/blob/main/docs/public_api/0.1.0.md"
+  spec.metadata["documentation_uri"] = "https://github.com/tylerklose/hitch-rails/blob/main/docs/public_api/0.2.0.md"
   spec.metadata["rubygems_mfa_required"] = "true"
 
   spec.required_ruby_version = Gem::Requirement.new(">= 3.3", "< 4.1")
@@ -42,6 +42,7 @@ Gem::Specification.new do |spec|
       SECURITY.md
       config/routes.rb
       docs/public_api/0.1.0.md
+      docs/public_api/0.2.0.md
       docs/removing.md
       docs/upgrading/0.1.0.md
     ]
@@ -58,10 +59,7 @@ Gem::Specification.new do |spec|
     files.select { |path| File.file?(path) }.sort
   end
 
-  # This gem provides the OAuth/auth substrate only — it does not use
-  # the `mcp` SDK itself (the host owns the /mcp transport endpoint and
-  # depends on `mcp` directly). Adding it here would force a heavy,
-  # version-coupled dependency on every adopter for nothing.
   spec.add_dependency "json", ">= 2.13", "< 3"
+  spec.add_dependency "mcp", ">= 1.1", "< 2"
   spec.add_dependency "rails", ">= 7.2", "< 8.2"
 end

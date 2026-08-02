@@ -151,6 +151,12 @@ module Hitch
     # @return [Object, nil]
     attr_accessor :dynamic_client_registration_rate_store
 
+    # MCP transport and tool configuration. This remains a separate value so
+    # the OAuth surface and MCP runtime can validate their own settings without
+    # introducing a second top-level configuration authority.
+    # @return [Hitch::MCP::Configuration]
+    attr_reader :mcp
+
     def initialize
       @resource_uri = nil
       @allowed_hosts = [].freeze
@@ -169,6 +175,7 @@ module Hitch
       @dynamic_client_registration_enabled_configured = false
       @dynamic_client_registration_limit = { to: 20, within: 60 }.freeze
       @dynamic_client_registration_rate_store = nil
+      @mcp = Hitch::MCP::Configuration.new
     end
 
     def allowed_hosts=(values)
@@ -235,7 +242,10 @@ module Hitch
     end
 
     def validate!
-      return true if resource_uri.present?
+      if resource_uri.present?
+        mcp.validate!
+        return true
+      end
 
       raise ArgumentError,
         "Hitch.configuration.resource_uri is required; set it to the canonical MCP endpoint URI"

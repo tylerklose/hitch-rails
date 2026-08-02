@@ -165,6 +165,8 @@ def distribution_policy_errors(manifest, graph, command_owners)
     end
 
     version = artifact["version"]
+    development_version = artifact["development_version"]
+    contract_path = artifact["contract_path"]
     distribution = artifact["distribution"]
     verifier = artifact["verifier"]
     errors << "artifact version for #{issue} must be a string" unless version.is_a?(String)
@@ -173,10 +175,35 @@ def distribution_policy_errors(manifest, graph, command_owners)
     rescue ArgumentError
       errors << "artifact version for #{issue} is invalid: #{version.inspect}"
     end
-    if version.is_a?(String) && artifacts.key?(version)
-      errors << "artifact version #{version} has duplicate owners #{artifacts.fetch(version)} and #{issue}"
-    elsif version.is_a?(String)
-      artifacts[version] = issue
+    if artifact.key?("development_version")
+      errors << "artifact development_version for #{issue} must be a string" unless development_version.is_a?(String)
+      begin
+        Gem::Version.new(development_version) if development_version.is_a?(String)
+      rescue ArgumentError
+        errors << "artifact development_version for #{issue} is invalid: #{development_version.inspect}"
+      end
+      if development_version.is_a?(String) && !development_version.end_with?(".dev")
+        errors << "artifact development_version for #{issue} must end in .dev"
+      end
+      if development_version == version
+        errors << "artifact development_version for #{issue} must differ from its sealed version"
+      end
+      unless contract_path.is_a?(String) && contract_path.match?(%r{\Adocs/public_api/[A-Za-z0-9_.-]+\.md\z})
+        errors << "artifact contract_path for #{issue} must name one docs/public_api markdown file"
+      end
+    elsif artifact.key?("contract_path") &&
+        !(contract_path.is_a?(String) && contract_path.match?(%r{\Adocs/public_api/[A-Za-z0-9_.-]+\.md\z}))
+      errors << "artifact contract_path for #{issue} must name one docs/public_api markdown file"
+    end
+
+    [ version, development_version ].compact.each do |owned_version|
+      next unless owned_version.is_a?(String)
+
+      if artifacts.key?(owned_version)
+        errors << "artifact version #{owned_version} has duplicate owners #{artifacts.fetch(owned_version)} and #{issue}"
+      else
+        artifacts[owned_version] = issue
+      end
     end
     errors << "artifact distribution for #{issue} is invalid: #{distribution.inspect}" unless
       DISTRIBUTION_STATES.include?(distribution)

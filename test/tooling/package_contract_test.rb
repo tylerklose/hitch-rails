@@ -9,6 +9,14 @@ class PackageContractTest < ActiveSupport::TestCase
 
   setup do
     @specification = Gem::Specification.load(GEMSPEC.to_s)
+    @work_packets = YAML.safe_load_file(REPOSITORY_ROOT.join("docs/work_packets/index.yml"))
+    @artifact_issue, @artifact_policy = @work_packets.fetch("nodes").filter_map do |issue, metadata|
+      artifact = metadata["artifact"]
+      next unless artifact
+      next unless [ artifact["version"], artifact["development_version"] ].include?(@specification.version.to_s)
+
+      [ issue, artifact ]
+    end.fetch(0)
   end
 
   test "declares the exact supported runtime and framework window" do
@@ -16,9 +24,11 @@ class PackageContractTest < ActiveSupport::TestCase
 
     rails = @specification.runtime_dependencies.find { |dependency| dependency.name == "rails" }
     json = @specification.runtime_dependencies.find { |dependency| dependency.name == "json" }
+    mcp = @specification.runtime_dependencies.find { |dependency| dependency.name == "mcp" }
 
     assert_equal ">= 7.2, < 8.2", rails.requirement.to_s
     assert_equal ">= 2.13, < 3", json.requirement.to_s
+    assert_equal ">= 1.1, < 2", mcp.requirement.to_s
   end
 
   test "allowlist contains runtime, migrations, generator, and release contract only" do
@@ -28,10 +38,14 @@ class PackageContractTest < ActiveSupport::TestCase
       app/controllers/concerns/hitch/request_admission.rb
       config/routes.rb
       docs/public_api/0.1.0.md
+      docs/public_api/0.2.0.md
       docs/removing.md
       docs/upgrading/0.1.0.md
+      app/models/hitch/mcp/sdk_adapter.rb
+      app/models/hitch/mcp/sdk_adapter/response_normalizer.rb
       lib/generators/hitch/install/install_generator.rb
       lib/generators/hitch/install/templates/initializer.rb
+      lib/hitch/mcp/configuration.rb
     ]
     required.concat(Dir.chdir(REPOSITORY_ROOT) { Dir["db/migrate/*.rb"] })
 
@@ -60,22 +74,25 @@ class PackageContractTest < ActiveSupport::TestCase
     refute_includes source, 'gem "hitch-rails", path:'
   end
 
-  test "internal checkpoint documentation does not claim public distribution" do
+  test "internal development documentation does not claim public distribution" do
     version = @specification.version.to_s
-    escaped_version = Regexp.escape(version)
     changelog = REPOSITORY_ROOT.join("CHANGELOG.md").read
     readme = REPOSITORY_ROOT.join("README.md").read
     security = REPOSITORY_ROOT.join("SECURITY.md").read
-    public_api = REPOSITORY_ROOT.join("docs/public_api/#{version}.md").read
+    contract_path = @artifact_policy.fetch("contract_path", "docs/public_api/#{version}.md")
+    public_api = REPOSITORY_ROOT.join(contract_path).read
 
-    assert_match(/^## \[#{escaped_version}\] - \d{4}-\d{2}-\d{2}$/, changelog)
-    assert_includes changelog, "Internal verified checkpoint only"
+    assert_equal "M2.3", @artifact_issue
+    assert_equal "0.2.0.pre.1.dev", version
+    assert_equal version, @artifact_policy.fetch("development_version")
+    assert_match(/^## \[Unreleased\]$/, changelog)
+    assert_includes changelog, "Internal development build only"
     assert_includes readme, "There is no public RubyGems release yet"
     assert_includes readme, 'ref: ENV.fetch("HITCH_CHECKPOINT_SHA")'
     refute_includes readme, %(gem "hitch-rails", "~> #{version}")
     assert_includes security, "has no public RubyGems release"
-    assert_includes public_api, version
-    assert_includes public_api, "internal checkpoint artifact identity"
+    assert_includes public_api, "0.2.0"
+    assert_includes public_api, "There is no public RubyGems release"
   end
 
   test "release check compares actual artifact contents with its embedded manifest" do

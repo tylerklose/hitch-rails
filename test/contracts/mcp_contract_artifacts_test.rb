@@ -79,6 +79,10 @@ class McpContractArtifactsTest < ActiveSupport::TestCase
   test "pending runtime tests are named without misleading skips" do
     pending = load_yaml("test/contracts/pending_runtime_tests.yml")
     assert_equal "pending_m2", pending.fetch("runtime_status")
+    probes = load_yaml("docs/contracts/sdk_probes.yml").fetch("probes")
+    sdk_tests = pending.fetch("tests").find { |entry| entry.fetch("owner_issue") == "M2.1" }
+    assert_equal probes.map { |probe| probe.fetch("runtime_test") }.sort,
+      sdk_tests.fetch("test_names").sort
 
     pending.fetch("tests").each do |entry|
       path = REPOSITORY_ROOT.join(entry.fetch("path"))
@@ -88,6 +92,19 @@ class McpContractArtifactsTest < ActiveSupport::TestCase
       entry.fetch("test_names").each { |name| assert_includes content, name }
       refute_match(/^\s*(?:skip|flunk)\b/, content)
     end
+  end
+
+  test "SDK gap ledger covers every reproduced probe and both locked lanes" do
+    probes = load_yaml("docs/contracts/sdk_probes.yml").fetch("probes")
+    ledger = JSON.parse(REPOSITORY_ROOT.join("docs/evidence/0.2.0/sdk/gap-ledger.json").read)
+
+    assert_equal "M2.1", ledger.fetch("milestone")
+    assert_equal %w[latest min], ledger.fetch("lanes").map { |lane| lane.fetch("name") }.sort
+    assert ledger.fetch("lanes").all? { |lane| lane.values_at("failures", "errors", "skips") == [ 0, 0, 0 ] }
+    assert_equal 0, ledger.dig("adapter", "global_callback_mutations")
+    assert_equal probes.map { |probe| probe.values_at("id", "runtime_test") },
+      ledger.fetch("probes").map { |probe| probe.values_at("id", "runtime_test") }
+    assert ledger.fetch("probes").all? { |probe| probe.fetch("outcome") == "passed_both_lanes" }
   end
 
   private

@@ -27,6 +27,8 @@ run!(File.join(ROOT, "bin/prose-audit"))
 end
 
 run!(File.join(ROOT, "bin/ci-migrations"))
+run!(File.join(ROOT, "bin/ci-sdk"), "min")
+run!(File.join(ROOT, "bin/ci-sdk"), "latest")
 
 %w[rails_7_2_sqlite rails_8_1_postgresql].each do |profile|
   run!(

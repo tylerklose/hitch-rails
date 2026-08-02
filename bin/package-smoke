@@ -49,6 +49,7 @@ REQUIRED_PACKAGE_FILES = %w[
   SECURITY.md
   config/routes.rb
   docs/public_api/0.1.0.md
+  docs/public_api/0.2.0.md
   docs/removing.md
   docs/upgrading/0.1.0.md
   lib/generators/hitch/install/install_generator.rb
@@ -144,6 +145,13 @@ def smoke_runner(profile_name, expected_adapter)
     abort "expected #{expected_adapter}, booted \#{actual_adapter}" unless
       actual_adapter == "#{expected_adapter}"
 
+    abort "MCP configuration did not load from the artifact" unless
+      Hitch.configuration.mcp.is_a?(Hitch::MCP::Configuration)
+    sdk_adapter = Hitch::MCP.const_get(:SDKAdapter, false)
+    adapter_source = File.expand_path(sdk_adapter.instance_method(:call).source_location.fetch(0))
+    abort "SDK adapter did not load from the built artifact" unless
+      adapter_source == File.join(loaded_root, "app/models/hitch/mcp/sdk_adapter.rb")
+
     redirect_uri = "https://client.example/callback"
     resource_uri = Hitch.configuration.resource_uri
     client = Hitch::Client.register!(
@@ -209,6 +217,8 @@ def smoke_runner(profile_name, expected_adapter)
       adapter: actual_adapter,
       artifact_version: loaded.version.to_s,
       artifact_install: "local_gem_repository",
+      mcp: MCP::VERSION,
+      sdk_adapter: "private_artifact_code_loaded",
       generator: "ok",
       migrations: "ok",
       boot: "ok",
@@ -247,14 +257,18 @@ def artifact_policy_for(version)
   )
   matches = manifest.fetch("nodes").filter_map do |issue, metadata|
     artifact = metadata["artifact"]
-    [ issue, artifact ] if artifact&.fetch("version") == version
+    next unless artifact
+
+    sealed = artifact.fetch("version") == version
+    development = artifact["development_version"] == version
+    [ issue, artifact, development ] if sealed || development
   end
   raise "work-packet policy must own exactly one #{version} artifact" unless matches.one?
 
   matches.first
 end
 
-def verify_package_contract!(extraction, version, policy)
+def verify_package_contract!(extraction, version, policy, development:)
   escaped_version = Regexp.escape(version)
 
   version_source = File.read(File.join(extraction, "lib/hitch/version.rb"))
@@ -263,7 +277,11 @@ def verify_package_contract!(extraction, version, policy)
   end
 
   changelog = File.read(File.join(extraction, "CHANGELOG.md"))
-  unless changelog.match?(/^## \[#{escaped_version}\] - \d{4}-\d{2}-\d{2}$/)
+  if development
+    raise "CHANGELOG has no Unreleased development section" unless changelog.match?(/^## \[Unreleased\]$/)
+    raise "CHANGELOG must identify the development artifact as internal-only" unless
+      changelog.include?("Internal development build only")
+  elsif !changelog.match?(/^## \[#{escaped_version}\] - \d{4}-\d{2}-\d{2}$/)
     raise "CHANGELOG has no dated #{version} checkpoint heading"
   end
 
@@ -276,14 +294,16 @@ def verify_package_contract!(extraction, version, policy)
       readme.include?('ref: ENV.fetch("HITCH_CHECKPOINT_SHA")')
     raise "README must not advertise internal #{version} through RubyGems" if
       readme.include?(%(gem "hitch-rails", "~> #{version}"))
-    raise "CHANGELOG must identify #{version} as internal-only" unless
-      changelog.include?("Internal verified checkpoint only")
+    internal_marker = development ? "Internal development build only" : "Internal verified checkpoint only"
+    raise "CHANGELOG must identify #{version} as internal-only" unless changelog.include?(internal_marker)
     raise "SECURITY must identify the absence of a public RubyGems release" unless
       security.include?("has no public RubyGems release")
   end
 
-  public_api = File.read(File.join(extraction, "docs/public_api/#{version}.md"))
-  raise "public API manifest does not identify #{version}" unless public_api.include?(version)
+  contract_path = policy.fetch("contract_path", "docs/public_api/#{version}.md")
+  public_api = File.read(File.join(extraction, contract_path))
+  contract_version = File.basename(contract_path, ".md")
+  raise "public API manifest does not identify #{contract_version}" unless public_api.include?(contract_version)
 end
 
 before_status = capture!("git", "status", "--porcelain=v1", "-z", "--untracked-files=all")
@@ -292,7 +312,7 @@ report = nil
 
 Dir.mktmpdir("hitch-package-smoke-") do |directory|
   specification = Gem::Specification.load(GEMSPEC_PATH) || raise("could not load #{GEMSPEC_PATH}")
-  policy_issue, artifact_policy = artifact_policy_for(specification.version.to_s)
+  policy_issue, artifact_policy, development = artifact_policy_for(specification.version.to_s)
   artifact = File.join(directory, "#{specification.full_name}.gem")
   run!("gem", "build", GEMSPEC_PATH, "--output", artifact)
 
@@ -327,7 +347,12 @@ Dir.mktmpdir("hitch-package-smoke-") do |directory|
   end
   raise "built artifact bytes differ from the allowlisted source: #{mismatched.join(', ')}" if mismatched.any?
 
-  verify_package_contract!(extraction, specification.version.to_s, artifact_policy)
+  verify_package_contract!(
+    extraction,
+    specification.version.to_s,
+    artifact_policy,
+    development: development
+  )
 
   local_repository = File.join(directory, "gem-repository")
   FileUtils.mkdir_p(File.join(local_repository, "gems"))
@@ -400,6 +425,8 @@ Dir.mktmpdir("hitch-package-smoke-") do |directory|
 
   report = {
     "release" => specification.version.to_s,
+    "sealed_release" => artifact_policy.fetch("version"),
+    "development" => development,
     "milestone" => policy_issue,
     "distribution" => artifact_policy.fetch("distribution"),
     "artifact" => {

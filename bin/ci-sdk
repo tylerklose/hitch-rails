@@ -1,0 +1,79 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "bundler"
+require "open3"
+require "tmpdir"
+
+ROOT = File.expand_path("..", __dir__)
+TEST_PATH = "test/hitch/mcp/sdk_contract_test.rb"
+LANES = {
+  "min" => File.join(ROOT, "gemfiles/mcp_min.gemfile"),
+  "latest" => File.join(ROOT, "gemfiles/mcp_latest.gemfile")
+}.freeze
+
+def abort_with_usage(message = nil, status: 64)
+  warn message if message
+  warn "Usage: bin/ci-sdk (min|latest)"
+  exit status
+end
+
+def run!(environment, *command)
+  puts "+ #{command.join(' ')}"
+  return if system(environment, *command, chdir: ROOT)
+
+  abort "SDK lane command failed: #{command.join(' ')}"
+end
+
+def run_tests!(environment)
+  command = [ File.join(ROOT, "bin/rails"), "test", TEST_PATH ]
+  output = +""
+  status = nil
+
+  Open3.popen2e(environment, *command, chdir: ROOT) do |_stdin, stream, wait_thread|
+    stream.each do |chunk|
+      $stdout.write(chunk)
+      output << chunk
+    end
+    status = wait_thread.value
+  end
+
+  abort "SDK contract tests failed" unless status.success?
+  skips = output.scan(/\b(\d+) skips\b/).flatten.map(&:to_i).last
+  abort "SDK lane has an ambiguous Minitest summary" if skips.nil?
+  abort "SDK lane must have zero skips (found #{skips})" if skips.positive?
+end
+
+lane = ARGV.shift
+abort_with_usage(status: 0) if %w[-h --help].include?(lane)
+abort_with_usage("Unknown SDK lane: #{lane.inspect}") unless LANES.key?(lane)
+abort_with_usage("Unexpected arguments: #{ARGV.join(' ')}") if ARGV.any?
+
+gemfile = LANES.fetch(lane)
+lockfile = "#{gemfile}.lock"
+abort "Missing SDK lane lockfile: #{lockfile}" unless File.file?(lockfile)
+
+lock = Bundler::LockfileParser.new(Bundler.read_file(lockfile))
+resolved = lock.specs.find { |specification| specification.name == "mcp" }&.version&.to_s
+abort "SDK lane lockfile does not resolve mcp" unless resolved
+abort "minimum SDK lane must resolve exactly 1.1.0, got #{resolved}" if lane == "min" && resolved != "1.1.0"
+
+base_environment = {
+  "BUNDLE_GEMFILE" => gemfile,
+  "HITCH_EXPECTED_MCP_VERSION" => resolved,
+  "HITCH_SDK_LANE" => lane,
+  "RAILS_ENV" => "test"
+}
+run!(base_environment, "bundle", "check")
+
+Dir.mktmpdir("hitch-sdk-#{lane}-") do |directory|
+  environment = base_environment.merge(
+    "DATABASE_URL" => "sqlite3:#{File.join(directory, 'test.sqlite3')}",
+    "SCHEMA" => File.join(directory, "schema.rb")
+  )
+  run!(environment, File.join(ROOT, "bin/rails"), "db:create")
+  run!(environment, File.join(ROOT, "bin/rails"), "db:migrate")
+  run_tests!(environment)
+end
+
+puts "SDK lane=#{lane} resolved_mcp=#{resolved} contract=passed"

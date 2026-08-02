@@ -1,0 +1,346 @@
+{
+  "schema_version": 1,
+  "schema": "hitch.m4.1-authorization-denial-evidence.v1",
+  "milestone": "M4.1",
+  "status": "accepted_internal_tool_policy_boundary",
+  "verified_at": "2026-08-02T08:55:28Z",
+  "source": {
+    "commit": "fe3bf552bd82f73183b0328dfdfe9e98d00a00ec",
+    "tree": "308d98268b48caad5ce849c8f0cca8f21f38b937",
+    "predecessor_commit": "08613e3705cb6d58f8cbf26a04983780695fefe4",
+    "state": "immutable_implementation_candidate",
+    "worktree_clean_at_capture": true
+  },
+  "artifact": {
+    "version": "0.2.0.pre.3.dev",
+    "target_checkpoint": "0.2.0.pre.3",
+    "distribution": "internal_only",
+    "checkpoint_sealed": false,
+    "published": false,
+    "tag_created": false,
+    "github_release_created": false,
+    "rubygems_publication_performed": false
+  },
+  "call_contract": {
+    "framework_owned_call": true,
+    "subclass_call_override_admitted_by_registry": false,
+    "schema_authority": "pinned_mcp_sdk_before_tool_callback",
+    "argument_copy": "fresh_recursive_json_copy",
+    "argument_keys": "strings_at_every_hash_depth",
+    "argument_mutability": "deeply_frozen",
+    "argument_identity_between_policy_and_perform": "same_object",
+    "context_identity_between_policy_and_perform": "same_object",
+    "nested_reserved_key": "valid_data",
+    "top_level_reserved_key": "rejected_before_sdk_dispatch",
+    "authorization_default": "deny_by_Hitch_MCP_Forbidden",
+    "authorization_allow_signal": "normal_return_regardless_of_return_value",
+    "perform_after_denial": false,
+    "public_failure_shape": "generic_tool_error",
+    "public_failure_text": "Tool execution failed",
+    "exception_messages_public": false,
+    "supported_result_channel": "deferred_to_M4.2"
+  },
+  "gate_precedence": [
+    "registration",
+    "request_local_availability",
+    "static_oauth_scope",
+    "sdk_input_schema",
+    "argument_normalization",
+    "host_argument_policy",
+    "host_execution"
+  ],
+  "lattice": {
+    "model": "test/lattice/mcp_tool_authorization.json",
+    "command": "lattice generate test/lattice/mcp_tool_authorization.json --format json --seed 42 --strength 8",
+    "seed": 42,
+    "strength": 8,
+    "valid_terminal_paths": 12,
+    "exhaustive_assignments_considered": 11664,
+    "coverage": "100.0%",
+    "selected_control_flow_rows": [
+      {
+        "row": 1,
+        "input_schema": "valid",
+        "argument_policy": "allow",
+        "host_outcome": "success"
+      },
+      {
+        "row": 9,
+        "input_schema": "invalid",
+        "argument_policy": "not_applicable",
+        "host_outcome": "not_applicable"
+      },
+      {
+        "row": 10,
+        "input_schema": "valid",
+        "argument_policy": "deny",
+        "host_outcome": "not_applicable"
+      },
+      {
+        "row": 12,
+        "input_schema": "valid",
+        "argument_policy": "allow",
+        "host_outcome": "raises"
+      }
+    ],
+    "output_semantics": "deferred_to_M4.2"
+  },
+  "denial_paths": [
+    {
+      "name": "sdk_schema_invalid",
+      "tool_callback_entries": 0,
+      "argument_normalizations": 0,
+      "authorization_attempts": 0,
+      "perform_attempts": 0,
+      "public_outcome": "generic_tool_error"
+    },
+    {
+      "name": "top_level_reserved_context",
+      "tool_callback_entries": 0,
+      "argument_normalizations": 0,
+      "authorization_attempts": 0,
+      "perform_attempts": 0,
+      "public_outcome": "invalid_params"
+    },
+    {
+      "name": "default_policy",
+      "tool_callback_entries": 1,
+      "argument_normalizations": 1,
+      "authorization_attempts": 1,
+      "perform_attempts": 0,
+      "public_outcome": "generic_tool_error"
+    },
+    {
+      "name": "explicit_forbidden",
+      "tool_callback_entries": 1,
+      "argument_normalizations": 1,
+      "authorization_attempts": 1,
+      "perform_attempts": 0,
+      "public_outcome": "generic_tool_error",
+      "exception_message_present": false
+    },
+    {
+      "name": "unexpected_policy_failure",
+      "tool_callback_entries": 1,
+      "argument_normalizations": 1,
+      "authorization_attempts": 1,
+      "perform_attempts": 0,
+      "public_outcome": "generic_tool_error",
+      "exception_message_present": false
+    },
+    {
+      "name": "non_json_value",
+      "tool_callback_entries": 1,
+      "argument_normalizations": 1,
+      "authorization_attempts": 0,
+      "perform_attempts": 0,
+      "public_outcome": "generic_tool_error"
+    },
+    {
+      "name": "duplicate_normalized_key",
+      "tool_callback_entries": 1,
+      "argument_normalizations": 1,
+      "authorization_attempts": 0,
+      "perform_attempts": 0,
+      "public_outcome": "generic_tool_error"
+    }
+  ],
+  "admitted_control_paths": [
+    {
+      "name": "normal_return_with_false_value",
+      "authorization_attempts": 1,
+      "perform_attempts": 1,
+      "return_value_used_as_authority": false
+    },
+    {
+      "name": "host_exception",
+      "authorization_attempts": 1,
+      "perform_attempts": 1,
+      "public_outcome": "generic_tool_error",
+      "exception_message_present": false
+    },
+    {
+      "name": "successful_control_flow",
+      "authorization_attempts": 1,
+      "perform_attempts": 1,
+      "same_context_identity": true,
+      "same_argument_identity": true,
+      "deeply_frozen_string_keyed_arguments": true,
+      "output_contract_complete": false
+    }
+  ],
+  "mutation_oracles": {
+    "runner_executed": false,
+    "runner_owner": "M4.5",
+    "classification": "named_test_oracles_not_an_executed_mutation_score",
+    "oracles": [
+      {
+        "mutant": "policy_before_schema",
+        "oracle_status": "would_fail_named_test",
+        "test": "test_schema_precedes_argument_policy"
+      },
+      {
+        "mutant": "default_policy_allows",
+        "oracle_status": "would_fail_named_test",
+        "test": "test_default_policy_denies_without_execution"
+      },
+      {
+        "mutant": "continue_after_forbidden",
+        "oracle_status": "would_fail_named_test",
+        "test": "test_Forbidden_policy_messages_stay_private_and_perform_never_runs"
+      },
+      {
+        "mutant": "expose_policy_exception_message",
+        "oracle_status": "would_fail_named_test",
+        "test": "test_Forbidden_policy_messages_stay_private_and_perform_never_runs"
+      },
+      {
+        "mutant": "treat_false_return_as_denial",
+        "oracle_status": "would_fail_named_test",
+        "test": "test_policy_return_values_are_ignored_when_no_exception_is_raised"
+      },
+      {
+        "mutant": "copy_arguments_between_policy_and_perform",
+        "oracle_status": "would_fail_named_test",
+        "test": "test_policy_and_execution_receive_the_same_deeply_frozen_string_keyed_arguments"
+      },
+      {
+        "mutant": "expose_host_exception_message",
+        "oracle_status": "would_fail_named_test",
+        "test": "test_host_exceptions_become_generic_tool_errors_after_one_execution_attempt"
+      }
+    ]
+  },
+  "acceptance": {
+    "focused_default": {
+      "command": "bin/ci-test test/hitch/mcp/tool_test.rb",
+      "runs": 10,
+      "assertions": 80,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0
+    },
+    "regression": {
+      "command": "bin/ci-test test/hitch/mcp/tool_test.rb test/hitch/mcp/sdk_contract_test.rb test/hitch/mcp/registry_test.rb test/integration/mcp_wire_contract_test.rb test/integration/mcp_listing_test.rb test/tooling/package_contract_test.rb test/hitch/mcp/listing_evidence_test.rb",
+      "runs": 74,
+      "assertions": 2717,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0
+    },
+    "sdk_lanes": [
+      {
+        "name": "min",
+        "selector": "= 1.1.0",
+        "resolved": "1.1.0",
+        "lock_sha256": "29d8acb3a46c921ee0611d572c41f89961b788f75f502abf3e4d274f892f9afc",
+        "runs": 18,
+        "assertions": 317,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      {
+        "name": "latest",
+        "selector": ">= 1.1, < 2",
+        "resolution_claim": "latest_compatible_as_last_locked",
+        "resolved": "1.1.0",
+        "lock_sha256": "cf997dd83b752466543a38875e84130384447d7162d8563990fc68e6e7705b0e",
+        "runs": 18,
+        "assertions": 316,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      }
+    ],
+    "rails_profiles": [
+      {
+        "name": "rails_7_2_sqlite",
+        "rails": "7.2.3.2",
+        "adapter": "sqlite3",
+        "runs": 28,
+        "assertions": 379,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      {
+        "name": "rails_8_1_postgresql",
+        "rails": "8.1.3.1",
+        "adapter": "postgresql",
+        "runs": 28,
+        "assertions": 563,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      }
+    ],
+    "contract": {
+      "command": "bin/contract",
+      "runs": 42,
+      "assertions": 671,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "lattice_terminal_rows": 12
+    },
+    "wire_lanes": [
+      {
+        "name": "min",
+        "resolved_mcp": "1.1.0",
+        "vectors": 44,
+        "runs": 16,
+        "assertions": 1549,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      {
+        "name": "latest",
+        "resolved_mcp": "1.1.0",
+        "vectors": 44,
+        "runs": 16,
+        "assertions": 1549,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      }
+    ],
+    "server_conformance": {
+      "source_commit": "fe3bf552bd82f73183b0328dfdfe9e98d00a00ec",
+      "source_tree": "308d98268b48caad5ce849c8f0cca8f21f38b937",
+      "worktree_clean_at_run": true,
+      "success": 49,
+      "expected_failure": 2,
+      "capability_gated_skip": 5,
+      "unexpected_failure": 0,
+      "credential_in_output_or_logs": false
+    },
+    "rubocop": {
+      "files": 170,
+      "offenses": 0
+    },
+    "full_ci": "deferred_to_M4.5_checkpoint",
+    "package_smoke": "deferred_to_M4.5_checkpoint",
+    "mutation_runner": "deferred_to_M4.5_checkpoint"
+  },
+  "checksums": {
+    "tool_sha256": "1b8bde7caed0aede9b4fd09ef0fb8c5a5f7d69f73e6c44637963847a8aef48bd",
+    "forbidden_sha256": "ba5efde4918973c82165131c2a88dacac1d2dce4c7a28400f92b3697382d51cd",
+    "registry_sha256": "7e19f85ee8bdbcbbc0798d5ffd1a7ed91a922bb2ccc675aad33bc4eb1c8dac0c",
+    "sdk_adapter_sha256": "08131e120daa45fdbedb6f2a7362e70c6b9ac9bac6d091bd8e816a0d175077b6",
+    "tool_test_sha256": "dc9455cb0f5fb60f55776bf93cd57dc9f88e1ce67f3cfd88344b6ec3866fbf62",
+    "lattice_sha256": "70aec37011d2be7a1b7ed8e72118cd7d4c2305848b645c6745cdf1ba385710e7",
+    "work_packet_sha256": "ad85cd2c4408378970424a87486823b74043b77497c9ec5470bc38d4a3fd7657",
+    "conformance_fixture_sha256": "c086a5b833e4096d67a0dc400138b5bba5c642360326870eeff688b054157cb3",
+    "wire_fixture_sha256": "52c968f07b487e9dc59682e2c511ece47e4ecd1a38ec67a664fe20714ca47e0d"
+  },
+  "sensitive_data": {
+    "contains_credentials": false,
+    "contains_raw_arguments": false,
+    "contains_host_results": false,
+    "contains_exception_messages": false,
+    "contains_principal_records": false,
+    "contains_access_token_records": false
+  }
+}

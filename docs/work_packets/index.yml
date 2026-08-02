@@ -113,6 +113,8 @@ nodes:
     creates_commands: [bin/package-apps, bin/client-smokes, bin/release-check]
     artifact:
       version: 0.2.0.pre.4
+      development_version: 0.2.0.pre.4.dev
+      contract_path: docs/public_api/0.2.0.md
       distribution: public_optional
       verifier: bin/package-smoke
       public_verifier: bin/release-check

@@ -65,6 +65,10 @@ class PackageContractTest < ActiveSupport::TestCase
       app/models/hitch/mcp/verified_request.rb
       lib/generators/hitch/install/install_generator.rb
       lib/generators/hitch/install/templates/initializer.rb
+      lib/generators/hitch/mcp/install_generator.rb
+      lib/generators/hitch/mcp/templates/controller.rb.tt
+      lib/generators/hitch/mcp/templates/initializer.rb.tt
+      lib/generators/hitch/mcp/templates/registry.rb.tt
       lib/hitch/mcp/configuration.rb
     ]
     required.concat(Dir.chdir(REPOSITORY_ROOT) { Dir["db/migrate/*.rb"] })
@@ -94,7 +98,7 @@ class PackageContractTest < ActiveSupport::TestCase
     refute_includes source, 'gem "hitch-rails", path:'
   end
 
-  test "internal artifact documentation does not claim public distribution" do
+  test "active development artifact does not claim public distribution" do
     version = @specification.version.to_s
     changelog = REPOSITORY_ROOT.join("CHANGELOG.md").read
     readme = REPOSITORY_ROOT.join("README.md").read
@@ -103,8 +107,9 @@ class PackageContractTest < ActiveSupport::TestCase
     public_api = REPOSITORY_ROOT.join(contract_path).read
     development = @artifact_policy["development_version"] == version
 
-    assert_equal "M4.5", @artifact_issue
-    assert_equal "internal_only", @artifact_policy.fetch("distribution")
+    assert_equal "M5.4", @artifact_issue
+    assert_equal "public_optional", @artifact_policy.fetch("distribution")
+    assert development, "the active pre.4.dev build must remain an internal development artifact"
     if development
       assert_equal version, @artifact_policy.fetch("development_version")
       assert_match(/^## \[Unreleased\]$/, changelog)
@@ -132,7 +137,7 @@ class PackageContractTest < ActiveSupport::TestCase
   end
 
   test "release check rejects internal and malformed versions before network access" do
-    [ "0.1.0", "0.2.0.pre.3", "not-a-release" ].each do |version|
+    [ "0.1.0", "0.2.0.pre.3", "0.2.0.pre.4.dev", "not-a-release" ].each do |version|
       _stdout, stderr, status = Open3.capture3(
         RbConfig.ruby,
         REPOSITORY_ROOT.join("bin/release-check").to_s,

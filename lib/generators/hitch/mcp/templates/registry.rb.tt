@@ -1,0 +1,5 @@
+# frozen_string_literal: true
+
+# Tools remain unavailable until they are reviewed and registered explicitly.
+class McpToolRegistry < Hitch::MCP::Registry
+end

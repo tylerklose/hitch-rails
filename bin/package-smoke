@@ -63,6 +63,10 @@ REQUIRED_PACKAGE_FILES = %w[
   app/models/hitch/mcp/verified_request.rb
   lib/generators/hitch/install/install_generator.rb
   lib/generators/hitch/install/templates/initializer.rb
+  lib/generators/hitch/mcp/install_generator.rb
+  lib/generators/hitch/mcp/templates/controller.rb.tt
+  lib/generators/hitch/mcp/templates/initializer.rb.tt
+  lib/generators/hitch/mcp/templates/registry.rb.tt
   lib/hitch/version.rb
 ].freeze
 
@@ -116,16 +120,6 @@ def application_controller
   RUBY
 end
 
-def mcp_controller
-  <<~RUBY
-    # frozen_string_literal: true
-
-    class McpController < ActionController::API
-      include Hitch::MCP::Endpoint
-    end
-  RUBY
-end
-
 def adoption_commands(profile)
   rails_new_options = %w[
     --skip-bundle --skip-git --skip-keeps --skip-bootsnap
@@ -141,7 +135,8 @@ def adoption_commands(profile)
     "bundle exec rails generate hitch:install",
     "bundle exec rails db:create",
     "bundle exec rails db:migrate",
-        "bundle exec rails runner <discovery-authorization-and-mcp-smoke>"
+    "bundle exec rails generate hitch:mcp:install",
+    "bundle exec rails runner <discovery-authorization-and-mcp-smoke>"
   ]
 end
 
@@ -384,7 +379,7 @@ def verify_package_contract!(extraction, version, policy, development:)
 
   readme = File.read(File.join(extraction, "README.md"))
   security = File.read(File.join(extraction, "SECURITY.md"))
-  if policy.fetch("distribution") == "internal_only"
+  if development || policy.fetch("distribution") == "internal_only"
     raise "README must state that no public RubyGems release exists" unless
       readme.include?("There is no public RubyGems release yet")
     raise "README must require an immutable source ref" unless
@@ -474,16 +469,6 @@ Dir.mktmpdir("hitch-package-smoke-") do |directory|
     run!("bundle", "config", "set", "--local", "path", "vendor/bundle", chdir: app)
     run!("bundle", "install", chdir: app)
     run!("bundle", "exec", "rails", "generate", "hitch:install", chdir: app)
-    File.write(File.join(app, "app/controllers/mcp_controller.rb"), mcp_controller)
-    routes_path = File.join(app, "config/routes.rb")
-    original_routes = File.read(routes_path)
-    abort "generated routes file lacks the Rails draw marker" unless
-      original_routes.include?("Rails.application.routes.draw do\n")
-    routes = original_routes.sub(
-      "Rails.application.routes.draw do\n",
-      "Rails.application.routes.draw do\n  match \"/mcp\", to: \"mcp#handle\", via: :all\n"
-    )
-    File.write(routes_path, routes)
 
     database_url = if profile.fetch(:adapter) == "sqlite3"
       "sqlite3:#{File.join(directory, "#{profile_name}.sqlite3")}"
@@ -501,6 +486,11 @@ Dir.mktmpdir("hitch-package-smoke-") do |directory|
       run!("bundle", "exec", "rails", "db:create", environment: database_environment, chdir: app)
       database_created = true
       run!("bundle", "exec", "rails", "db:migrate", environment: database_environment, chdir: app)
+      run!(
+        "bundle", "exec", "rails", "generate", "hitch:mcp:install",
+        environment: database_environment,
+        chdir: app
+      )
 
       output = capture!(
         "bundle", "exec", "rails", "runner",

@@ -1,0 +1,52 @@
+{
+  "model_name": "hitch_mcp_install_generator",
+  "_intent_notes": [
+    "Pairwise install-preflight model for M5.1.",
+    "Every row runs the real Rails generator against a temporary host tree.",
+    "Only complete prerequisites, no collision, and a valid default or custom controller name may write files.",
+    "All refused rows compare the complete host tree before and after to prove zero partial mutation."
+  ],
+  "parameters": [
+    {
+      "name": "prerequisite",
+      "values": ["complete", "missing_auth_initializer", "missing_migrations"]
+    },
+    {
+      "name": "controller_name",
+      "values": ["default", "custom_valid", "invalid"]
+    },
+    {
+      "name": "collision",
+      "values": [
+        "none",
+        "controller_file",
+        "controller_constant",
+        "route",
+        "initializer_file",
+        "registry_file",
+        "registry_constant",
+        "manifest"
+      ]
+    }
+  ],
+  "constraints": [
+    {
+      "type": "forced",
+      "_why": "Default-controller golden path.",
+      "assignments": [
+        {"parameter": "prerequisite", "value": "complete"},
+        {"parameter": "controller_name", "value": "default"},
+        {"parameter": "collision", "value": "none"}
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Custom-controller escape-hatch golden path.",
+      "assignments": [
+        {"parameter": "prerequisite", "value": "complete"},
+        {"parameter": "controller_name", "value": "custom_valid"},
+        {"parameter": "collision", "value": "none"}
+      ]
+    }
+  ]
+}

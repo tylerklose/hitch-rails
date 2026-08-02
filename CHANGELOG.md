@@ -5,6 +5,21 @@ All notable changes to hitch-rails will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Internal development build only. The active version is `0.2.0.pre.4.dev`; it
+is not tagged, GitHub-released, or published to RubyGems.
+
+### Added
+
+- Added the collision-safe `hitch:mcp:install` Rails generator. After the auth
+  installer and migrations, it creates one host-owned API controller, an empty
+  explicit Registry, deny-default MCP settings, and an exact `/mcp` route block
+  before the engine mount. It refuses missing prerequisites and every owned
+  file, constant, route, or manifest collision before writing anything,
+  supports an explicit `--controller-name`, and records checksums for an exact
+  non-destructive generator rollback that refuses customized artifacts.
+
 ## [0.2.0.pre.3] - 2026-08-02
 
 Internal verified checkpoint only. `0.2.0.pre.3` is not tagged, GitHub-released,

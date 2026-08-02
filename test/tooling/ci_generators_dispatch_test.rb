@@ -13,13 +13,19 @@ class CIGeneratorsDispatchTest < ActiveSupport::TestCase
     assert_includes stderr, "Usage: bin/ci-generators (install|tool)"
   end
 
-  test "fails closed while each downstream generator packet is pending" do
-    { "install" => "M5.1", "tool" => "M5.2" }.each do |target, owner|
-      _stdout, stderr, status = Open3.capture3(COMMAND, target)
+  test "runs the accepted install generator target" do
+    stdout, stderr, status = Open3.capture3(COMMAND, "install")
 
-      assert_equal 69, status.exitstatus
-      assert_includes stderr, "intentionally unavailable until #{owner}"
-    end
+    assert_predicate status, :success?, stderr
+    assert_includes stdout, "MCP install generator verified: 25 pairwise rows"
+    assert_includes stdout, "0 failures, 0 errors, 0 skips"
+  end
+
+  test "keeps the tool target capability-gated until M5.2" do
+    _stdout, stderr, status = Open3.capture3(COMMAND, "tool")
+
+    assert_equal 69, status.exitstatus
+    assert_includes stderr, "intentionally unavailable until M5.2"
   end
 
   test "rejects missing unknown and extra targets" do

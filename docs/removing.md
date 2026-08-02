@@ -11,9 +11,15 @@ the gem must not silently delete OAuth audit data or principal bindings.
    Hitch rake tasks.
 4. Back up the `hitch_*` tables and decide their retention period under the
    application's audit and privacy policy.
-5. Remove `mount Hitch::Engine` and any host controller inclusions of
+5. If `config/hitch_mcp_install.json` exists, run
+   `bin/rails destroy hitch:mcp:install` while the gem is still installed. The
+   rollback verifies every generated file checksum and the exact marked route
+   block before changing anything. If it refuses because an artifact was
+   customized, review and remove those host-owned artifacts manually; do not
+   bypass the refusal with blind recursive deletion.
+6. Remove `mount Hitch::Engine` and any remaining host controller inclusions of
    `Hitch::ServerEndpoint` or `Hitch::CorsSupport`.
-6. Remove `config/initializers/hitch.rb`, the Gemfile entry, and bundle again.
+7. Remove `config/initializers/hitch.rb`, the Gemfile entry, and bundle again.
 
 Hitch does not ship a table-dropping removal migration. Keep the tables while
 old deployments, queued jobs, logs, or audit workflows may still refer to

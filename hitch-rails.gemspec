@@ -22,7 +22,9 @@ Gem::Specification.new do |spec|
     Its closed Result channel validates and caps output while preserving only
     explicit safe error messages. Fleet-shared Redis admission and
     structural-only request/invocation notifications complete the runtime
-    boundary. A deprecated ServerEndpoint
+    boundary. A collision-safe Rails generator installs the host-owned MCP
+    controller, empty explicit Registry, deny-default settings, and ordered
+    route with checksum-guarded rollback. A deprecated ServerEndpoint
     compatibility concern remains available through the 0.2 line for bearer
     validation and basic MCP Streamable HTTP response shaping. Principal lookup is
     host-configurable, browser origins are exact and default-deny, and both
@@ -53,6 +55,9 @@ Gem::Specification.new do |spec|
       docs/public_api/0.2.0.md
       docs/removing.md
       docs/upgrading/0.1.0.md
+      lib/generators/hitch/mcp/templates/controller.rb.tt
+      lib/generators/hitch/mcp/templates/initializer.rb.tt
+      lib/generators/hitch/mcp/templates/registry.rb.tt
     ]
     files.concat(
       Dir[

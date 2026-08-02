@@ -50,6 +50,10 @@ Redis-backed authenticated fixed window spans discovery, listing, and calls for
 each principal/client. Versioned structural request and invocation events are
 active, with HMAC identities and subscriber-failure isolation. Integrated
 mutation/concurrency acceptance is complete for the internal pre.3 checkpoint.
+The active pre.4 development line now adds the Rails MCP installer: it creates
+the host endpoint, empty explicit registry, deny-default settings, and ordered
+route with collision-safe rollback metadata. It does not discover or register
+tools automatically.
 Existing integrations may keep using the
 deprecated `Hitch::ServerEndpoint` compatibility helper for bearer validation
 and response shaping while moving toward the 0.2 endpoint.
@@ -99,8 +103,9 @@ There is no public RubyGems release yet. `0.1.0` identifies the verified
 auth-only checkpoint; `0.2.0.pre.1` identifies the verified authenticated-wire
 checkpoint; and `0.2.0.pre.2` identifies the verified request-context,
 registry, and filtered-listing checkpoint. `0.2.0.pre.3` identifies the verified
-safe-invocation, result, admission, and observation checkpoint. None is tagged
-or published. An approved source adopter must pin the accepted checkpoint's
+safe-invocation, result, admission, and observation checkpoint. The active
+installer work uses the internal `0.2.0.pre.4.dev` identity. None is tagged or
+published. An approved source adopter must pin an accepted checkpoint's
 full commit SHA rather than a branch or a nonexistent RubyGems version:
 
 ```ruby
@@ -112,14 +117,34 @@ gem "hitch-rails",
 
 ```bash
 bundle install
-bin/rails generate hitch:install   # adds initializer + mounts the engine
-bin/rails db:migrate                   # picks up the gem's migrations automatically
+bin/rails generate hitch:install       # adds auth initializer + mounts the engine
+bin/rails db:migrate                    # installs the Hitch auth schema
+bin/rails generate hitch:mcp:install   # adds host MCP controller, registry, config, and route
 ```
+
+The MCP installer requires the auth initializer, all Hitch migrations, and
+exactly one `Hitch::Engine` mount. It creates
+`app/controllers/mcp_controller.rb`, `app/models/mcp_tool_registry.rb`,
+`config/initializers/hitch_mcp.rb`, an exact marked route block before the
+engine mount, and `config/hitch_mcp_install.json`. It refuses every collision
+before writing, and leaves the Registry empty until a generated or handwritten
+tool is reviewed and registered explicitly. A namespaced host controller is an
+explicit escape hatch:
+
+```bash
+bin/rails generate hitch:mcp:install --controller-name Admin::McpController
+```
+
+Before customizing generated files, the exact generated installation can be
+rolled back with `bin/rails destroy hitch:mcp:install`. Rollback checks every
+recorded file checksum and the exact route block first; if anything changed, it
+refuses all deletion so the application owner can review the artifacts
+manually.
 
 ## Configuration
 
 ```ruby
-# config/initializers/hitch.rb
+# Split between config/initializers/hitch.rb and hitch_mcp.rb
 Hitch.configure do |config|
   config.resource_uri = "https://your-app.example.com/mcp"  # RFC 8707
   config.allowed_hosts = []    # additional exact proxy hosts
@@ -176,8 +201,8 @@ class McpController < ActionController::API
 end
 ```
 
-This controller and route are manual in the current development build; the
-installer does not generate them until M5.
+The MCP installer generates this host-owned controller and route. It does not
+register tools or choose host authorization policy.
 
 The Registry declaration surface is available now:
 

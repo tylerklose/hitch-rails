@@ -4,8 +4,9 @@ module Hitch
   module MCP
     class Configuration
       DEFAULT_MAX_REQUEST_BYTES = 1_048_576
+      DEFAULT_MAX_RESULT_BYTES = 1_048_576
 
-      attr_reader :registry, :server_info, :scope_resolver, :max_request_bytes
+      attr_reader :registry, :server_info, :scope_resolver, :max_request_bytes, :max_result_bytes
 
       def initialize
         @registry = nil
@@ -14,6 +15,7 @@ module Hitch
         @server_info = nil
         @scope_resolver = nil
         @max_request_bytes = DEFAULT_MAX_REQUEST_BYTES
+        @max_result_bytes = DEFAULT_MAX_RESULT_BYTES
       end
 
       def registry=(value)
@@ -50,6 +52,14 @@ module Hitch
         end
 
         @max_request_bytes = value
+      end
+
+      def max_result_bytes=(value)
+        unless value.is_a?(Integer) && value.positive?
+          raise ArgumentError, "mcp.max_result_bytes must be a positive integer"
+        end
+
+        @max_result_bytes = value
       end
 
       def validate!

@@ -90,11 +90,14 @@ module Hitch
           end
 
           def normalize_tool_error(result)
+            explicit_text = ResultNormalizer.explicit_error_text(result)
             result.delete(:structuredContent)
             result.delete("structuredContent")
             result.delete(:_meta)
             result.delete("_meta")
-            result[:content] = [ { type: "text", text: GENERIC_TOOL_ERROR } ]
+            result[:content] = [
+              { type: "text", text: explicit_text || GENERIC_TOOL_ERROR }
+            ]
             result[:isError] = true
           end
 

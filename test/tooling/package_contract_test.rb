@@ -47,10 +47,13 @@ class PackageContractTest < ActiveSupport::TestCase
       app/models/hitch/mcp/sdk_adapter.rb
       app/models/hitch/mcp/internal/sdk_adapter.rb
       app/models/hitch/mcp/internal/sdk_adapter/response_normalizer.rb
+      app/models/hitch/mcp/internal/error_normalizer.rb
+      app/models/hitch/mcp/internal/result_normalizer.rb
       app/models/hitch/mcp/internal/verified_request.rb
       app/models/hitch/mcp/context.rb
       app/models/hitch/mcp/forbidden.rb
       app/models/hitch/mcp/registry.rb
+      app/models/hitch/mcp/result.rb
       app/models/hitch/mcp/tool.rb
       app/models/hitch/mcp/verified_request.rb
       lib/generators/hitch/install/install_generator.rb

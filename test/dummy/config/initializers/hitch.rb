@@ -21,4 +21,5 @@ Hitch.configure do |config|
   }
   config.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
   config.mcp.max_request_bytes = 1_024
+  config.mcp.max_result_bytes = 1_024
 end

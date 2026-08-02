@@ -20,8 +20,9 @@ require "hitch/dynamic_registration_rate_limit"
 # scope and deny-default availability for each request before static OAuth scope
 # filtering. The accepted auth substrate remains the authority the endpoint
 # validates tokens against. The final Tool call now freezes JSON arguments and
-# runs deny-default argument policy before host execution; the closed Result
-# channel remains a later M4 milestone.
+# runs deny-default argument policy before host execution. The closed Result
+# channel independently validates and caps output, preserves only explicit safe
+# Result.error messages, and reports sanitized failure wrappers through Rails.
 #
 # Spec reference: https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization
 #

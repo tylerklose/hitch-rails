@@ -76,9 +76,37 @@ class McpContractArtifactsTest < ActiveSupport::TestCase
     assert_equal checked.fetch("scenarios"), generated.fetch("scenarios")
   end
 
+  test "result normalization lattice has fourteen exhaustive terminal paths" do
+    lattice = working_lattice
+    schema = REPOSITORY_ROOT.join("test/lattice/mcp_result_normalization.json").to_s
+    output, error, status = Timeout.timeout(30) do
+      Open3.capture3(lattice, "generate", schema, "--format", "json", "--seed", "42", "--strength", "3")
+    end
+    assert_predicate status, :success?, error
+
+    generated = JSON.parse(output)
+    rows = generated.fetch("scenarios").map { |row| row.fetch("values").values_at(*%w[result_path wire_size public_outcome]) }
+    assert_equal [
+      %w[text within success],
+      %w[text exact success],
+      %w[text over generic_error],
+      %w[structured_schema_accepts within success],
+      %w[structured_schema_accepts exact success],
+      %w[structured_schema_accepts over generic_error],
+      %w[explicit_error within explicit_safe_error],
+      %w[explicit_error exact explicit_safe_error],
+      %w[explicit_error over generic_error],
+      %w[structured_schema_missing not_applicable generic_error],
+      %w[structured_schema_rejects not_applicable generic_error],
+      %w[invalid_return not_applicable generic_error],
+      %w[serialization_failure not_applicable generic_error],
+      %w[host_raises not_applicable generic_error]
+    ], rows
+  end
+
   test "runtime contract tracks active boundaries and pending M4.5 without misleading skips" do
     pending = load_yaml("test/contracts/pending_runtime_tests.yml")
-    assert_equal "m2_m4_1_active_m4_5_pending", pending.fetch("runtime_status")
+    assert_equal "m2_m4_2_active_m4_5_pending", pending.fetch("runtime_status")
     probes = load_yaml("docs/contracts/sdk_probes.yml").fetch("probes")
     sdk_tests = pending.fetch("tests").find { |entry| entry.fetch("owner_issue") == "M2.1" }
     assert_equal probes.map { |probe| probe.fetch("runtime_test") }.sort,

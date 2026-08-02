@@ -249,7 +249,7 @@ class Hitch::MCP::ToolTest < ActiveSupport::TestCase
   end
 
   def successful_response
-    ::MCP::Tool::Response.new([ { type: "text", text: "ok" } ])
+    Hitch::MCP::Result.text("ok")
   end
 
   def assert_generic_tool_error(response)

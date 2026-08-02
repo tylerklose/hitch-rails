@@ -70,14 +70,31 @@ module Hitch
 
         # This SDK-facing boundary is final. Registry validation rejects any
         # subclass that replaces it, so every invocation follows the same
-        # context extraction, argument normalization, policy, and host order.
+        # context extraction, argument normalization, policy, host, and Result
+        # normalization order.
         def call(server_context:, **sdk_arguments)
+          phase = :context
+          reporting_tool_name = tool_name
           context = server_context.fetch(:hitch_context)
+          phase = :arguments
           arguments = normalize_arguments(sdk_arguments)
+          phase = :authorization
           authorize!(context, arguments:)
-          perform(context, arguments:)
-        rescue StandardError
-          generic_tool_error
+          phase = :execution
+          result = perform(context, arguments:)
+          phase = :result
+          Internal::ResultNormalizer.call(
+            result:,
+            output_schema: output_schema,
+            max_bytes: Hitch.configuration.mcp.max_result_bytes
+          )
+        rescue StandardError, SystemStackError => error
+          Internal::ErrorNormalizer.call(
+            error:,
+            phase:,
+            context:,
+            tool_name: reporting_tool_name
+          )
         end
 
         private
@@ -117,13 +134,6 @@ module Hitch
           normalized.freeze
         ensure
           seen.delete(value.object_id) if value.is_a?(Hash) || value.is_a?(Array)
-        end
-
-        def generic_tool_error
-          ::MCP::Tool::Response.new(
-            [ { type: "text", text: "Tool execution failed" } ],
-            error: true
-          )
         end
 
         def combine_value_and_keywords(value, keywords)

@@ -19,6 +19,13 @@ GitHub-released, or published to RubyGems.
   invalid argument values, and host exceptions all become one generic tool
   error without exposing messages, and registry validation continues to reject
   any subclass override of `.call`.
+- Added the closed `Hitch::MCP::Result.text`, `.structured`, and `.error`
+  constructors. Hitch now rejects implicit host serialization, independently
+  validates structured output, measures the exact serialized Result against
+  `config.mcp.max_result_bytes`, and keeps SDK result validation enabled as a
+  backstop. Only `Result.error` preserves its explicit safe message; invalid,
+  oversize, serialization, and unexpected host failures are generic on the wire
+  and report only a sanitized wrapper through `Rails.error`.
 
 ## [0.2.0.pre.2] - 2026-08-02
 

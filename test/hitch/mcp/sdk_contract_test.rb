@@ -61,12 +61,26 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
     private
 
     def default_implementation(arguments:, context:)
-      ::MCP::Tool::Response.new(
-        [ { type: "text", text: "ok" } ],
-        structured_content: { "arguments" => arguments, "context" => context.to_s }
-      )
+      Hitch::MCP::Result.text("ok")
     end
   end
+
+  RawToolDefinition = Data.define(:name, :description, :input_schema, :output_schema, :implementation) do
+    def initialize(
+      name: "echo",
+      description: "Raw SDK backstop tool",
+      input_schema: { "type" => "object" },
+      output_schema: nil,
+      &implementation
+    )
+      super(name:, description:, input_schema:, output_schema:, implementation:)
+    end
+
+    def call(server_context:, **arguments)
+      implementation.call(arguments:, context: server_context.fetch(:hitch_context))
+    end
+  end
+  private_constant :RawToolDefinition
 
   test "handle requires structural symbol keys" do
     raw_server = ::MCP::Server.new(name: "raw", version: "1", capabilities: { tools: {} })
@@ -105,7 +119,7 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
     observed = nil
     tool = ToolDefinition.new do |arguments:, context:|
       observed = [ arguments, context ]
-      ::MCP::Tool::Response.new([ { type: "text", text: "ok" } ])
+      Hitch::MCP::Result.text("ok")
     end
     params = {
       "name" => "echo",
@@ -211,7 +225,7 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
   end
 
   test "SDK output validation is explicitly enabled" do
-    invalid_tool = ToolDefinition.new(
+    invalid_tool = RawToolDefinition.new(
       output_schema: {
         "type" => "object",
         "required" => [ "value" ],
@@ -234,6 +248,24 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
     assert_equal "Internal error", response.dig(:error, :message)
     refute response.fetch(:error).key?(:data)
     refute_includes JSON.generate(response), "not-an-integer"
+  end
+
+  test "explicit Result error is the only message preserving tool error" do
+    public_message = "Safe retry guidance"
+    tool = ToolDefinition.new do |arguments:, context:|
+      Hitch::MCP::Result.error(public_message)
+    end
+
+    response = call_adapter(
+      method: "tools/call",
+      params: { "name" => "echo", "arguments" => {} },
+      tools: [ tool ]
+    )
+
+    assert_nil response[:error]
+    assert_equal true, response.dig(:result, :isError)
+    assert_equal public_message, response.dig(:result, :content, 0, :text)
+    refute response.fetch(:result).key?(:structuredContent)
   end
 
   test "hostile global callbacks receive no Hitch request data" do
@@ -334,7 +366,7 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
     observed = nil
     nested_tool = ToolDefinition.new do |arguments:, context:|
       observed = arguments
-      ::MCP::Tool::Response.new([ { type: "text", text: "ok" } ])
+      Hitch::MCP::Result.text("ok")
     end
     response = call_adapter(
       method: "tools/call",
@@ -367,7 +399,7 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
     original_new = ::MCP::Server.method(:new)
     tool = ToolDefinition.new do |arguments:, context:|
       received_context = context
-      ::MCP::Tool::Response.new([ { type: "text", text: "ok" } ])
+      Hitch::MCP::Result.text("ok")
     end
 
     stub_class_method(::MCP::Server, :new, lambda { |**arguments|
@@ -414,7 +446,7 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
     original_new = ::MCP::Server.method(:new)
     tool = ToolDefinition.new do |arguments:, context:|
       contexts << context
-      ::MCP::Tool::Response.new([ { type: "text", text: "ok" } ])
+      Hitch::MCP::Result.text("ok")
     end
 
     stub_class_method(::MCP::Server, :new, lambda { |**arguments|

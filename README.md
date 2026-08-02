@@ -44,8 +44,9 @@ tool dispatch to the host. The 0.2 development line now owns the private SDK
 compatibility boundary, authenticated endpoint, public request Context, and
 validated host Registry descriptors. Per-principal registry resolution,
 filtered listing, and deny-default argument policy are active; the closed Result
-channel, production request store, and public observation events remain later
-roadmap milestones. Existing integrations may keep using the
+channel with schema validation, an exact byte cap, and sanitized failure
+reporting is active too. The production request store and public observation
+events remain later roadmap milestones. Existing integrations may keep using the
 deprecated `Hitch::ServerEndpoint` compatibility helper for bearer validation
 and response shaping while moving toward the 0.2 endpoint.
 
@@ -192,6 +193,10 @@ module McpTools
     def self.authorize!(context, arguments:)
       raise Hitch::MCP::Forbidden unless context.scope.may_echo?(arguments.fetch("message"))
     end
+
+    def self.perform(_context, arguments:)
+      Hitch::MCP::Result.text(arguments.fetch("message"))
+    end
   end
 end
 
@@ -225,8 +230,13 @@ argument-aware policy now follow SDK input-schema validation: Hitch copies
 arguments into one recursively frozen, string-keyed Hash, runs deny-default
 `.authorize!`, then calls `.perform` with the same Context and Hash. Policy and
 host exception messages are always generic externally. M4.2 supplies the closed
-`Hitch::MCP::Result` output channel, so successful host results are not yet a
-completed compatibility surface in this development build.
+`Hitch::MCP::Result` output channel: `.text`, `.structured`, and `.error` are
+the only host returns. Structured values require the registered output schema;
+all results are measured after JSON serialization against
+`config.mcp.max_result_bytes`, which defaults to 1 MiB. Only an explicit
+`Result.error` message is public. Every other invalid, oversize, serialization,
+or unexpected host failure is generic and reports only sanitized structural
+context through `Rails.error`.
 
 ### Client ID Metadata Documents
 

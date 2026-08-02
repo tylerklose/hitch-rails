@@ -1,5 +1,5 @@
 schema_version: 1
-runtime_status: m2_m4_1_active_m4_5_pending
+runtime_status: m2_m4_2_active_m4_5_pending
 tests:
   - path: test/hitch/mcp/sdk_contract_test.rb
     owner_issue: M2.1
@@ -38,6 +38,13 @@ tests:
       - test_default_policy_denies_without_execution
       - test_Forbidden_policy_messages_stay_private_and_perform_never_runs
       - test_host_exceptions_become_generic_tool_errors_after_one_execution_attempt
+  - path: test/hitch/mcp/result_test.rb
+    owner_issue: M4.2
+    activation_constant: Hitch::MCP::Result
+    test_names:
+      - test_only_Result_is_accepted
+      - test_output_schema_and_exact_wire_cap
+      - test_failure_canaries_never_cross_Hitch_boundaries
   - path: test/integration/mcp_tool_authorization_lattice_test.rb
     owner_issue: M4.5
     activation_constant: Hitch::MCP::Tool

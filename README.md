@@ -66,10 +66,12 @@ bin/rails generate hitch:tool echo # a working, registered tool + integration te
 
 Set `resource_uri` and `brand_name` in `config/initializers/hitch.rb`, and
 the generated tool answers `tools/call` — its generated test proves it over
-real HTTP. Add `--deny-default` to generate a hardened tool instead: hidden,
-denying, and unimplemented until you fill it in. `bin/rails hitch:doctor`
-gives a read-only diagnosis of the install, and `bin/rails destroy
-hitch:install` / `destroy hitch:tool NAME` reverse the generators.
+real HTTP once you point the test's one `principal:` line at however your
+tests get a signed-in user. Add `--deny-default` to generate a hardened tool
+instead: hidden, denying, and unimplemented until you fill it in.
+`bin/rails hitch:doctor` gives a read-only diagnosis of the install, and
+`bin/rails destroy hitch:install` / `destroy hitch:tool NAME` reverse the
+generators.
 
 ## Configuration
 

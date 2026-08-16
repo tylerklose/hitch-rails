@@ -135,11 +135,6 @@ module Hitch
     # failure (plain nil) must not, or one bogus URL would take an entire
     # CIMD-hosting domain down for everyone on it.
     HOST_FAILURE = :host_failure
-    # Rejected on the URL's shape alone. Handled before either cap is
-    # consulted, so it never reaches the case below — kept because the
-    # distinction (no fetch attempted, nothing knowable, nothing to
-    # cache) is the same one CAPACITY_EXCEEDED and RATE_LIMITED encode.
-    SHAPE_REJECT = :shape_reject
     # Refused because a cap was already spent — no fetch was attempted.
     # Distinct from the two above because it says NOTHING about the URL
     # or the host, and so must never be cached: writing a host failure
@@ -210,21 +205,24 @@ module Hitch
           cache_delete(key)
         end
 
-        host = uri_host(client_id)
-        return nil if host.nil?
-        # A host that just failed to answer at all is not retried,
-        # whatever path or query is hung off it. Keyed by URL alone the
-        # negative cache is defeated by appending ?n=1, ?n=2 — each a
-        # distinct key and each a valid CIMD reference.
-        return nil if cache_read(failure_key(host)) == false
-
         # Shape is judged BEFORE either cap is touched. Rejecting a URL on
         # its scheme, port, userinfo or fragment costs nothing outbound,
         # so charging it would let a caller spend their own minute budget
         # on requests that never sent a packet — and then be refused a
-        # legitimate fetch.
+        # legitimate fetch. Shape rejects are never cached, either:
+        # repeating the check is free, while writing an entry per
+        # malformed client_id lets a caller fill a shared cache —
+        # evicting the host app's own entries — without sending a single
+        # packet.
         target = fetch_target(client_id)
         return nil if target.nil?
+
+        # A host that just failed to answer at all is not retried,
+        # whatever path or query is hung off it. Keyed by URL alone the
+        # negative cache is defeated by appending ?n=1, ?n=2 — each a
+        # distinct key and each a valid CIMD reference.
+        host = target.host
+        return nil if cache_read(failure_key(host)) == false
 
         # Both caps are consulted only on a genuine miss. A cached
         # resolution costs nothing outbound, so charging it against
@@ -250,13 +248,6 @@ module Hitch
           document, ttl = outcome
           cache_write(key, document.to_h, ttl) if ttl.positive?
           document
-        when SHAPE_REJECT
-          # Rejected on the URL alone, before any network work happened.
-          # Caching that costs more than it saves: repeating the check is
-          # free, while writing an entry per malformed client_id lets a
-          # caller fill a shared cache — evicting the host app's own
-          # entries — without sending a single packet.
-          nil
         when HOST_FAILURE
           cache_write(key, false, FAILURE_CACHE_TTL)
           cache_write(failure_key(host), false, FAILURE_CACHE_TTL)
@@ -375,10 +366,6 @@ module Hitch
         end
       end
 
-      # Fixed 60-second window. Coarse on purpose: a sliding window costs
-      # a read-modify-write per request for precision that does not
-      # change what this bounds — the order of magnitude of traffic one
-      # principal can aim at a third party.
       # Fixed 60-second window. Coarse on purpose: a sliding window buys
       # precision that does not change what this bounds — the order of
       # magnitude of traffic one principal can aim at a third party. Note
@@ -471,12 +458,6 @@ module Hitch
         host.to_s.downcase.chomp(".")
       end
 
-      def uri_host(client_id)
-        URI.parse(client_id.to_s).host.presence
-      rescue URI::InvalidURIError
-        nil
-      end
-
       # Reads a numeric setting without trusting its type. The docs say
       # "nil disables", and the obvious wrong guess at that is `false` —
       # whose #to_i does not exist, which would raise NoMethodError
@@ -513,13 +494,10 @@ module Hitch
         nil
       end
 
-      # Returns whether the value was actually stored. Callers that only
-      # want best-effort persistence can ignore it; the rate limiter
-      # cannot, because a silently-dropped write disables it.
       def cache_write(key, value, ttl)
-        Rails.cache.write(key, value, expires_in: ttl) ? true : false
+        Rails.cache.write(key, value, expires_in: ttl)
       rescue StandardError
-        false
+        nil
       end
 
       def cache_delete(key)
@@ -528,11 +506,6 @@ module Hitch
         nil
       end
 
-      # Returns a Document, or one of the failure sentinels. The
-      # distinction exists so resolve can tell a failure that is the
-      # HOST's (nothing there answers) from one that is this DOCUMENT's
-      # (the host answered, the document was unusable) — only the former
-      # may block that host's other documents.
       # Parses a client_id into the URI to fetch, or nil when its shape
       # rules it out. Deliberately separate from fetch_and_validate and
       # called before the caps: none of these checks costs a packet, so

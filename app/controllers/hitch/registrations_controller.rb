@@ -7,15 +7,14 @@ module Hitch
   # attacker-controllable — we persist it for audit fidelity but
   # consent UIs MUST NOT trust it for display (see authorize#new).
   class RegistrationsController < Hitch::PublicEndpointController
-    MAX_REQUEST_BODY_BYTES = 16_384
-
     include Hitch::CorsSupport
     include Hitch::RegistrationAdmission
     include Hitch::UriValidation
 
     def create
-      metadata = registration_metadata
-      return if performed?
+      # RegistrationAdmission has already parsed one bounded JSON object
+      # and installed it here — the action never runs otherwise.
+      metadata = request.request_parameters
 
       # RFC 7591 §2: the authorization server is responsible for
       # enforcing its URI policy at registration. Without this, a
@@ -91,17 +90,8 @@ module Hitch
 
     private
 
-    def registration_metadata
-      metadata = request.request_parameters
-      return metadata if metadata.is_a?(Hash)
-
-      oauth_error("invalid_client_metadata", "registration metadata must be a JSON object")
-      {}
-    end
-
     def normalized_registration_metadata(metadata)
       Hitch::Client.normalize_registration_metadata!(
-        client_id: "00000000-0000-0000-0000-000000000000",
         client_name: metadata["client_name"],
         redirect_uris: metadata["redirect_uris"]
       )
@@ -110,7 +100,7 @@ module Hitch
         "invalid_client_metadata",
         "client_name and redirect_uris must satisfy the documented size and shape limits"
       )
-      { redirect_uris: [] }
+      nil
     end
 
     def optional_string_metadata(metadata, key)

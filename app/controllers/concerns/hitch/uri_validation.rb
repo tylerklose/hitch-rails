@@ -42,8 +42,7 @@ module Hitch
     end
 
     def userinfo_component_present?(value)
-      authority = value.to_s.match(/\A[a-z][a-z0-9+.-]*:\/\/([^\/?#]*)/i)&.captures&.first
-      authority&.include?("@") || false
+      Hitch::ResourceUri.userinfo_component_present?(value)
     end
 
     # Exact comparison, with exactly one exception.
@@ -87,21 +86,31 @@ module Hitch
       false
     end
 
-    # RFC 8707 §2: `resource` parameter MUST be an absolute URI as
-    # specified by Section 4.3 of RFC 3986. MUST NOT include a fragment
-    # component. Schemes other than http/https don't make sense as MCP
-    # server audiences.
-    def valid_resource_uri?(uri)
-      parsed = URI.parse(uri)
-      return false unless parsed.absolute?
-      return false unless %w[http https].include?(parsed.scheme)
-      return false if parsed.hostname.blank?
-      return false unless parsed.userinfo.nil? && !userinfo_component_present?(uri)
-      return false unless parsed.fragment.nil?
+    # RFC 8707 audience binding, shared by the authorize and token
+    # endpoints: the request's `resource` must canonicalize to exactly
+    # the resource this server is configured to protect. Returns the
+    # canonical resource string, or nil after rendering the OAuth error.
+    def require_canonical_resource(value)
+      if value.blank?
+        oauth_error("invalid_target", "resource is required")
+        return nil
+      end
 
-      true
-    rescue URI::InvalidURIError
-      false
+      allow_loopback = Rails.env.local?
+      requested = Hitch::ResourceUri.canonicalize!(value, allow_loopback_http: allow_loopback)
+      configured = Hitch::ResourceUri.canonicalize!(
+        Hitch.configuration.resource_uri,
+        allow_loopback_http: allow_loopback
+      )
+      unless requested == configured
+        oauth_error("invalid_target", "resource does not identify this MCP server")
+        return nil
+      end
+
+      requested
+    rescue Hitch::ResourceUri::Invalid => error
+      oauth_error("invalid_target", error.message)
+      nil
     end
   end
 end

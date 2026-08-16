@@ -232,17 +232,7 @@ module Hitch
         end
 
         def deep_copy_and_freeze(value)
-          copy = case value
-          when Hash
-            value.to_h { |key, child| [ key.to_s.dup.freeze, deep_copy_and_freeze(child) ] }
-          when Array
-            value.map { |child| deep_copy_and_freeze(child) }
-          when String
-            value.dup
-          else
-            value
-          end
-          copy.freeze
+          JsonValues.deep_string_copy_and_freeze(value)
         end
       end
     end

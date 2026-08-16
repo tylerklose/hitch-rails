@@ -102,11 +102,11 @@ module Hitch
       end
 
       def hitch_mcp_observe_request
-        activation = Internal::Observation.activate_request
-        @hitch_mcp_observation = activation.fetch(0)
-        yield
+        Internal::Observation.with_request_state do |state|
+          @hitch_mcp_observation = state
+          yield
+        end
       ensure
-        Internal::Observation.deactivate_request(activation) if activation
         begin
           hitch_mcp_request_observed!
         ensure
@@ -498,8 +498,8 @@ module Hitch
       end
 
       # Private test seams wrap production-owned admission and request
-      # observation. The invocation hook remains only for the sealed dummy wire
-      # fixture; final Tool calls emit through Internal::Observation directly.
+      # observation; final Tool calls emit through Internal::Observation
+      # directly.
 
       # Counts through the host application's own cache store, exactly as
       # ActionController::RateLimiting does. A nil count admits, same as
@@ -521,11 +521,9 @@ module Hitch
       def hitch_mcp_body_parse_started!; end
       def hitch_mcp_registry_resolved!; end
       def hitch_mcp_sdk_dispatch_started!; end
-      def hitch_mcp_host_called!; end
       def hitch_mcp_request_observed!
         @hitch_mcp_observation&.finish!(response:)
       end
-      def hitch_mcp_invocation_observed!; end
 
       private_constant :MAX_BEARER_TOKEN_BYTES,
         :ALLOWED_REQUEST_HEADERS,

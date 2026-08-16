@@ -40,12 +40,7 @@ module Hitch
           private
 
           def copy(value)
-            case value
-            when Hash then value.to_h { |key, child| [ key, copy(child) ] }
-            when Array then value.map { |child| copy(child) }
-            when String then value.dup
-            else value
-            end
+            JsonValues.copy(value)
           end
         end
 
@@ -80,9 +75,7 @@ module Hitch
           end
 
           def read(hash, key)
-            return unless hash.is_a?(Hash)
-
-            hash.key?(key) ? hash[key] : hash[key.to_s]
+            JsonValues.read(hash, key)
           end
         end
 
@@ -187,13 +180,7 @@ module Hitch
         end
 
         def deep_freeze(value)
-          case value
-          when Hash
-            value.each { |key, child| deep_freeze(key); deep_freeze(child) }
-          when Array
-            value.each { |child| deep_freeze(child) }
-          end
-          value.freeze
+          JsonValues.deep_freeze(value)
         end
 
         def invalid!(category)

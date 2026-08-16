@@ -11,11 +11,11 @@ module Hitch
           PROTOCOL_VERSION = "2026-07-28"
           SERVER_INFO_META_KEY = "io.modelcontextprotocol/serverInfo"
           GENERIC_TOOL_ERROR = "Tool execution failed"
+          # SDK 1.1 gaps tracked upstream: final discovery shape
+          # (https://github.com/modelcontextprotocol/ruby-sdk/issues/389) and
+          # final result fields
+          # (https://github.com/modelcontextprotocol/modelcontextprotocol/issues/3040).
           SDK_1_1_GAPS = Gem::Requirement.new(">= 1.1.0", "< 1.2.0")
-          UPSTREAM_ISSUES = {
-            final_discovery: "https://github.com/modelcontextprotocol/ruby-sdk/issues/389",
-            final_result_fields: "https://github.com/modelcontextprotocol/modelcontextprotocol/issues/3040"
-          }.freeze
 
           class << self
             def call(response:, method:, server_info:, request_id:)
@@ -140,9 +140,7 @@ module Hitch
           end
 
           def read(hash, key)
-            return unless hash.is_a?(Hash)
-
-            hash.key?(key) ? hash[key] : hash[key.to_s]
+            JsonValues.read(hash, key)
           end
 
           def member?(hash, key)
@@ -154,12 +152,7 @@ module Hitch
           end
 
           def copy(value)
-            case value
-            when Hash then value.to_h { |key, child| [ key, copy(child) ] }
-            when Array then value.map { |child| copy(child) }
-            when String then value.dup
-            else value
-            end
+            JsonValues.copy(value)
           end
 
           def stringify(value)
@@ -172,13 +165,7 @@ module Hitch
           end
 
           def deep_freeze(value)
-            case value
-            when Hash
-              value.each { |key, child| deep_freeze(key); deep_freeze(child) }
-            when Array
-              value.each { |child| deep_freeze(child) }
-            end
-            value.freeze
+            JsonValues.deep_freeze(value)
           end
         end
 

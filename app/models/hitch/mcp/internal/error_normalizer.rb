@@ -19,12 +19,6 @@ module Hitch
           result: "result_normalization"
         }.freeze
 
-        class ReportedFailure < StandardError
-          def initialize
-            super("Hitch MCP tool execution failed")
-          end
-        end
-
         class << self
           def call(error:, phase:, context:, tool_name:)
             report(error:, phase:, tool_name:) unless expected_denial?(error, phase)
@@ -40,17 +34,10 @@ module Hitch
           end
 
           def report(error:, phase:, tool_name:)
-            return unless Rails.respond_to?(:error)
-
-            reported_failure = ReportedFailure.new
-            reported_failure.set_backtrace(caller(1, 8))
-            reported_failure.freeze
-            Rails.error.report(
-              reported_failure,
-              handled: true,
-              severity: :error,
-              context: reporting_context(error:, phase:, tool_name:),
-              source: SOURCE
+            SanitizedReport.emit(
+              source: SOURCE,
+              message: "Hitch MCP tool execution failed",
+              context: reporting_context(error:, phase:, tool_name:)
             )
           end
 
@@ -72,8 +59,6 @@ module Hitch
             )
           end
         end
-
-        private_constant :ReportedFailure
       end
     end
   end

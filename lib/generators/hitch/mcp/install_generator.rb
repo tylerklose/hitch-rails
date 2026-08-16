@@ -4,11 +4,14 @@ require "active_support/core_ext/string/inflections"
 require "digest"
 require "json"
 require "rails/generators"
+require_relative "../manifested_generator"
 
 module Hitch
   module Generators
     module MCP
       class InstallGenerator < ::Rails::Generators::Base
+        include Hitch::Generators::ManifestedGenerator
+
         namespace "hitch:mcp:install"
 
         source_root File.expand_path("templates", __dir__)
@@ -139,13 +142,8 @@ module Hitch
           }
         end
 
-        def load_manifest
-          JSON.parse(File.binread(destination_path(MANIFEST_PATH)))
-        rescue Errno::ENOENT
-          refuse!("rollback", [ "missing rollback manifest: #{MANIFEST_PATH}" ])
-        rescue JSON::ParserError
-          refuse!("rollback", [ "rollback manifest is invalid JSON: #{MANIFEST_PATH}" ])
-        end
+        def refusal_subject = "Hitch MCP"
+        def manifest_path = MANIFEST_PATH
 
         def validate_manifest(manifest)
           errors = []
@@ -244,16 +242,6 @@ module Hitch
           "app/controllers/#{controller_name.underscore}.rb"
         end
 
-        def constant_collision?(name)
-          return false unless Object.const_defined?(name, false)
-          return true if File.expand_path(destination_root) == File.expand_path(Rails.root)
-
-          source = Object.const_source_location(name, false)&.first
-          source && File.expand_path(source).start_with?("#{File.expand_path(destination_root)}/")
-        rescue NameError
-          false
-        end
-
         def auth_migrations_installed?
           return false unless defined?(ActiveRecord::Base)
 
@@ -263,26 +251,10 @@ module Hitch
           false
         end
 
-        def destination_file?(relative_path)
-          File.file?(destination_path(relative_path))
-        end
-
-        def destination_path(relative_path)
-          File.expand_path(relative_path, destination_root)
-        end
-
         def read_file(relative_path)
           File.binread(destination_path(relative_path))
         rescue Errno::ENOENT
           nil
-        end
-
-        def sha256(relative_path)
-          Digest::SHA256.file(destination_path(relative_path)).hexdigest
-        end
-
-        def refuse!(operation, errors)
-          raise ::Thor::Error, "Hitch MCP #{operation} refused:\n- #{errors.join("\n- ")}"
         end
       end
     end

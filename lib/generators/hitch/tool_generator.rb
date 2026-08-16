@@ -4,10 +4,13 @@ require "active_support/core_ext/string/inflections"
 require "digest"
 require "json"
 require "rails/generators"
+require_relative "manifested_generator"
 
 module Hitch
   module Generators
     class ToolGenerator < ::Rails::Generators::Base
+      include Hitch::Generators::ManifestedGenerator
+
       namespace "hitch:tool"
 
       source_root File.expand_path("tool/templates", __dir__)
@@ -146,13 +149,8 @@ module Hitch
         }
       end
 
-      def load_manifest
-        JSON.parse(File.binread(destination_path(@manifest_path)))
-      rescue Errno::ENOENT
-        refuse!("rollback", [ "missing rollback manifest: #{@manifest_path}" ])
-      rescue JSON::ParserError
-        refuse!("rollback", [ "rollback manifest is invalid JSON: #{@manifest_path}" ])
-      end
+      def refusal_subject = "Hitch tool"
+      def manifest_path = @manifest_path
 
       def validate_manifest(manifest)
         return [ "rollback manifest contract is invalid" ] unless
@@ -196,32 +194,6 @@ module Hitch
         return false unless File.file?(path)
 
         File.binread(path).each_line.any? { |line| line.strip == @registration_line }
-      end
-
-      def constant_collision?(constant_name)
-        return false unless Object.const_defined?(constant_name, false)
-        return true if File.expand_path(destination_root) == File.expand_path(Rails.root)
-
-        source = Object.const_source_location(constant_name, false)&.first
-        source && File.expand_path(source).start_with?("#{File.expand_path(destination_root)}/")
-      rescue NameError
-        false
-      end
-
-      def destination_file?(relative_path)
-        File.file?(destination_path(relative_path))
-      end
-
-      def destination_path(relative_path)
-        File.expand_path(relative_path, destination_root)
-      end
-
-      def sha256(relative_path)
-        Digest::SHA256.file(destination_path(relative_path)).hexdigest
-      end
-
-      def refuse!(operation, errors)
-        raise ::Thor::Error, "Hitch tool #{operation} refused:\n- #{errors.join("\n- ")}"
       end
     end
   end

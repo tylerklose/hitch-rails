@@ -13,8 +13,6 @@ module Hitch
   # is persisted on the access token at issue time and validated at
   # token-use time, satisfying the MCP authorization spec's audience MUST.
   class AuthorizationsController < Hitch::ApplicationController
-    MAX_REQUEST_BODY_BYTES = 16_384
-
     include Hitch::OauthFormAdmission
     include Hitch::UriValidation
 
@@ -129,33 +127,8 @@ module Hitch
         return false
       end
 
-      resource = canonical_resource(oauth[:resource])
+      resource = require_canonical_resource(oauth[:resource])
       resource ? oauth.merge(resource: resource).freeze : false
-    end
-
-    def canonical_resource(value)
-      if value.blank?
-        oauth_error("invalid_target", "resource is required")
-        return false
-      end
-
-      requested = Hitch::ResourceUri.canonicalize!(
-        value,
-        allow_loopback_http: Rails.env.development? || Rails.env.test?
-      )
-      configured = Hitch::ResourceUri.canonicalize!(
-        Hitch.configuration.resource_uri,
-        allow_loopback_http: Rails.env.development? || Rails.env.test?
-      )
-      unless requested == configured
-        oauth_error("invalid_target", "resource does not identify this MCP server")
-        return false
-      end
-
-      requested
-    rescue Hitch::ResourceUri::Invalid => error
-      oauth_error("invalid_target", error.message)
-      false
     end
 
     def reject_oversized_oauth_form_body!
@@ -217,16 +190,35 @@ module Hitch
     # cannot collide, so both schemes run side by side and DCR keeps
     # working unchanged.
     def registered_redirect_uris(client_id)
-      return Hitch::Client.find_by(client_id: client_id)&.redirect_uris unless
+      return resolved_client(client_id)&.redirect_uris unless
         Hitch::ClientIdMetadata.reference?(client_id)
 
       # The gem's own https-or-loopback policy (RFC 8252) still applies.
       # DCR enforces it at registration time; a metadata document never
       # passes through registration, so it is enforced here instead —
       # otherwise CIMD would be a way to bypass a check DCR clients face.
-      Hitch::ClientIdMetadata.resolve(client_id, actor: rate_limit_actor)
+      resolved_client(client_id)
         &.redirect_uris
         &.select { |candidate| valid_redirect_uri?(candidate) }
+    end
+
+    # One client resolution per request. Each action consults the client
+    # more than once (redirect validation, then the consent warning or
+    # the audit name); resolving on every question would repeat the DB
+    # lookup — or, for a CIMD reference on a host without a shared
+    # cache, repeat the outbound fetch. Holds either a
+    # Hitch::ClientIdMetadata::Document or a Hitch::Client; nil (no such
+    # client) is memoized too, which is why this checks defined? rather
+    # than using ||=.
+    def resolved_client(client_id)
+      return @hitch_resolved_client if defined?(@hitch_resolved_client)
+
+      @hitch_resolved_client =
+        if Hitch::ClientIdMetadata.reference?(client_id)
+          Hitch::ClientIdMetadata.resolve(client_id, actor: rate_limit_actor)
+        else
+          Hitch::Client.find_by(client_id: client_id)
+        end
     end
 
     # MCP 2026-07-28 security considerations: a Client ID Metadata
@@ -283,11 +275,7 @@ module Hitch
     # fidelity; the consent screen derives its display name from the
     # verified redirect_uri host instead (see friendly_client_name).
     def declared_client_name(client_id)
-      if Hitch::ClientIdMetadata.reference?(client_id)
-        Hitch::ClientIdMetadata.resolve(client_id, actor: rate_limit_actor)&.client_name
-      else
-        Hitch::Client.find_by(client_id: client_id)&.client_name
-      end
+      resolved_client(client_id)&.client_name
     end
 
     def redirect_host(uri)

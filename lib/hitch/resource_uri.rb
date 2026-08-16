@@ -31,19 +31,16 @@ module Hitch
       raise Invalid, "resource must be an absolute HTTP URI"
     end
 
-    class << self
-      alias_method :canonicalize, :canonicalize!
-    end
-
     def self.default_port?(uri)
       (uri.scheme == "https" && uri.port == 443) || (uri.scheme == "http" && uri.port == 80)
     end
     private_class_method :default_port?
 
+    # URI.parse can miss a userinfo component that a raw scan of the
+    # authority still finds; callers use both checks together.
     def self.userinfo_component_present?(value)
       authority = value.to_s.match(/\A[a-z][a-z0-9+.-]*:\/\/([^\/?#]*)/i)&.captures&.first
       authority&.include?("@") || false
     end
-    private_class_method :userinfo_component_present?
   end
 end

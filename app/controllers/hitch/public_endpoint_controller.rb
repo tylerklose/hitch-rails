@@ -32,17 +32,5 @@ module Hitch
     # act on. The consent screen (AuthorizationsController) is the only
     # session-backed POST and KEEPS forgery protection.
     skip_forgery_protection if respond_to?(:skip_forgery_protection)
-
-    # Render an OAuth-formatted JSON error.
-    def oauth_error(code, description, status = :bad_request)
-      render json: { error: code, error_description: description }, status: status
-    end
-
-    # Guard against query-string array/hash coercion
-    # (?client_id[]=a&client_id[]=b would otherwise become an Array).
-    def scalar_param(key)
-      value = params[key]
-      value.is_a?(String) ? value.presence : nil
-    end
   end
 end

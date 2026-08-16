@@ -14,27 +14,13 @@ module Hitch
           dispatch: "dispatch"
         }.freeze
 
-        class ReportedFailure < StandardError
-          def initialize
-            super("Hitch MCP endpoint failed")
-          end
-        end
-
         class << self
           def report(category:)
-            return unless Rails.respond_to?(:error)
-
-            failure = ReportedFailure.new
-            failure.set_backtrace(caller(1, 8))
-            failure.freeze
-            Rails.error.report(
-              failure,
-              handled: true,
-              severity: :error,
-              context: reporting_context(category),
-              source: SOURCE
+            SanitizedReport.emit(
+              source: SOURCE,
+              message: "Hitch MCP endpoint failed",
+              context: reporting_context(category)
             )
-            nil
           rescue StandardError, SystemStackError
             nil
           end
@@ -48,8 +34,6 @@ module Hitch
             context.freeze
           end
         end
-
-        private_constant :ReportedFailure
       end
     end
   end

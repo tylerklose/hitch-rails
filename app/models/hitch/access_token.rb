@@ -9,8 +9,8 @@ module Hitch
   #     ↓ revoke! / expiry
   #   inactive
   #
-  # Polymorphic principal: the host controller supplies the signed-in record.
-  # but each row records which model type owns the token via
+  # Polymorphic principal: the host controller supplies the signed-in
+  # record, and each row records which model type owns the token via
   # principal_type + principal_id (standard Rails polymorphic).
   #
   # RFC 8707: resource_uri is the audience this token was issued for.
@@ -129,7 +129,7 @@ module Hitch
       active.find_by(token_digest: Digest::SHA256.hexdigest(raw_token))
     end
 
-    # Operational cleanup. Two classes of rows accumulate that nothing
+    # Operational cleanup. Three classes of rows accumulate that nothing
     # ever reads again:
     #
     #   1) Pending auth codes whose code_expires_at < now — orphaned by

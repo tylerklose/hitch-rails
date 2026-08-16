@@ -7,8 +7,6 @@ module Hitch
   # browser / desktop reach this without a Rails session). PKCE
   # verifier is the credential.
   class TokensController < Hitch::PublicEndpointController
-    MAX_REQUEST_BODY_BYTES = 16_384
-
     include Hitch::CorsSupport
     include Hitch::OauthFormAdmission
     include Hitch::UriValidation
@@ -39,7 +37,7 @@ module Hitch
         return oauth_error("invalid_request", "redirect_uri is malformed")
       end
 
-      resource = canonical_resource(oauth[:resource])
+      resource = require_canonical_resource(oauth[:resource])
       return unless resource
 
       client_id = Hitch::ClientAuthentication.resolve(
@@ -85,29 +83,6 @@ module Hitch
         "token request body exceeds #{MAX_REQUEST_BODY_BYTES} bytes",
         :content_too_large
       )
-    end
-
-    def canonical_resource(value)
-      if value.blank?
-        oauth_error("invalid_target", "resource is required")
-        return nil
-      end
-
-      allow_loopback = Rails.env.development? || Rails.env.test?
-      requested = Hitch::ResourceUri.canonicalize!(value, allow_loopback_http: allow_loopback)
-      configured = Hitch::ResourceUri.canonicalize!(
-        Hitch.configuration.resource_uri,
-        allow_loopback_http: allow_loopback
-      )
-      unless requested == configured
-        oauth_error("invalid_target", "resource does not identify this MCP server")
-        return nil
-      end
-
-      requested
-    rescue Hitch::ResourceUri::Invalid => error
-      oauth_error("invalid_target", error.message)
-      nil
     end
   end
 end

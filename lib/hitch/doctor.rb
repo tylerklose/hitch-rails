@@ -21,8 +21,6 @@ module Hitch
       package
       legacy_endpoint
     ].freeze
-    STATUS_ORDER = { "pass" => 0, "skip" => 1, "warn" => 2, "fail" => 3 }.freeze
-
     Check = Data.define(:id, :status, :code, :summary, :details) do
       def initialize(id:, status:, code:, summary:, details: {})
         super(
@@ -62,33 +60,6 @@ module Hitch
           "status" => status,
           "checks" => checks.map(&:to_h)
         }
-      end
-    end
-
-    class Renderer
-      class << self
-        def call(report, format:)
-          case format
-          when "human" then human(report)
-          when "json" then "#{JSON.pretty_generate(report.to_h)}\n"
-          else raise ArgumentError, "HITCH_DOCTOR_FORMAT must be human or json"
-          end
-        end
-
-        private
-
-        def human(report)
-          lines = [ "Hitch doctor v1: #{report.status.upcase}" ]
-          report.checks.each do |check|
-            lines << format("%-4s %-24s %-28s %s", check.status.upcase, check.id, check.code, check.summary)
-          end
-          counts = %w[pass warn fail skip].to_h do |status|
-            [ status, report.checks.count { |check| check.status == status } ]
-          end
-          lines << "Summary: pass=#{counts.fetch('pass')} warn=#{counts.fetch('warn')} " \
-            "fail=#{counts.fetch('fail')} skip=#{counts.fetch('skip')}"
-          "#{lines.join("\n")}\n"
-        end
       end
     end
 
@@ -454,10 +425,27 @@ module Hitch
       end
 
       def render(report, format: "human")
-        Renderer.call(report, format:)
+        case format
+        when "human" then render_human(report)
+        when "json" then "#{JSON.pretty_generate(report.to_h)}\n"
+        else raise ArgumentError, "HITCH_DOCTOR_FORMAT must be human or json"
+        end
       end
 
       private
+
+      def render_human(report)
+        lines = [ "Hitch doctor v1: #{report.status.upcase}" ]
+        report.checks.each do |check|
+          lines << format("%-4s %-24s %-28s %s", check.status.upcase, check.id, check.code, check.summary)
+        end
+        counts = %w[pass warn fail skip].to_h do |status|
+          [ status, report.checks.count { |check| check.status == status } ]
+        end
+        lines << "Summary: pass=#{counts.fetch('pass')} warn=#{counts.fetch('warn')} " \
+          "fail=#{counts.fetch('fail')} skip=#{counts.fetch('skip')}"
+        "#{lines.join("\n")}\n"
+      end
 
       def copy_json(value)
         copy = case value
@@ -545,11 +533,16 @@ module Hitch
       summary = runtime ? "OAuth and MCP runtime configuration is valid" : "OAuth configuration is valid; MCP runtime is disabled"
       pass("configuration", code, summary, "environment" => system.environment_name, "runtime_enabled" => runtime)
     rescue StandardError => error
+      environment = begin
+        system.environment_name
+      rescue StandardError
+        "unavailable"
+      end
       fail_check(
         "configuration",
         "invalid",
         "Hitch configuration is invalid",
-        "environment" => safely { system.environment_name },
+        "environment" => environment,
         "error_class" => error.class.name
       )
     end
@@ -585,19 +578,18 @@ module Hitch
       facts = system.route_facts
       endpoints = facts.fetch("endpoint_indexes")
       mounts = facts.fetch("engine_mount_indexes")
-      details = facts
-      return fail_check("route_order", "missing_endpoint", "Exactly one modern MCP endpoint route is required", details) unless
+      return fail_check("route_order", "missing_endpoint", "Exactly one modern MCP endpoint route is required", facts) unless
         endpoints.one?
-      return fail_check("route_order", "invalid_engine_mount", "Hitch::Engine must be mounted exactly once at root", details) unless
+      return fail_check("route_order", "invalid_engine_mount", "Hitch::Engine must be mounted exactly once at root", facts) unless
         mounts.one? && facts.fetch("engine_mount_paths") == [ "/" ]
-      return fail_check("route_order", "wrong_verbs", "The modern MCP route must admit the endpoint's full method contract", details) unless
+      return fail_check("route_order", "wrong_verbs", "The modern MCP route must admit the endpoint's full method contract", facts) unless
         facts.fetch("endpoint_all_verbs")
-      return fail_check("route_order", "shadowed", "A host route shadows the canonical MCP endpoint", details) if
+      return fail_check("route_order", "shadowed", "A host route shadows the canonical MCP endpoint", facts) if
         facts.fetch("same_path_predecessor_indexes").any? || !facts.fetch("endpoint_reachable")
-      return fail_check("route_order", "after_engine", "The modern MCP route must precede the Hitch engine mount", details) unless
+      return fail_check("route_order", "after_engine", "The modern MCP route must precede the Hitch engine mount", facts) unless
         endpoints.first < mounts.first
 
-      pass("route_order", "ordered", "The modern MCP endpoint precedes one root engine mount", details)
+      pass("route_order", "ordered", "The modern MCP endpoint precedes one root engine mount", facts)
     rescue StandardError => error
       probe_failure("route_order", error)
     end
@@ -727,39 +719,26 @@ module Hitch
     end
 
     def pass(id, code, summary, details = {})
-      check(id, "pass", code, summary, details)
+      Check.new(id:, status: "pass", code:, summary:, details:)
     end
 
     def warning(id, code, summary, details = {})
-      check(id, "warn", code, summary, details)
+      Check.new(id:, status: "warn", code:, summary:, details:)
     end
 
     def fail_check(id, code, summary, details = {})
-      check(id, "fail", code, summary, details)
+      Check.new(id:, status: "fail", code:, summary:, details:)
     end
 
     def skip(id, code, summary, details = {})
-      check(id, "skip", code, summary, details)
+      Check.new(id:, status: "skip", code:, summary:, details:)
     end
 
     def probe_failure(id, error)
       fail_check(id, "probe_error", "The #{id.tr('_', ' ')} diagnostic could not complete", "error_class" => error.class.name)
     end
 
-    def check(id, status, code, summary, details)
-      raise "Unknown Hitch doctor check #{id}" unless CHECK_IDS.include?(id)
-      raise "Unknown Hitch doctor status #{status}" unless STATUS_ORDER.key?(status)
-
-      Check.new(id:, status:, code:, summary:, details:)
-    end
-
-    def safely
-      yield
-    rescue StandardError
-      "unavailable"
-    end
-
-    private_constant :Check, :Renderer, :Report, :System
+    private_constant :Check, :Report, :System
   end
 
   private_constant :Doctor

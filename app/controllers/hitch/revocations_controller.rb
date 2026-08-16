@@ -5,8 +5,6 @@ module Hitch
   # Per the RFC, returns 200 regardless of whether the token exists
   # so callers can't probe for valid tokens.
   class RevocationsController < Hitch::PublicEndpointController
-    MAX_REQUEST_BODY_BYTES = 16_384
-
     include Hitch::CorsSupport
     include Hitch::OauthFormAdmission
 

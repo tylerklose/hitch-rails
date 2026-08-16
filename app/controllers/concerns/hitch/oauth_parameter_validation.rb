@@ -14,6 +14,11 @@ module Hitch
       Hitch::OauthRequestParameters.new(request, allowed: allowed, form_only: form_only).to_h
     end
 
+    # Render an OAuth-formatted JSON error.
+    def oauth_error(code, description, status = :bad_request)
+      render json: { error: code, error_description: description }, status: status
+    end
+
     def render_oauth_parameter_error(error)
       oauth_error("invalid_request", error.message)
     end

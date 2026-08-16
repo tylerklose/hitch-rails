@@ -316,7 +316,7 @@ def smoke_runner(profile_name, expected_adapter)
     abort "packaged MCP discovery failed: \#{session.response.status} \#{session.response.body}" unless
       session.response.status == 200
     mcp_discovery = JSON.parse(session.response.body)
-    abort "packaged MCP discovery identity drifted" unless
+    abort "packaged MCP discovery identity drifted: \#{session.response.body}" unless
       mcp_discovery.dig("result", "_meta", "io.modelcontextprotocol/serverInfo", "name") == "hitch-package-smoke"
 
     session.post "/mcp", params: JSON.generate(

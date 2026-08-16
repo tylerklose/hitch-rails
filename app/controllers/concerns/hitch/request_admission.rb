@@ -7,6 +7,11 @@ module Hitch
   module RequestAdmission
     extend ActiveSupport::Concern
 
+    # Default cap on request bodies for the OAuth endpoints. Read via
+    # `self.class::MAX_REQUEST_BODY_BYTES`, so a controller may override
+    # it with its own constant.
+    MAX_REQUEST_BODY_BYTES = 16_384
+
     private
 
     def hitch_read_bounded_request_body(max_bytes)

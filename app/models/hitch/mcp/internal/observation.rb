@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "json"
-require "openssl"
 require "securerandom"
 
 module Hitch
@@ -19,7 +17,6 @@ module Hitch
         REQUEST_ID_PATTERN = /\A[0-9a-f]{32}\z/
         TOOL_NAME_PATTERN = /\A[A-Za-z0-9_.-]{1,64}\z/
         PRINCIPAL_TYPE_PATTERN = /\A[A-Za-z_][A-Za-z0-9_:]{0,254}\z/
-        MAX_IDENTITY_BYTES = 2_048
         PROTOCOL_OUTCOMES = {
           -32_700 => "parse_error",
           -32_600 => "invalid_request",
@@ -44,19 +41,12 @@ module Hitch
         }.freeze
         HTTP_TERMINAL_OUTCOMES = [ 406, 413, 415 ].freeze
 
-        class ReportedFailure < StandardError
-          def initialize
-            super("Hitch MCP observation delivery failed")
-          end
-        end
-
         class RequestState
           attr_reader :request_id
 
-          def initialize(clock: Observation.__send__(:monotonic_time), request_id: SecureRandom.hex(16))
-            @clock = clock
-            @started_at = clock.call
-            @request_id = request_id.to_s.dup.freeze
+          def initialize
+            @started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+            @request_id = SecureRandom.hex(16).freeze
             @method = nil
             @tool_name = nil
             @principal_type = nil
@@ -88,7 +78,7 @@ module Hitch
           end
 
           def verified!(request)
-            method = Observation.__send__(:read, request, "method")
+            method = JsonValues.read(request, "method")
             @method = method.dup.freeze if %w[server/discover tools/list tools/call].include?(method)
             nil
           rescue StandardError, SystemStackError
@@ -102,8 +92,8 @@ module Hitch
           end
 
           def protocol_response!(response)
-            error = Observation.__send__(:read, response, "error")
-            code = Observation.__send__(:read, error, "code")
+            error = JsonValues.read(response, "error")
+            code = JsonValues.read(error, "code")
             @protocol_code = code if code.is_a?(Integer)
             nil
           rescue StandardError, SystemStackError
@@ -115,10 +105,7 @@ module Hitch
             return if @finished
             return unless tool_name.is_a?(String) && TOOL_NAME_PATTERN.match?(tool_name)
 
-            InvocationState.new(request_id:, tool_name:, clock: @clock)
-          rescue StandardError, SystemStackError
-            Observation.__send__(:report_failure, INVOCATION_EVENT, "invocation_start")
-            nil
+            InvocationState.new(request_id:, tool_name:)
           end
 
           def finish!(response:)
@@ -159,16 +146,16 @@ module Hitch
           end
 
           def duration_ms
-            [ ((@clock.call - @started_at) * 1_000).round(3), 0.0 ].max
+            elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - @started_at
+            [ (elapsed * 1_000).round(3), 0.0 ].max
           end
         end
 
         class InvocationState
-          def initialize(request_id:, tool_name:, clock:)
+          def initialize(request_id:, tool_name:)
             @request_id = request_id
             @tool_name = tool_name.dup.freeze
-            @clock = clock
-            @started_at = clock.call
+            @started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
             @argument_policy = "not_reached"
             @executed = false
             @result_category = "generic_error"
@@ -222,32 +209,33 @@ module Hitch
           private
 
           def duration_ms
-            [ ((@clock.call - @started_at) * 1_000).round(3), 0.0 ].max
+            elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - @started_at
+            [ (elapsed * 1_000).round(3), 0.0 ].max
           end
         end
 
         class << self
-          def activate_request
+          def with_request_state
             previous = ActiveSupport::IsolatedExecutionState[CURRENT_REQUEST_KEY]
-            state = RequestState.new
-            ActiveSupport::IsolatedExecutionState[CURRENT_REQUEST_KEY] = state
-            [ state, previous ].freeze
-          rescue StandardError, SystemStackError
-            report_failure(REQUEST_EVENT, "request_start")
-            [ nil, previous ].freeze
-          end
-
-          def deactivate_request(activation)
-            previous = activation&.fetch(1, nil)
-            if previous
-              ActiveSupport::IsolatedExecutionState[CURRENT_REQUEST_KEY] = previous
-            else
-              ActiveSupport::IsolatedExecutionState.delete(CURRENT_REQUEST_KEY)
+            state = begin
+              created = RequestState.new
+              ActiveSupport::IsolatedExecutionState[CURRENT_REQUEST_KEY] = created
+              created
+            rescue StandardError, SystemStackError
+              report_failure(REQUEST_EVENT, "request_start")
+              nil
             end
-            nil
-          rescue StandardError, SystemStackError
-            report_failure(REQUEST_EVENT, "request_cleanup")
-            nil
+            yield state
+          ensure
+            begin
+              if previous
+                ActiveSupport::IsolatedExecutionState[CURRENT_REQUEST_KEY] = previous
+              else
+                ActiveSupport::IsolatedExecutionState.delete(CURRENT_REQUEST_KEY)
+              end
+            rescue StandardError, SystemStackError
+              report_failure(REQUEST_EVENT, "request_cleanup")
+            end
           end
 
           def start_invocation(tool_name:)
@@ -297,35 +285,21 @@ module Hitch
               raise ArgumentError, "MCP observation principal type is invalid"
             end
 
-            principal_id = identity_component(principal.id.to_s)
-            client = identity_component(client_id)
-            secret = key_generator.generate_key(IDENTITY_SALT, 32)
-            unless secret.is_a?(String) && secret.bytesize == 32
-              raise ArgumentError, "MCP observation key is unavailable"
-            end
-
-            principal_key = hmac(secret, JSON.generate([ "principal", principal_type, principal_id ]))
-            client_key = hmac(secret, JSON.generate([ "client", client ]))
+            invalid_message = "MCP observation identity is invalid"
+            principal_id = HmacIdentity.component(principal.id.to_s, invalid_message:)
+            client = HmacIdentity.component(client_id, invalid_message:)
+            principal_key = identity_digest([ "principal", principal_type, principal_id ], key_generator)
+            client_key = identity_digest([ "client", client ], key_generator)
             [ principal_type.dup.freeze, principal_key, client_key ].freeze
           end
 
-          def identity_component(value)
-            unless value.is_a?(String) && value.valid_encoding? && !value.empty? &&
-                value.bytesize <= MAX_IDENTITY_BYTES
-              raise ArgumentError, "MCP observation identity is invalid"
-            end
-
-            value
-          end
-
-          def hmac(secret, value)
-            OpenSSL::HMAC.hexdigest("SHA256", secret, value).freeze
-          end
-
-          def read(hash, key)
-            return unless hash.is_a?(Hash)
-
-            hash.key?(key) ? hash[key] : hash[key.to_sym]
+          def identity_digest(components, key_generator)
+            HmacIdentity.digest(
+              salt: IDENTITY_SALT,
+              components: components,
+              key_generator: key_generator,
+              unavailable_message: "MCP observation key is unavailable"
+            )
           end
 
           def response_bytes(response)
@@ -336,36 +310,24 @@ module Hitch
             Array(body).sum { |part| part.to_s.bytesize }
           end
 
-          def monotonic_time
-            -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
-          end
-
           def report_failure(event_name, category)
-            return unless Rails.respond_to?(:error)
-
-            failure = ReportedFailure.new
-            failure.set_backtrace(caller(1, 8))
-            failure.freeze
-            Rails.error.report(
-              failure,
-              handled: true,
-              severity: :error,
+            SanitizedReport.emit(
+              source: "hitch.mcp.observation",
+              message: "Hitch MCP observation delivery failed",
               context: {
                 hitch_mcp_category: "observation_#{category}".freeze,
                 hitch_mcp_event: event_name.dup.freeze
-              }.freeze,
-              source: "hitch.mcp.observation"
+              }.freeze
             )
-            nil
           rescue StandardError, SystemStackError
             nil
           end
         end
 
-        private_constant :ReportedFailure, :RequestState, :InvocationState,
+        private_constant :RequestState, :InvocationState,
           :REQUEST_EVENT, :INVOCATION_EVENT, :IDENTITY_SALT,
           :CURRENT_REQUEST_KEY, :TOOL_NAME_PATTERN, :PRINCIPAL_TYPE_PATTERN,
-          :REQUEST_ID_PATTERN, :MAX_IDENTITY_BYTES, :PROTOCOL_OUTCOMES, :HTTP_OUTCOMES,
+          :REQUEST_ID_PATTERN, :PROTOCOL_OUTCOMES, :HTTP_OUTCOMES,
           :HTTP_TERMINAL_OUTCOMES
       end
     end

@@ -148,11 +148,10 @@ module Hitch
           seen.delete(value.object_id) if value.is_a?(Hash) || value.is_a?(Array)
         end
 
+        # The setter path guards against value and keywords both being absent,
+        # so one of the two is always present here.
         def combine_value_and_keywords(value, keywords)
-          return keywords unless keywords.empty?
-          return value unless value.equal?(NOT_SET)
-
-          INVALID_DECLARATION
+          keywords.empty? ? value : keywords
         end
 
         def copy_declaration(value, seen = {})

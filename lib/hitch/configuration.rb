@@ -261,8 +261,7 @@ module Hitch
       end
 
       limit = value.to_h.transform_keys(&:to_sym)
-      unknown_keys = limit.keys - %i[to within]
-      unless unknown_keys.empty? && limit.keys.sort == %i[to within].sort
+      unless limit.keys.sort == %i[to within]
         raise ArgumentError, "dynamic_client_registration_limit must contain only :to and :within"
       end
 

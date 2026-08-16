@@ -11,28 +11,13 @@ require "hitch/configuration"
 require "hitch/dynamic_registration_rate_limit"
 
 # hitch-rails turns a Rails app into an authorization server implemented
-# against the MCP 2026-07-28 authorization profile. OAuth 2.1 + PKCE (S256),
-# Resource Indicators with audience binding (RFC 8707), discovery
-# metadata (RFC 8414 + RFC 9728), token revocation (RFC 7009), and CORS
-# for browser-based MCP clients. The 0.2 development line owns an authenticated
-# host-mounted MCP endpoint, a public request-local Context, and a private Ruby
-# SDK compatibility boundary. The explicit Registry descriptor surface is also
-# active: it stores only reload-safe names and frozen data, then resolves host
-# scope and deny-default availability for each request before static OAuth scope
-# filtering. The accepted auth substrate remains the authority the endpoint
-# validates tokens against. The final Tool call now freezes JSON arguments and
-# runs deny-default argument policy before host execution. The closed Result
-# channel independently validates and caps output, preserves only explicit safe
-# Result.error messages, and reports sanitized failure wrappers through Rails.
-# Authenticated discovery, listing, and calls share one HMAC principal/client
-# fixed window counted in the host application's own ActiveSupport::Cache
-# store; production refuses a store that cannot count across processes at boot.
-# Exactly-once request and post-schema invocation notifications expose only
-# frozen structural fields; subscriber and SDK callback failures cannot expose
-# request data or alter protocol responses.
-# The read-only doctor reports stable operator findings for configuration,
-# discovery, routes, schema, Registry, ingress, admission store, package contents, and
-# deprecated endpoint residue without repairing host state.
+# against the MCP 2026-07-28 authorization profile — OAuth 2.1 + PKCE (S256),
+# Resource Indicators with audience binding (RFC 8707), discovery metadata
+# (RFC 8414 + RFC 9728), token revocation (RFC 7009), and CORS for
+# browser-based MCP clients — plus an authenticated host-mounted MCP endpoint
+# with a deny-default tool Registry behind a private Ruby SDK boundary, rate
+# limiting counted through the host application's own cache store, sanitized
+# observation events, and a read-only operator doctor.
 #
 # Spec reference: https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization
 #

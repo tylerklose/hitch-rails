@@ -55,17 +55,5 @@ module Hitch
 
       nil
     end
-
-    # Render an OAuth-formatted JSON error.
-    def oauth_error(code, description, status = :bad_request)
-      render json: { error: code, error_description: description }, status: status
-    end
-
-    # Guard against query-string array/hash coercion
-    # (?client_id[]=a&client_id[]=b would otherwise become an Array).
-    def scalar_param(key)
-      value = params[key]
-      value.is_a?(String) ? value.presence : nil
-    end
   end
 end

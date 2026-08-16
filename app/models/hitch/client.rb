@@ -101,9 +101,11 @@ module Hitch
     # Shared size and shape boundary for HTTP registration, operator tasks,
     # and direct framework callers. URI scheme policy remains protocol-level;
     # this method guarantees every persistence path is finite and lossless.
-    def self.normalize_registration_metadata!(client_id:, client_name:, redirect_uris:)
+    # client_id is optional: HTTP registration mints one only after the
+    # rest of the metadata is admitted, so it has nothing to validate here.
+    def self.normalize_registration_metadata!(client_name:, redirect_uris:, client_id: nil)
       {
-        client_id: bounded_string!(client_id, :client_id, max_bytes: MAX_CLIENT_ID_BYTES),
+        client_id: client_id.nil? ? nil : bounded_string!(client_id, :client_id, max_bytes: MAX_CLIENT_ID_BYTES),
         client_name: client_name.nil? ? "MCP Client" :
           bounded_string!(client_name, :client_name, max_bytes: MAX_CLIENT_NAME_BYTES),
         redirect_uris: normalize_redirect_uris!(redirect_uris, allow_empty: false)

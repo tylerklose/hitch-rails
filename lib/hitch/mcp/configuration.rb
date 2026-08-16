@@ -101,8 +101,6 @@ module Hitch
             "mcp.request_limit is required when the Hitch::MCP endpoint runtime is configured"
         end
 
-        normalize_request_limit(request_limit)
-
         true
       end
 
@@ -144,40 +142,22 @@ module Hitch
           raise ArgumentError, "mcp.request_limit must contain :to and :within"
         end
 
+        # Duplicate keys across spellings ({ to: 1, "to" => 2 }) produce a
+        # third key and fail the comparison.
         mapping = value.to_h
-        unless mapping.is_a?(Hash)
-          raise ArgumentError, "mcp.request_limit must contain :to and :within"
-        end
-
-        normalized = {}
-        mapping.each do |key, setting|
-          name = case key
-          when :to, "to" then :to
-          when :within, "within" then :within
-          end
-          unless name && !normalized.key?(name)
-            raise ArgumentError, "mcp.request_limit must contain only :to and :within"
-          end
-
-          normalized[name] = setting
-        end
-        unless normalized.keys.sort == %i[to within].sort
+        unless mapping.keys.map(&:to_s).sort == %w[to within]
           raise ArgumentError, "mcp.request_limit must contain only :to and :within"
         end
 
-        to = positive_integer(normalized.fetch(:to), "mcp.request_limit[:to]")
-        within = positive_duration_seconds(normalized.fetch(:within))
+        to = mapping[:to] || mapping["to"]
+        unless to.is_a?(Integer) && to.positive?
+          raise ArgumentError, "mcp.request_limit[:to] must be a positive Integer"
+        end
+
+        within = positive_duration_seconds(mapping[:within] || mapping["within"])
         { to:, within: }.freeze
       rescue NoMethodError, TypeError
         raise ArgumentError, "mcp.request_limit must contain only :to and :within"
-      end
-
-      def positive_integer(value, name)
-        unless value.is_a?(Integer) && value.positive?
-          raise ArgumentError, "#{name} must be a positive Integer"
-        end
-
-        value
       end
 
       def positive_duration_seconds(value)

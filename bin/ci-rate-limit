@@ -1,22 +1,16 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-require "fileutils"
-require "json"
 require "open3"
 require "rbconfig"
 require "redis"
 require "securerandom"
-require "time"
 require "timeout"
 require "tmpdir"
 require "yaml"
 
-require_relative "../lib/hitch/version"
-
 ROOT = File.expand_path("..", __dir__)
 LOCK_PATH = File.join(ROOT, "test/conformance/toolchain.lock.yml")
-DEFAULT_EVIDENCE_PATH = File.join(ROOT, "docs/evidence/0.2.0/rate-limit/cross-process.json")
 LANES = %w[rails_7_2_sqlite rails_8_1_postgresql].freeze
 MINIMUM_TEST_RUNS = 27
 TEST_FILES = %w[
@@ -56,7 +50,6 @@ end
 lock = YAML.safe_load_file(LOCK_PATH, permitted_classes: [], aliases: false)
 redis_lock = lock.fetch("redis")
 image = redis_lock.fetch("image")
-index_digest = redis_lock.fetch("index_digest")
 architecture = RbConfig::CONFIG.fetch("host_cpu")
 platform, digest_key = case architecture
 when /arm64|aarch64/ then [ "linux/arm64", "linux_arm64_digest" ]
@@ -67,8 +60,7 @@ end
 platform_digest = redis_lock.fetch(digest_key)
 repository = image.sub(/:[^\/:]+\z/, "")
 pinned_image = "#{repository}@#{platform_digest}"
-container_name = "hitch-m43-#{Process.pid}-#{SecureRandom.hex(4)}"
-evidence_path = File.expand_path(ENV.fetch("HITCH_RATE_LIMIT_EVIDENCE_PATH", DEFAULT_EVIDENCE_PATH), ROOT)
+container_name = "hitch-rate-limit-#{Process.pid}-#{SecureRandom.hex(4)}"
 
 capture!("docker", "pull", "--platform", platform, pinned_image, timeout_seconds: 300)
 container_id = capture!(
@@ -95,12 +87,10 @@ begin
     abort "Pinned Redis did not become ready" if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
     sleep 0.05
   end
-  redis_version = redis.info("server").fetch("redis_version")
-
   Dir.mktmpdir("hitch-rate-limit-lanes-") do |directory|
     rails_log = File.join(directory, "rails.log")
     File.open(rails_log, File::WRONLY | File::CREAT | File::EXCL, 0o600) { }
-    lane_evidence = LANES.map do |lane|
+    LANES.each do |lane|
       lane_path = File.join(directory, "#{lane}.json")
       environment = {
         "HITCH_MCP_REDIS_URL" => redis_url,
@@ -122,77 +112,10 @@ begin
       abort "Missing Minitest summary for #{lane}" unless summary
       abort "#{lane} did not run every rate-limit suite" if summary.fetch(0).to_i < MINIMUM_TEST_RUNS
       abort "#{lane} rate-limit suite was not clean" unless summary.drop(2).map(&:to_i) == [ 0, 0, 0 ]
-
-      JSON.parse(File.read(lane_path)).merge(
-        "test_summary" => {
-          "runs" => summary.fetch(0).to_i,
-          "assertions" => summary.fetch(1).to_i,
-          "failures" => summary.fetch(2).to_i,
-          "errors" => summary.fetch(3).to_i,
-          "skips" => summary.fetch(4).to_i
-        }
-      )
     end
-
-    source_commit = capture!("git", "rev-parse", "HEAD", stream: false).strip
-    source_tree = capture!("git", "rev-parse", "HEAD^{tree}", stream: false).strip
-    worktree_clean = capture!("git", "status", "--porcelain", stream: false).empty?
-    evidence = {
-      schema_version: 1,
-      schema: "hitch.m4.3-rate-limit-cross-process-evidence.v1",
-      milestone: "M4.3",
-      status: "verified_internal_rate_boundary",
-      verified_at: Time.now.utc.iso8601,
-      source: {
-        commit: source_commit,
-        tree: source_tree,
-        worktree_clean_before_evidence_write: worktree_clean
-      },
-      artifact: {
-        version: Hitch::VERSION,
-        target_checkpoint: "0.2.0.rc1",
-        distribution: "internal_only",
-        checkpoint_sealed: false,
-        published: false,
-        tag_created: false,
-        github_release_created: false,
-        rubygems_publication_performed: false
-      },
-      # Redis is the backend this lane pins and exercises. Hitch declares no
-      # runtime Redis dependency; admission counts through whatever
-      # ActiveSupport::Cache store the host application configures.
-      backend: {
-        store_class: "ActiveSupport::Cache::RedisCacheStore",
-        image:,
-        index_digest:,
-        platform:,
-        platform_digest:,
-        pulled_reference: pinned_image,
-        container_id: container_id[0, 12],
-        server_version: redis_version
-      },
-      contract: {
-        algorithm: "fixed_window",
-        identity: "HMAC-SHA256(canonical JSON principal base class, principal id, client id)",
-        bearer_token_in_key: false,
-        raw_identifiers_in_key: false,
-        increment_and_first_expiry: "host ActiveSupport::Cache store increment with first-write expiry",
-        shared_methods: %w[server/discover tools/list tools/call],
-        exact_limit_status: 200,
-        exceeded_status: 429,
-        retry_after: "conservative window seconds",
-        store_error_status: 503,
-        nil_count: "admits_fail_open_documented",
-        store_error_downstream_body_registry_sdk_host_calls: 0,
-        production_unshared_store: "boot_refused",
-        runtime_redis_dependency: false
-      },
-      lanes: lane_evidence
-    }
-    FileUtils.mkdir_p(File.dirname(evidence_path))
-    File.write(evidence_path, JSON.pretty_generate(evidence) + "\n")
-    puts "Rate-limit evidence written to #{evidence_path}"
   end
+
+  puts "Cross-process rate-limit lanes passed against pinned Redis (#{pinned_image})."
 ensure
   redis&.close
   Open3.capture3("docker", "stop", "--time", "1", container_name) if container_id

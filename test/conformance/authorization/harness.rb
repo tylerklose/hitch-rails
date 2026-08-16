@@ -327,7 +327,7 @@ module Hitch
       end
 
       def apply_and_test_extension!
-        patch = root.join("docs/evidence/0.1.0/auth/resource-aware-grants.patch")
+        patch = root.join("test/conformance/authorization/resource-aware-grants.patch")
         raise Failure, "Reviewed extension patch hash mismatch" unless Digest::SHA256.file(patch).hexdigest == PATCH_SHA256
 
         run!("check reviewed extension", {}, "git", "apply", "--check", patch.to_s, chdir: @checkout)

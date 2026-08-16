@@ -22,7 +22,7 @@ reviewed_extension:
     advertises none. The reviewed patch forwards one identical resource at the
     authorization and token endpoints and selects an advertised confidential
     method when a secret is supplied. It changes no upstream conformance check.
-  patch: docs/evidence/0.1.0/auth/resource-aware-grants.patch
+  patch: test/conformance/authorization/resource-aware-grants.patch
   patch_sha256: 35403574632cf54ca6b133abfa5d52c91499972f17d55904890853ca130d2597
   fixtures:
     - public

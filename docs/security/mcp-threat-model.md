@@ -57,5 +57,3 @@ and subscriber exceptions each have a fixed sanitized category.
 - Both SDK lanes run separately, and normalizers retain upstream issue/removal
   tests.
 - Lattice default and strength-8 generation yield the same twelve scenarios.
-- No M6/M7/private deployment or paid/model client runs without Tyler's explicit
-  authority.

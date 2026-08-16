@@ -28,7 +28,6 @@ module Hitch
         desc: "Host controller constant to create (must end in Controller)"
 
       INITIALIZER_PATH = "config/initializers/hitch.rb"
-      REGISTRY_PATH = "app/tools/mcp_tool_registry.rb"
       ROUTES_PATH = "config/routes.rb"
       CONTROLLER_PATTERN = /\A[A-Z][A-Za-z0-9]*(?:::[A-Z][A-Za-z0-9]*)*Controller\z/
       MCP_ROUTE_PATTERN = /["']\/?mcp\/?["']/
@@ -39,14 +38,16 @@ module Hitch
 
       def install_or_revoke
         prepare_identity!
-        preflight! unless behavior == :revoke
 
-        template "initializer.rb", INITIALIZER_PATH
-        template "controller.rb.tt", @controller_path
-        template "registry.rb", REGISTRY_PATH
-        add_routes
-
-        print_next_steps unless behavior == :revoke
+        if behavior == :revoke
+          remove_files
+          remove_routes
+        else
+          preflight!
+          create_files
+          add_routes
+          print_next_steps
+        end
       end
 
       private
@@ -71,19 +72,23 @@ module Hitch
         end
         errors << "constant collision: #{@controller_name}" if constant_collision?(@controller_name)
         errors << "constant collision: McpToolRegistry" if constant_collision?("McpToolRegistry")
+        errors << "#{ROUTES_PATH} is missing a Rails.application.routes.draw block" unless
+          active_routes.include?(".routes.draw do")
         refuse!("install", errors) if errors.any?
       end
+
+      # Behavior-aware Thor actions: create in invoke, remove in revoke.
+      def create_files
+        template "initializer.rb", INITIALIZER_PATH
+        template "controller.rb.tt", @controller_path
+        template "registry.rb", REGISTRY_PATH
+      end
+      alias_method :remove_files, :create_files
 
       # The /mcp route must precede the engine mount, so both go into one
       # insertion at the top of the draw block.
       def add_routes
-        if behavior == :revoke
-          route(route_lines(match: true, mount: true))
-          return
-        end
-
-        routes = destination_file?(ROUTES_PATH) ? File.binread(destination_path(ROUTES_PATH)) : ""
-        active = routes.each_line.reject { |line| line.lstrip.start_with?("#") }.join
+        active = active_routes
         match_missing = !MCP_ROUTE_PATTERN.match?(active)
         mount_missing = !active.include?("mount Hitch::Engine")
 
@@ -91,14 +96,42 @@ module Hitch
         say_status :skip, "Hitch::Engine is already mounted", :yellow unless mount_missing
         return unless match_missing || mount_missing
 
-        route(route_lines(match: match_missing, mount: mount_missing))
+        route(
+          [
+            (match_line if match_missing),
+            (mount_line if mount_missing)
+          ].compact.join("\n")
+        )
       end
 
-      def route_lines(match:, mount:)
-        [
-          (%(match "/mcp", to: "#{@route_target}#handle", via: :all) if match),
-          ('mount Hitch::Engine => "/"' if mount)
-        ].compact.join("\n")
+      # Removes only the line this generator always writes. With no install
+      # record there is no way to tell a generated engine mount from one the
+      # host already had, and deleting a host-owned mount would take down its
+      # /oauth/* and discovery routes — so the mount is left in place and
+      # said so.
+      def remove_routes
+        active = active_routes
+        route(match_line) if active.include?(match_line)
+        return unless active.include?("mount Hitch::Engine")
+
+        say_status :skip,
+          "mount Hitch::Engine left in place (it may pre-date this install); remove it manually if unwanted",
+          :yellow
+      end
+
+      def match_line
+        %(match "/mcp", to: "#{@route_target}#handle", via: :all)
+      end
+
+      def mount_line
+        'mount Hitch::Engine => "/"'
+      end
+
+      def active_routes
+        return "" unless destination_file?(ROUTES_PATH)
+
+        File.binread(destination_path(ROUTES_PATH))
+          .each_line.reject { |line| line.lstrip.start_with?("#") }.join
       end
 
       def operation

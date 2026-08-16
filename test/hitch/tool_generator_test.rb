@@ -204,6 +204,29 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
     assert_equal REGISTRY_BYTES, read(REGISTRY_PATH)
   end
 
+  test "destroy refuses a reformatted registration line before deleting anything" do
+    prepare_registry
+    _output, generation_error = invoke_generator
+    reformatted = read(REGISTRY_PATH).sub('[ "mcp" ]', '["mcp"]')
+    write(REGISTRY_PATH, reformatted)
+    before = file_snapshot
+
+    _output, rollback_error = invoke_generator(behavior: :revoke)
+
+    assert_nil generation_error
+    assert_instance_of Thor::Error, rollback_error
+    assert_includes rollback_error.message, "edited registration"
+    assert_equal before, file_snapshot
+
+    write(REGISTRY_PATH, REGISTRY_BYTES)
+    _output, second_rollback_error = invoke_generator(behavior: :revoke)
+
+    identity = identity_for("simple_snake", "default")
+    assert_nil second_rollback_error
+    assert_no_file identity.fetch(:tool_path)
+    assert_no_file identity.fetch(:test_path)
+  end
+
   test "the exact generated tool and test respond through the real endpoint" do
     prepare_registry
     _output, working_error = invoke_generator(raw_name: "generated/weather_lookup")

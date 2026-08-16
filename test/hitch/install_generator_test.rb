@@ -124,14 +124,60 @@ class Hitch::InstallGeneratorTest < Rails::Generators::TestCase
     assert_includes routes, "mount Hitch::Engine"
   end
 
-  test "destroy removes the generated files and routes" do
+  test "destroy removes the generated files and /mcp route but leaves the mount" do
     invoke_generator!
     invoke_generator!([], behavior: :revoke)
 
     assert_no_file "config/initializers/hitch.rb"
     assert_no_file "app/controllers/mcp_controller.rb"
     assert_no_file "app/tools/mcp_tool_registry.rb"
-    assert_equal ROUTES, read("config/routes.rb")
+    routes = read("config/routes.rb")
+    refute_includes routes, 'match "/mcp"'
+    # Without an install record, a generated mount and a host-owned one are
+    # indistinguishable, so destroy never deletes mounts.
+    assert_includes routes, "mount Hitch::Engine"
+  end
+
+  test "destroy never removes a pre-existing engine mount" do
+    File.write(
+      "#{destination_root}/config/routes.rb",
+      "Rails.application.routes.draw do\n  mount Hitch::Engine => \"/\"\nend\n"
+    )
+    invoke_generator!
+
+    invoke_generator!([], behavior: :revoke)
+
+    routes = read("config/routes.rb")
+    assert_equal 1, routes.scan("mount Hitch::Engine").length
+    refute_includes routes, 'match "/mcp"'
+    assert_no_file "config/initializers/hitch.rb"
+  end
+
+  test "destroy after the host already owned /mcp leaves the host route intact" do
+    File.write(
+      "#{destination_root}/config/routes.rb",
+      "Rails.application.routes.draw do\n  post \"mcp\", to: \"legacy#dispatch\"\nend\n"
+    )
+    invoke_generator!
+
+    invoke_generator!([], behavior: :revoke)
+
+    routes = read("config/routes.rb")
+    assert_includes routes, 'post "mcp", to: "legacy#dispatch"'
+    refute_includes routes, "mcp#handle"
+    assert_no_file "config/initializers/hitch.rb"
+    assert_no_file "app/controllers/mcp_controller.rb"
+  end
+
+  test "a missing routes file refuses before writing anything" do
+    File.delete("#{destination_root}/config/routes.rb")
+
+    error = assert_raises(Thor::Error) { invoke_generator! }
+
+    assert_includes error.message, "routes.draw"
+    assert_no_file "config/initializers/hitch.rb"
+    assert_no_file "app/controllers/mcp_controller.rb"
+    assert_no_file "app/tools/mcp_tool_registry.rb"
   end
 
   test "the library CIMD fallback stays false, so upgrading changes nothing" do

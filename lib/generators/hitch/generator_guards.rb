@@ -6,6 +6,8 @@ module Hitch
     # before writing so a refused run leaves no partial install behind.
     # Including generators define +refusal_subject+.
     module GeneratorGuards
+      REGISTRY_PATH = "app/tools/mcp_tool_registry.rb"
+
       private
 
       def constant_collision?(name)

@@ -36,7 +36,6 @@ module Hitch
         /\A(?:[a-z][a-z0-9]*(?:[_-][a-z0-9]+)*|[A-Z][A-Za-z0-9]*)\z/
       CANONICAL_SEGMENT_PATTERN = /\A[a-z][a-z0-9]*(?:_[a-z0-9]+)*\z/
       NAMESPACE_PATTERN = /\A[A-Z][A-Za-z0-9]*(?:::[A-Z][A-Za-z0-9]*)*\z/
-      REGISTRY_PATH = "app/tools/mcp_tool_registry.rb"
 
       def self.exit_on_failure?
         true
@@ -44,8 +43,10 @@ module Hitch
 
       def generate_or_revoke
         prepare_identity!
-        preflight! unless behavior == :revoke
+        behavior == :revoke ? preflight_revoke! : preflight!
 
+        # Behavior-aware Thor actions: create/inject in invoke, remove in
+        # revoke.
         template "tool.rb.tt", @tool_path
         template "tool_test.rb.tt", @test_path
         inject_into_class REGISTRY_PATH, "McpToolRegistry", "  #{@registration_line}\n"
@@ -54,6 +55,20 @@ module Hitch
       end
 
       private
+
+      # inject_into_class revokes by exact bytes; a reformatted registration
+      # line would survive while the tool file disappears, stranding a
+      # NameError at the next boot. Refuse the whole rollback instead.
+      def preflight_revoke!
+        registry = destination_file?(REGISTRY_PATH) ? File.binread(destination_path(REGISTRY_PATH)) : ""
+        return unless registry.match?(/^\s*register\s+#{Regexp.escape(@class_name)}\b/)
+        return if registry.include?(@registration_line)
+
+        refuse!("rollback", [
+          "#{REGISTRY_PATH} contains an edited registration for #{@class_name}; " \
+          "remove that line by hand, then rerun bin/rails destroy hitch:tool"
+        ])
+      end
 
       def preflight!
         errors = []

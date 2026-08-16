@@ -9,7 +9,8 @@ class <%= @test_class_name %> < ActionDispatch::IntegrationTest
   include Hitch::MCP::TestHelper
 
   setup do
-    # Any persisted record your app treats as the signed-in user works here.
+    # post_mcp needs a real bearer token. Point this at however your tests
+    # get a signed-in user — a fixture, a factory, or a record created here.
     @token = mint_mcp_token(principal: User.first!)
   end
 <% if deny_default? -%>

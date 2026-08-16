@@ -3,7 +3,9 @@
 require "test_helper"
 require "hitch/mcp/test_helper"
 
-class <%= @test_class_name %> < ActiveSupport::TestCase
+class <%= @test_class_name %> < ActionDispatch::IntegrationTest
+  # post_mcp drives your mounted MCP endpoint over real HTTP once the tool
+  # is registered — see Hitch::MCP::TestHelper.
   include Hitch::MCP::TestHelper
 
   test "declares a closed empty input schema" do

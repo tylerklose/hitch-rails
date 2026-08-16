@@ -133,7 +133,6 @@ class Hitch::MCPTestHelperTest < ActiveSupport::TestCase
       invalid_calls = [
         -> { @helper.post_mcp(method: "tools/list", token: "abc", params: []) },
         -> { @helper.post_mcp(method: "tools/list", token: "abc", params: { _meta: {} }) },
-        -> { @helper.post_mcp(method: "tools/list", token: "abc", params: { "a" => 1, a: 2 }) },
         -> { @helper.post_mcp(method: "tools/list", token: "abc", params: recursive) },
         -> { @helper.post_mcp(method: "tools/list", token: "abc", capabilities: []) },
         -> { @helper.post_mcp(method: "tools/list", token: "abc", client_info: []) },

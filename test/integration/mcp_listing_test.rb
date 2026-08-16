@@ -5,7 +5,7 @@ require "base64"
 require "digest"
 require "json"
 require "securerandom"
-require_relative "../support/mcp_listing_request_support"
+require "hitch/mcp/test_helper"
 
 module HitchMcpListingFixtures
   INPUT_SCHEMA = {
@@ -130,7 +130,8 @@ module HitchMcpListingReloadFixtures
 end
 
 class MCPListingTest < ActionDispatch::IntegrationTest
-  include McpListingRequestSupport
+  # The suite drives listings through the same public helper hosts use.
+  include Hitch::MCP::TestHelper
 
   RESOURCE = "https://dummy.test/mcp"
 
@@ -180,7 +181,7 @@ class MCPListingTest < ActionDispatch::IntegrationTest
   end
 
   test "listing is deterministic and filters static scopes after availability" do
-    post_listing_mcp(method: "tools/list", token: @alpha_mcp)
+    post_mcp(method: "tools/list", token: @alpha_mcp)
 
     assert_response :ok
     result = JSON.parse(response.body).fetch("result")
@@ -192,7 +193,7 @@ class MCPListingTest < ActionDispatch::IntegrationTest
     assert_equal @alpha, @resolver_calls.fetch(0).fetch(:principal)
     assert_instance_of ActionDispatch::Request, @resolver_calls.fetch(0).fetch(:request)
 
-    post_listing_mcp(method: "tools/list", token: @alpha_admin)
+    post_mcp(method: "tools/list", token: @alpha_admin)
     names = JSON.parse(response.body).dig("result", "tools").map { |tool| tool.fetch("name") }
     assert_equal %w[admin.tool alpha.tool zeta.tool], names
   end
@@ -200,13 +201,13 @@ class MCPListingTest < ActionDispatch::IntegrationTest
   test "availability is deny default and request local" do
     configure_runtime("HitchMcpListingFixtures::PrincipalRegistry")
 
-    post_listing_mcp(method: "tools/list", token: @alpha_mcp)
+    post_mcp(method: "tools/list", token: @alpha_mcp)
     assert_equal [ "principal.alpha" ], listed_names(response)
 
-    post_listing_mcp(method: "tools/list", token: @beta_mcp)
+    post_mcp(method: "tools/list", token: @beta_mcp)
     assert_equal [ "principal.beta" ], listed_names(response)
 
-    post_listing_mcp(method: "tools/list", token: @alpha_mcp)
+    post_mcp(method: "tools/list", token: @alpha_mcp)
     assert_equal [ "principal.alpha" ], listed_names(response)
     assert_equal 3, @resolver_calls.length
   end
@@ -222,12 +223,11 @@ class MCPListingTest < ActionDispatch::IntegrationTest
     refute_includes unknown.fetch(:body), "hidden"
 
     McpController.reset_wire_metrics!
-    post_listing_mcp(
+    post_mcp(
       method: "tools/call",
       token: @alpha_mcp,
-      name: "admin.tool",
       id: "same-call",
-      arguments: { message: "hello" }
+      params: { name: "admin.tool", arguments: { message: "hello" } }
     )
 
     assert_response :forbidden
@@ -241,7 +241,9 @@ class MCPListingTest < ActionDispatch::IntegrationTest
   end
 
   test "the initial bearer challenge requests only the base scope" do
-    post_listing_mcp(method: "server/discover", token: nil)
+    # Raw post: the helper refuses an absent bearer token by design.
+    post "/mcp", params: "{}",
+      headers: { "Host" => "dummy.test", "Content-Type" => "application/json" }
 
     assert_response :unauthorized
     challenge = response.headers.fetch("WWW-Authenticate")
@@ -259,7 +261,7 @@ class MCPListingTest < ActionDispatch::IntegrationTest
       Hitch.configuration.mcp.scope_resolver = resolver
       McpController.reset_wire_metrics!
 
-      post_listing_mcp(method: "tools/list", token: @alpha_mcp)
+      post_mcp(method: "tools/list", token: @alpha_mcp)
 
       assert_response :ok
       assert_equal(-32603, JSON.parse(response.body).dig("error", "code"))
@@ -277,7 +279,7 @@ class MCPListingTest < ActionDispatch::IntegrationTest
       configure_runtime(registry)
       McpController.reset_wire_metrics!
 
-      post_listing_mcp(method: "tools/list", token: @alpha_mcp)
+      post_mcp(method: "tools/list", token: @alpha_mcp)
 
       assert_response :ok
       assert_equal(-32603, JSON.parse(response.body).dig("error", "code"))
@@ -288,10 +290,10 @@ class MCPListingTest < ActionDispatch::IntegrationTest
   end
 
   test "client info is optional and cannot change authority" do
-    post_listing_mcp(method: "tools/list", token: @alpha_mcp)
+    post_mcp(method: "tools/list", token: @alpha_mcp)
     without_client_info = listed_names(response)
 
-    post_listing_mcp(
+    post_mcp(
       method: "tools/list",
       token: @alpha_mcp,
       client_info: { "name" => "Synthetic Client", "version" => "1" }
@@ -307,7 +309,7 @@ class MCPListingTest < ActionDispatch::IntegrationTest
       principal.email
     end
 
-    post_listing_mcp(method: "tools/list", token: @alpha_mcp)
+    post_mcp(method: "tools/list", token: @alpha_mcp)
 
     assert_response :ok
     assert_equal %w[alpha.tool zeta.tool], listed_names(response)
@@ -318,7 +320,7 @@ class MCPListingTest < ActionDispatch::IntegrationTest
       nil
     end
 
-    post_listing_mcp(method: "tools/list", token: @alpha_mcp)
+    post_mcp(method: "tools/list", token: @alpha_mcp)
 
     assert_response :ok
     assert_equal %w[alpha.tool zeta.tool], listed_names(response)
@@ -336,14 +338,10 @@ class MCPListingTest < ActionDispatch::IntegrationTest
     threads = [ [ @alpha_mcp, "alpha" ], [ @beta_mcp, "beta" ] ].map do |token, label|
       Thread.new do
         session = ActionDispatch::Integration::Session.new(Rails.application)
+        session.extend(Hitch::MCP::TestHelper)
         session.https!
         session.host! "dummy.test"
-        result = post_listing_mcp(
-          method: "tools/list",
-          token: token,
-          id: label,
-          session: session
-        )
+        result = session.post_mcp(method: "tools/list", token: token, id: label)
         responses << [ label, result.status, JSON.parse(result.body) ]
       rescue StandardError => error
         responses << [ label, :error, error ]
@@ -367,7 +365,7 @@ class MCPListingTest < ActionDispatch::IntegrationTest
   test "a request overlapping reload waits and uses only the new current class" do
     old_tool = define_listing_reload_pair(available: true, description: "old listing tool")
     configure_runtime("HitchMcpListingReloadFixtures::Registry")
-    post_listing_mcp(method: "tools/list", token: @alpha_mcp)
+    post_mcp(method: "tools/list", token: @alpha_mcp)
     assert_equal [ "reload.tool" ], listed_names(response)
 
     clear_listing_reload_fixtures
@@ -392,14 +390,10 @@ class MCPListingTest < ActionDispatch::IntegrationTest
     request_result = Queue.new
     request_thread = Thread.new do
       session = ActionDispatch::Integration::Session.new(Rails.application)
+      session.extend(Hitch::MCP::TestHelper)
       session.https!
       session.host! "dummy.test"
-      result = post_listing_mcp(
-        method: "tools/list",
-        token: @alpha_mcp,
-        id: "reload-overlap",
-        session: session
-      )
+      result = session.post_mcp(method: "tools/list", token: @alpha_mcp, id: "reload-overlap")
       request_result << [ result.status, result.body ]
     rescue StandardError => error
       request_result << error
@@ -502,12 +496,11 @@ class MCPListingTest < ActionDispatch::IntegrationTest
 
   def call_snapshot(name)
     McpController.reset_wire_metrics!
-    post_listing_mcp(
+    post_mcp(
       method: "tools/call",
       token: @alpha_mcp,
-      name: name,
       id: "same-call",
-      arguments: { message: "hello" }
+      params: { name: name, arguments: { message: "hello" } }
     )
     {
       status: response.status,

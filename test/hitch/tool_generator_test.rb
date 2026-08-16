@@ -46,12 +46,15 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
     assert_equal REGISTRY_BYTES, read(REGISTRY_PATH)
 
     tool_path = "app/models/mcp_tools/weather_lookup.rb"
-    test_path = "test/models/mcp_tools/weather_lookup_test.rb"
+    test_path = "test/integration/mcp_tools/weather_lookup_test.rb"
     assert_file tool_path, /class WeatherLookup < Hitch::MCP::Tool/
     assert_file tool_path, /tool_name "weather_lookup"/
     assert_file tool_path, /def self\.available_to\?\(_context\)\n      false/
     assert_file tool_path, /raise Hitch::MCP::Forbidden/
     assert_file tool_path, /additionalProperties: false/
+    # post_mcp calls post, which only integration tests define — a plain
+    # ActiveSupport::TestCase would include a helper it cannot use.
+    assert_file test_path, /< ActionDispatch::IntegrationTest/
     assert_file test_path, /include Hitch::MCP::TestHelper/
     assert_nothing_raised { RubyVM::AbstractSyntaxTree.parse(read(tool_path)) }
     assert_nothing_raised { RubyVM::AbstractSyntaxTree.parse(read(test_path)) }
@@ -193,7 +196,7 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
   test "rollback refuses customized files and inconsistent manifests without partial deletion" do
     customizations = {
       "tool" => ->(_identity) { append("app/models/mcp_tools/weather_lookup.rb", "# host edit\n") },
-      "test" => ->(_identity) { append("test/models/mcp_tools/weather_lookup_test.rb", "# host edit\n") }
+      "test" => ->(_identity) { append("test/integration/mcp_tools/weather_lookup_test.rb", "# host edit\n") }
     }
     manifest_tamperings = {
       "canonical name" => ->(manifest) { manifest["canonical_name"] = "anything" },
@@ -325,7 +328,7 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
       test_class_name: "#{class_name}Test",
       tool_name:,
       tool_path: "app/models/#{class_name.underscore}.rb",
-      test_path: "test/models/#{class_name.underscore}_test.rb",
+      test_path: "test/integration/#{class_name.underscore}_test.rb",
       manifest_path: "config/hitch_tools/#{tool_name}.json",
       registration_line: %(register #{class_name}, scopes: [ "mcp" ]),
       rollback_command: [

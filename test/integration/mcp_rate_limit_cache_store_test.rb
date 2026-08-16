@@ -5,6 +5,7 @@ require "base64"
 require "digest"
 require "json"
 require "securerandom"
+require_relative "../support/mcp_wire_admission_support"
 
 # M4.3 erratum acceptance.
 #
@@ -14,8 +15,8 @@ require "securerandom"
 # never a runtime gem dependency. A Solid Cache application must install Hitch
 # and reach production without introducing Redis.
 class MCPRateLimitCacheStoreTest < ActionDispatch::IntegrationTest
+  include McpWireAdmissionSupport
   RESOURCE = "https://dummy.test/mcp"
-  PROTOCOL_VERSION = "2026-07-28"
   REPOSITORY_ROOT = Rails.root.join("../..").expand_path
 
   # Records every admission write so the tests can prove which store the
@@ -81,11 +82,11 @@ class MCPRateLimitCacheStoreTest < ActionDispatch::IntegrationTest
 
   test "admission counts through the host application cache store by default" do
     3.times do
-      post_mcp(method: "tools/list", token: @token)
+      post_admitted_mcp(method: "tools/list", token: @token)
       assert_response :ok
     end
 
-    post_mcp(method: "tools/list", token: @token)
+    post_admitted_mcp(method: "tools/list", token: @token)
     assert_response :too_many_requests
     assert_equal "60", response.headers.fetch("Retry-After")
     assert_includes response.headers.fetch("Access-Control-Expose-Headers"), "Retry-After"
@@ -102,9 +103,9 @@ class MCPRateLimitCacheStoreTest < ActionDispatch::IntegrationTest
     dedicated = RecordingCacheStore.new
     configure_runtime(to: 1, within: 60, store: dedicated)
 
-    post_mcp(method: "tools/list", token: @token)
+    post_admitted_mcp(method: "tools/list", token: @token)
     assert_response :ok
-    post_mcp(method: "tools/list", token: @token)
+    post_admitted_mcp(method: "tools/list", token: @token)
     assert_response :too_many_requests
 
     assert_equal 2, dedicated.increments.length
@@ -122,7 +123,7 @@ class MCPRateLimitCacheStoreTest < ActionDispatch::IntegrationTest
       input:,
       content_type: "application/json",
       host: "dummy.test",
-      headers: request_headers(token: @token, method: "tools/call", name: "hitch.echo")
+      headers: admission_env(token: @token, method: "tools/call", name: "hitch.echo")
     )
 
     assert_equal 503, failed.status
@@ -135,7 +136,7 @@ class MCPRateLimitCacheStoreTest < ActionDispatch::IntegrationTest
     configure_runtime(to: 1, within: 60, store: OutageNilStore.new)
 
     3.times do
-      post_mcp(method: "tools/list", token: @token)
+      post_admitted_mcp(method: "tools/list", token: @token)
       assert_response :ok,
         "a store that cannot count must not reject already-authenticated requests"
     end
@@ -146,14 +147,14 @@ class MCPRateLimitCacheStoreTest < ActionDispatch::IntegrationTest
     # which is a ScriptError; admission must still degrade to its designed 503.
     configure_runtime(to: 3, within: 60, store: ActiveSupport::Cache::Store.new)
 
-    post_mcp(method: "tools/list", token: @token)
+    post_admitted_mcp(method: "tools/list", token: @token)
     assert_response :service_unavailable
   end
 
   test "a non-numeric count is 503" do
     configure_runtime(to: 3, within: 60, store: GarbageCountStore.new)
 
-    post_mcp(method: "tools/list", token: @token)
+    post_admitted_mcp(method: "tools/list", token: @token)
     assert_response :service_unavailable
   end
 
@@ -161,11 +162,11 @@ class MCPRateLimitCacheStoreTest < ActionDispatch::IntegrationTest
     configure_runtime(to: 2, within: 60)
     rotated = mint_token(@user, client_id: "shared-client")
 
-    post_mcp(method: "tools/list", token: @token)
+    post_admitted_mcp(method: "tools/list", token: @token)
     assert_response :ok
-    post_mcp(method: "server/discover", token: rotated)
+    post_admitted_mcp(method: "server/discover", token: rotated)
     assert_response :ok
-    post_mcp(method: "tools/list", token: rotated)
+    post_admitted_mcp(method: "tools/list", token: rotated)
 
     assert_response :too_many_requests
   end
@@ -177,12 +178,12 @@ class MCPRateLimitCacheStoreTest < ActionDispatch::IntegrationTest
     other_principal_same_client = mint_token(other_user, client_id: "shared-client")
 
     [ @token, same_principal_other_client, other_principal_same_client ].each do |token|
-      post_mcp(method: "tools/list", token:)
+      post_admitted_mcp(method: "tools/list", token:)
       assert_response :ok
     end
 
     [ @token, same_principal_other_client, other_principal_same_client ].each do |token|
-      post_mcp(method: "tools/list", token:)
+      post_admitted_mcp(method: "tools/list", token:)
       assert_response :too_many_requests
     end
   end
@@ -242,48 +243,6 @@ class MCPRateLimitCacheStoreTest < ActionDispatch::IntegrationTest
       :prepare_registry!,
       supported_scopes: Hitch.configuration.supported_scopes
     )
-  end
-
-  def post_mcp(method:, token:, name: nil, arguments: {}, id: SecureRandom.hex(4))
-    headers = {
-      "Host" => "dummy.test",
-      "Authorization" => "Bearer #{token}",
-      "Content-Type" => "application/json",
-      "Accept" => "application/json, text/event-stream",
-      "MCP-Protocol-Version" => PROTOCOL_VERSION,
-      "Mcp-Method" => method,
-      "X-Hitch-Wire-Admission" => "runtime"
-    }
-    headers["Mcp-Name"] = name if name
-    post "/mcp", params: request_body(method:, name:, arguments:, id:), headers:
-  end
-
-  def request_body(method:, name: nil, arguments: {}, id: SecureRandom.hex(4))
-    params = {
-      "_meta" => {
-        "io.modelcontextprotocol/protocolVersion" => PROTOCOL_VERSION,
-        "io.modelcontextprotocol/clientCapabilities" => {}
-      }
-    }
-    if method == "tools/call"
-      params["name"] = name
-      params["arguments"] = arguments
-    end
-    JSON.generate(jsonrpc: "2.0", id:, method:, params:)
-  end
-
-  def request_headers(token:, method:, name: nil)
-    {
-      "CONTENT_TYPE" => "application/json",
-      "HTTP_HOST" => "dummy.test",
-      "HTTP_AUTHORIZATION" => "Bearer #{token}",
-      "HTTP_ACCEPT" => "application/json, text/event-stream",
-      "HTTP_MCP_PROTOCOL_VERSION" => PROTOCOL_VERSION,
-      "HTTP_MCP_METHOD" => method,
-      "HTTP_X_HITCH_WIRE_ADMISSION" => "runtime"
-    }.tap do |headers|
-      headers["HTTP_MCP_NAME"] = name if name
-    end
   end
 
   def mint_token(principal, client_id:)

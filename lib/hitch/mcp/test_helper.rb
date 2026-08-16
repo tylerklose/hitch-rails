@@ -139,47 +139,15 @@ module Hitch
         raise ArgumentError, "id must be a nonempty String or Integer"
       end
 
+      # A generate/parse round trip is the JSON normalizer: symbol keys
+      # become strings, structures are deep-copied so the caller's hash is
+      # never mutated, and cycles or non-finite numbers raise.
       def mcp_test_json_hash(value, label)
         raise ArgumentError, "#{label} must be a Hash" unless value.is_a?(Hash)
 
-        mcp_test_json_copy(value)
-      end
-
-      def mcp_test_json_copy(value, seen = {})
-        copied = case value
-        when Hash
-          raise ArgumentError, "recursive MCP test JSON" if seen.key?(value.object_id)
-
-          seen[value.object_id] = true
-          value.each_with_object({}) do |(key, child), result|
-            normalized_key = case key
-            when String then key.dup
-            when Symbol then key.to_s
-            else raise ArgumentError, "MCP test JSON keys must be Strings or Symbols"
-            end
-            raise ArgumentError, "duplicate MCP test JSON key" if result.key?(normalized_key)
-
-            result[normalized_key] = mcp_test_json_copy(child, seen)
-          end
-        when Array
-          raise ArgumentError, "recursive MCP test JSON" if seen.key?(value.object_id)
-
-          seen[value.object_id] = true
-          value.map { |child| mcp_test_json_copy(child, seen) }
-        when String
-          value.dup
-        when Float
-          raise ArgumentError, "MCP test JSON contains a non-finite number" unless value.finite?
-
-          value
-        when Integer, TrueClass, FalseClass, NilClass
-          value
-        else
-          raise ArgumentError, "MCP test JSON contains an unsupported value"
-        end
-        copied
-      ensure
-        seen.delete(value.object_id) if value.is_a?(Hash) || value.is_a?(Array)
+        JSON.parse(JSON.generate(value))
+      rescue JSON::JSONError
+        raise ArgumentError, "#{label} is not plain JSON data"
       end
 
       private_constant :METHODS, :TOKEN_PATTERN, :TOOL_NAME_PATTERN

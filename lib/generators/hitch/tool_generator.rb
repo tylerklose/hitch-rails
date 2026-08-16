@@ -99,7 +99,7 @@ module Hitch
         @class_modules = @class_name.split("::")[0...-1]
         @class_leaf = @class_name.split("::").last
         @tool_path = "app/models/#{@class_name.underscore}.rb"
-        @test_path = "test/models/#{@class_name.underscore}_test.rb"
+        @test_path = "test/integration/#{@class_name.underscore}_test.rb"
         @manifest_path = "#{MANIFEST_DIRECTORY}/#{@tool_name}.json"
         @registration_line = %(register #{@class_name}, scopes: [ "mcp" ])
         @rollback_command = [

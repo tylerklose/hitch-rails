@@ -42,19 +42,22 @@ class MCPServerEndpointTest < ActionDispatch::IntegrationTest
     exchange_authorization_code(record, verifier: verifier)
   end
 
-  def post_mcp(payload, headers: @auth)
+  # Raw wire frames (notifications without ids, malformed envelopes) against
+  # the host-owned /mcp_test endpoint — shapes the strict public helper
+  # deliberately cannot express.
+  def post_wire(payload, headers: @auth)
     post "/mcp_test", params: payload.to_json,
       headers: headers.merge("Content-Type" => "application/json")
   end
 
   test "a JSON-RPC notification returns 202 Accepted with an empty body" do
-    post_mcp({ jsonrpc: "2.0", method: "notifications/initialized" })
+    post_wire({ jsonrpc: "2.0", method: "notifications/initialized" })
     assert_response :accepted
     assert_predicate response.body, :blank?
   end
 
   test "a JSON-RPC request returns 200 with an application/json body" do
-    post_mcp({ jsonrpc: "2.0", id: 1, method: "tools/list" })
+    post_wire({ jsonrpc: "2.0", id: 1, method: "tools/list" })
     assert_response :ok
     assert_match %r{application/json}, response.media_type
     assert_equal 1, JSON.parse(response.body)["id"]
@@ -73,7 +76,7 @@ class MCPServerEndpointTest < ActionDispatch::IntegrationTest
   end
 
   test "a request without a bearer token is 401 with a WWW-Authenticate challenge" do
-    post_mcp({ jsonrpc: "2.0", id: 1, method: "tools/list" }, headers: {})
+    post_wire({ jsonrpc: "2.0", id: 1, method: "tools/list" }, headers: {})
     assert_response :unauthorized
     challenge = response.headers["WWW-Authenticate"].to_s
     assert_match(/\ABearer /, challenge)
@@ -93,14 +96,14 @@ class MCPServerEndpointTest < ActionDispatch::IntegrationTest
 
     malformed.each do |authorization|
       stub_class_method(Hitch::AccessToken, :find_by_token, lookup) do
-        post_mcp({ jsonrpc: "2.0", id: 1, method: "tools/list" },
+        post_wire({ jsonrpc: "2.0", id: 1, method: "tools/list" },
           headers: { "Authorization" => authorization })
       end
       assert_response :unauthorized
     end
 
     mixed_case = @auth.fetch("Authorization").sub("Bearer", "bEaReR")
-    post_mcp({ jsonrpc: "2.0", id: 1, method: "tools/list" },
+    post_wire({ jsonrpc: "2.0", id: 1, method: "tools/list" },
       headers: { "Authorization" => mixed_case })
     assert_response :success
   end
@@ -145,7 +148,7 @@ class MCPServerEndpointTest < ActionDispatch::IntegrationTest
 
   test "a token bound to a different resource is rejected (RFC 8707)" do
     foreign = { "Authorization" => "Bearer #{mint_token('https://elsewhere.test/mcp')}" }
-    post_mcp({ jsonrpc: "2.0", id: 1, method: "tools/list" }, headers: foreign)
+    post_wire({ jsonrpc: "2.0", id: 1, method: "tools/list" }, headers: foreign)
     assert_response :unauthorized
   end
 

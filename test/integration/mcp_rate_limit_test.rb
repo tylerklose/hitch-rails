@@ -5,10 +5,11 @@ require "base64"
 require "digest"
 require "json"
 require "securerandom"
+require_relative "../support/mcp_wire_admission_support"
 
 class MCPRateLimitTest < ActionDispatch::IntegrationTest
+  include McpWireAdmissionSupport
   RESOURCE = "https://dummy.test/mcp"
-  PROTOCOL_VERSION = "2026-07-28"
 
   setup do
     Hitch::AccessToken.delete_all
@@ -31,11 +32,11 @@ class MCPRateLimitTest < ActionDispatch::IntegrationTest
   end
 
   test "discover list and call share one exact authenticated boundary" do
-    post_mcp(method: "server/discover", token: @token)
+    post_admitted_mcp(method: "server/discover", token: @token)
     assert_response :ok
-    post_mcp(method: "tools/list", token: @token)
+    post_admitted_mcp(method: "tools/list", token: @token)
     assert_response :ok
-    post_mcp(method: "tools/call", token: @token, name: "hitch.echo",
+    post_admitted_mcp(method: "tools/call", token: @token, name: "hitch.echo",
       arguments: { "message" => "within-limit" })
     assert_response :ok
 
@@ -46,7 +47,7 @@ class MCPRateLimitTest < ActionDispatch::IntegrationTest
       input:,
       content_type: "application/json",
       host: "dummy.test",
-      headers: request_headers(token: @token, method: "tools/list")
+      headers: admission_env(token: @token, method: "tools/list")
     )
 
     assert_equal 429, rejected.status
@@ -61,11 +62,11 @@ class MCPRateLimitTest < ActionDispatch::IntegrationTest
     configure_runtime(to: 2, within: 60)
     rotated = mint_token(@user, client_id: "shared-client")
 
-    post_mcp(method: "tools/list", token: @token)
+    post_admitted_mcp(method: "tools/list", token: @token)
     assert_response :ok
-    post_mcp(method: "server/discover", token: rotated)
+    post_admitted_mcp(method: "server/discover", token: rotated)
     assert_response :ok
-    post_mcp(method: "tools/list", token: rotated)
+    post_admitted_mcp(method: "tools/list", token: rotated)
 
     assert_response :too_many_requests
     assert_equal "60", response.headers.fetch("Retry-After")
@@ -78,12 +79,12 @@ class MCPRateLimitTest < ActionDispatch::IntegrationTest
     other_principal_same_client = mint_token(other_user, client_id: "shared-client")
 
     [ @token, same_principal_other_client, other_principal_same_client ].each do |token|
-      post_mcp(method: "tools/list", token:)
+      post_admitted_mcp(method: "tools/list", token:)
       assert_response :ok
     end
 
     [ @token, same_principal_other_client, other_principal_same_client ].each do |token|
-      post_mcp(method: "tools/list", token:)
+      post_admitted_mcp(method: "tools/list", token:)
       assert_response :too_many_requests
     end
   end
@@ -111,50 +112,6 @@ class MCPRateLimitTest < ActionDispatch::IntegrationTest
       :prepare_registry!,
       supported_scopes: Hitch.configuration.supported_scopes
     )
-  end
-
-  def post_mcp(method:, token:, name: nil, arguments: {}, id: SecureRandom.hex(4))
-    headers = {
-      "Host" => "dummy.test",
-      "Authorization" => "Bearer #{token}",
-      "Content-Type" => "application/json",
-      "Accept" => "application/json, text/event-stream",
-      "MCP-Protocol-Version" => PROTOCOL_VERSION,
-      "Mcp-Method" => method,
-      "X-Hitch-Wire-Admission" => "runtime"
-    }
-    headers["Mcp-Name"] = name if name
-    post "/mcp",
-      params: request_body(method:, name:, arguments:, id:),
-      headers:
-  end
-
-  def request_body(method:, name: nil, arguments: {}, id: SecureRandom.hex(4))
-    params = {
-      "_meta" => {
-        "io.modelcontextprotocol/protocolVersion" => PROTOCOL_VERSION,
-        "io.modelcontextprotocol/clientCapabilities" => {}
-      }
-    }
-    if method == "tools/call"
-      params["name"] = name
-      params["arguments"] = arguments
-    end
-    JSON.generate(jsonrpc: "2.0", id:, method:, params:)
-  end
-
-  def request_headers(token:, method:, name: nil)
-    {
-      "CONTENT_TYPE" => "application/json",
-      "HTTP_HOST" => "dummy.test",
-      "HTTP_AUTHORIZATION" => "Bearer #{token}",
-      "HTTP_ACCEPT" => "application/json, text/event-stream",
-      "HTTP_MCP_PROTOCOL_VERSION" => PROTOCOL_VERSION,
-      "HTTP_MCP_METHOD" => method,
-      "HTTP_X_HITCH_WIRE_ADMISSION" => "runtime"
-    }.tap do |headers|
-      headers["HTTP_MCP_NAME"] = name if name
-    end
   end
 
   def mint_token(principal, client_id:)

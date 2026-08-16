@@ -13,6 +13,16 @@ an accepted M6 artifact.
 
 ### Changed
 
+- **mcp 1.2.0 supported.** The SDK adapter no longer pins `protocol_version`
+  when constructing `MCP::Configuration` — mcp 1.2.0 rejects pinning a modern
+  version (the pin only ever scoped the legacy `initialize` handshake, which
+  Hitch never serves), and without this change a fresh install resolving
+  1.2.0 returned `-32603` on every MCP request. The response normalizer now
+  produces Hitch's final wire shape unconditionally instead of gating on an
+  SDK 1.1 version window; both supported SDK lines emit byte-identical
+  responses, and the `mcp_latest` compatibility lane locks 1.2.0. The
+  supported range remains `>= 1.1, < 2`.
+
 - **One way to configure a rate limit.** Dynamic Client Registration no longer
   asks the host to implement `increment_with_expiry(key:, expires_in:)` and
   `shared?`. `config.dynamic_client_registration_rate_store` now accepts any

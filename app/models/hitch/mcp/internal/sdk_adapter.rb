@@ -6,7 +6,6 @@ module Hitch
   module MCP
     module Internal
       class SDKAdapter
-        PROTOCOL_VERSION = "2026-07-28"
         SUPPORTED_METHODS = %w[server/discover tools/list tools/call].freeze
         STRUCTURAL_PARAMS = {
           "server/discover" => [],
@@ -82,9 +81,12 @@ module Hitch
           end
         end
 
+        # No protocol_version pin: on the modern wire every request carries its
+        # version, and both supported SDK lines default their stable version to
+        # 2026-07-28 — the value we used to pin. mcp 1.2.0 rejects pinning a
+        # modern version outright.
         def sdk_configuration
           ::MCP::Configuration.new(
-            protocol_version: PROTOCOL_VERSION,
             validate_tool_call_arguments: true,
             validate_tool_call_results: true,
             exception_reporter: ->(_exception, _data) { },

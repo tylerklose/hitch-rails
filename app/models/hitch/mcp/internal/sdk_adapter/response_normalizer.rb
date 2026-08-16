@@ -11,11 +11,6 @@ module Hitch
           PROTOCOL_VERSION = "2026-07-28"
           SERVER_INFO_META_KEY = "io.modelcontextprotocol/serverInfo"
           GENERIC_TOOL_ERROR = "Tool execution failed"
-          # SDK 1.1 gaps tracked upstream: final discovery shape
-          # (https://github.com/modelcontextprotocol/ruby-sdk/issues/389) and
-          # final result fields
-          # (https://github.com/modelcontextprotocol/modelcontextprotocol/issues/3040).
-          SDK_1_1_GAPS = Gem::Requirement.new(">= 1.1.0", "< 1.2.0")
 
           class << self
             def call(response:, method:, server_info:, request_id:)
@@ -56,7 +51,7 @@ module Hitch
             result = normalized.fetch(:result)
 
             normalize_tool_error(result) if read(result, :isError) == true
-            normalize_sdk_1_1_gaps(result) if sdk_1_1_gaps?
+            normalize_final_result(result)
             deep_freeze(normalized)
           end
 
@@ -82,7 +77,14 @@ module Hitch
             )
           end
 
-          def normalize_sdk_1_1_gaps(result)
+          # Hitch owns the final wire shape on every supported SDK line rather
+          # than trusting what crossed the boundary. On mcp 1.1 this also
+          # papered over gaps since fixed upstream (ruby-sdk#389,
+          # modelcontextprotocol#3040); on mcp >= 1.2 the SDK's own modern
+          # shaping is envelope-gated and Hitch strips _meta before the SDK
+          # sees it, so the shape is Hitch's job either way. resultType is
+          # always "complete": multi-round-trip requests are unsupported.
+          def normalize_final_result(result)
             result[:resultType] = "complete"
             normalize_discovery(result) if method == "server/discover"
             normalize_private_listing(result) if %w[server/discover tools/list].include?(method)
@@ -124,10 +126,6 @@ module Hitch
           def normalize_private_listing(result)
             result[:ttlMs] = 0
             result[:cacheScope] = "private"
-          end
-
-          def sdk_1_1_gaps?
-            SDK_1_1_GAPS.satisfied_by?(Gem::Version.new(::MCP::VERSION))
           end
 
           def public_error_message(code)

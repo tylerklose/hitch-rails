@@ -142,8 +142,15 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
   end
 
   test "final meta accepts absent client info" do
-    assert_raises(::MCP::Server::RequestHandlerError) do
-      ::MCP::RequestEnvelope.parse!({ "_meta" => REQUEST_META })
+    # mcp 1.1 required the full _meta triple, clientInfo included; 1.2 made
+    # clientInfo optional (spec PR modelcontextprotocol#3002). Hitch accepts
+    # absent clientInfo on both lines because _meta never crosses its boundary.
+    if Gem::Version.new(::MCP::VERSION) < Gem::Version.new("1.2.0")
+      assert_raises(::MCP::Server::RequestHandlerError) do
+        ::MCP::RequestEnvelope.parse!({ "_meta" => REQUEST_META })
+      end
+    else
+      assert ::MCP::RequestEnvelope.parse!({ "_meta" => REQUEST_META })
     end
 
     response = call_adapter(
@@ -178,9 +185,16 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
       method: "server/discover",
       params: {}
     })
-    assert_includes raw.dig(:result, :supportedVersions), "2025-03-26"
-    assert raw.dig(:result, :serverInfo)
-    assert_nil raw.dig(:result, :resultType)
+    if Gem::Version.new(::MCP::VERSION) < Gem::Version.new("1.2.0")
+      # The 1.1 gap this normalizer was written against (ruby-sdk#389):
+      # legacy version list, top-level serverInfo, no resultType.
+      assert_includes raw.dig(:result, :supportedVersions), "2025-03-26"
+      assert raw.dig(:result, :serverInfo)
+      assert_nil raw.dig(:result, :resultType)
+    else
+      # Fixed upstream in 1.2; Hitch still owns the final shape below.
+      assert_equal [ PROTOCOL_VERSION ], raw.dig(:result, :supportedVersions)
+    end
 
     response = call_adapter(method: "server/discover")
     result = response.fetch(:result)
@@ -398,8 +412,10 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
     configuration = raw_internal_adapter(method: "server/discover", arguments: nil)
       .__send__(:sdk_configuration)
 
-    assert_equal PROTOCOL_VERSION, configuration.protocol_version
-    assert_equal true, configuration.protocol_version?
+    # No pin is installed: mcp >= 1.2 refuses pinning a modern version, and
+    # the pin only ever scoped the legacy initialize handshake, which Hitch
+    # never serves. The unpinned default differs per SDK line and is unused.
+    assert_equal false, configuration.protocol_version?
     assert_equal true, configuration.validate_tool_call_arguments
     assert_equal true, configuration.validate_tool_call_results
     assert_equal true, configuration.exception_reporter?
@@ -421,10 +437,9 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
         .__send__(:sdk_configuration)
     end
     assert_equal %i[
-      around_request exception_reporter instrumentation_callback protocol_version
+      around_request exception_reporter instrumentation_callback
       validate_tool_call_arguments validate_tool_call_results
     ], captured.keys.sort
-    assert_equal PROTOCOL_VERSION, captured.fetch(:protocol_version)
     assert_equal true, captured.fetch(:validate_tool_call_arguments)
     assert_equal true, captured.fetch(:validate_tool_call_results)
     assert_nil captured.fetch(:exception_reporter).call(RuntimeError.new, {})

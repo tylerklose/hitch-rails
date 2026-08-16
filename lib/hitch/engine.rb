@@ -58,7 +58,10 @@ module Hitch
     # The concurrency cap and the per-principal rate limit are both
     # in-process and unaffected, which is why this warns rather than
     # refuses.
-    initializer "hitch.warn_on_uncacheable_cimd", after: :initialize_cache do
+    # after :load_config_initializers, not :initialize_cache — the host's
+    # config/initializers/hitch.rb is what enables CIMD, so running any
+    # earlier would read the disabled default and never warn.
+    initializer "hitch.warn_on_uncacheable_cimd", after: :load_config_initializers do
       next unless Hitch.configuration.client_id_metadata_enabled
       # Production only. :null_store is Rails' default in test, and in
       # development without tmp/caching-dev.txt, so warning everywhere

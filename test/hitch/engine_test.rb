@@ -122,6 +122,36 @@ class Hitch::EngineTest < ActiveSupport::TestCase
     assert_equal app_paths.uniq, app_paths
   end
 
+  # The guard reads client_id_metadata_enabled, which only the host's
+  # config/initializers can set — so the initializer must sort after
+  # :load_config_initializers in the boot graph, and the warning must
+  # actually fire on the production + NullStore + CIMD posture.
+  test "the CIMD NullStore warning runs after host initializers and fires in production" do
+    ordered = Rails.application.initializers.tsort.map(&:name)
+    assert_operator ordered.index("hitch.warn_on_uncacheable_cimd"), :>,
+      ordered.index(:load_config_initializers)
+
+    Hitch.reset_configuration!
+    Hitch.configuration.client_id_metadata_enabled = true
+    production = ActiveSupport::EnvironmentInquirer.new("production")
+    null_store = ActiveSupport::Cache::NullStore.new
+    messages = []
+    original_logger = Rails.logger
+    Rails.logger = Class.new { define_method(:warn) { |message| messages << message } }.new
+
+    stub_class_method(Rails, :env, -> { production }) do
+      stub_class_method(Rails, :cache, -> { null_store }) do
+        cimd_warning_initializer.run(Rails.application)
+      end
+    end
+
+    assert_equal 1, messages.length
+    assert_includes messages.first, "NullStore"
+  ensure
+    Rails.logger = original_logger
+    Hitch.reset_configuration!
+  end
+
   test "implicit DCR compatibility posture emits one actionable boot warning" do
     Hitch.reset_configuration!
     messages = []
@@ -244,6 +274,12 @@ class Hitch::EngineTest < ActiveSupport::TestCase
   end
 
   private
+
+  def cimd_warning_initializer
+    Hitch::Engine.initializers.find do |initializer|
+      initializer.name == "hitch.warn_on_uncacheable_cimd"
+    end
+  end
 
   def dynamic_registration_initializer
     Hitch::Engine.initializers.find do |initializer|

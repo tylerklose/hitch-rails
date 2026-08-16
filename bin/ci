@@ -23,6 +23,14 @@ run!(File.join(ROOT, "bin/rubocop"))
 RELEASE_PROFILES.each do |profile|
   run!(
     File.join(ROOT, "bin/ci-appraisal"), profile, "--",
+    File.join(ROOT, "bin/rails"), "test",
+    environment: { "HITCH_FAIL_ON_SKIPS" => "1" }
+  )
+end
+
+RELEASE_PROFILES.each do |profile|
+  run!(
+    File.join(ROOT, "bin/ci-appraisal"), profile, "--",
     "bundle", "exec", "rake", "app:zeitwerk:check"
   )
 end
@@ -32,15 +40,6 @@ run!(File.join(ROOT, "bin/ci-sdk"), "min")
 run!(File.join(ROOT, "bin/ci-sdk"), "latest")
 run!(File.join(ROOT, "bin/ci-wire"))
 run!(File.join(ROOT, "bin/conformance-server"))
-
-RELEASE_PROFILES.each do |profile|
-  run!(
-    File.join(ROOT, "bin/ci-appraisal"), profile, "--",
-    File.join(ROOT, "bin/rails"), "test",
-    environment: { "HITCH_FAIL_ON_SKIPS" => "1" }
-  )
-end
-
 run!(File.join(ROOT, "bin/package-smoke"))
 
 puts

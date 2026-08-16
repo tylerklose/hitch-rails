@@ -43,9 +43,7 @@ Gem::Specification.new do |spec|
       docs/removing.md
       docs/upgrading/0.1.0.md
       docs/upgrading/0.2.0.md
-      lib/generators/hitch/mcp/templates/controller.rb.tt
-      lib/generators/hitch/mcp/templates/initializer.rb.tt
-      lib/generators/hitch/mcp/templates/registry.rb.tt
+      lib/generators/hitch/install/templates/controller.rb.tt
       lib/generators/hitch/tool/templates/tool.rb.tt
       lib/generators/hitch/tool/templates/tool_test.rb.tt
     ]

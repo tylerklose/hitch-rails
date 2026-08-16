@@ -8,10 +8,8 @@ require "bundler"
 ROOT = File.expand_path("..", __dir__)
 TARGETS = {
   "install" => {
-    schema: "test/lattice/mcp_install_generator.json",
-    scenarios: "test/lattice/mcp_install_generator_scenarios.json",
-    tests: [ "test/hitch/mcp_install_generator_test.rb" ],
-    label: "MCP install generator"
+    tests: [ "test/hitch/install_generator_test.rb" ],
+    label: "Hitch install generator"
   },
   "tool" => {
     schema: "test/lattice/tool_generator.json",
@@ -37,17 +35,19 @@ usage(status: 64, message: "Unknown generator target: #{target.inspect}") unless
 usage(status: 64, message: "Unexpected arguments: #{ARGV.join(' ')}") if ARGV.any?
 
 configuration = TARGETS.fetch(target)
-schema = File.join(ROOT, configuration.fetch(:schema))
-checked_path = File.join(ROOT, configuration.fetch(:scenarios))
-generated, lattice_error, lattice_status = Bundler.with_unbundled_env do
-  Open3.capture3(
-    "lattice", "generate", schema, "--format", "json", "--seed", "42",
-    chdir: ROOT
-  )
+if configuration.key?(:schema)
+  schema = File.join(ROOT, configuration.fetch(:schema))
+  checked_path = File.join(ROOT, configuration.fetch(:scenarios))
+  generated, lattice_error, lattice_status = Bundler.with_unbundled_env do
+    Open3.capture3(
+      "lattice", "generate", schema, "--format", "json", "--seed", "42",
+      chdir: ROOT
+    )
+  end
+  abort lattice_error unless lattice_status.success?
+  abort "#{configuration.fetch(:label)} Lattice scenarios differ from the checked artifact" unless
+    JSON.parse(generated) == JSON.parse(File.read(checked_path))
 end
-abort lattice_error unless lattice_status.success?
-abort "#{configuration.fetch(:label)} Lattice scenarios differ from the checked artifact" unless
-  JSON.parse(generated) == JSON.parse(File.read(checked_path))
 
 command = [ File.join(ROOT, "bin/ci-test"), *configuration.fetch(:tests) ]
 output = +""
@@ -66,6 +66,11 @@ abort "#{configuration.fetch(:label)} suite has no unambiguous Minitest summary"
 abort "#{configuration.fetch(:label)} suite must have zero failures, errors, and skips" unless
   summary.drop(2).map(&:to_i) == [ 0, 0, 0 ]
 
-scenarios = JSON.parse(File.read(checked_path)).fetch("scenarios")
-puts "#{configuration.fetch(:label)} verified: #{scenarios.length} pairwise rows, " \
+coverage = if configuration.key?(:scenarios)
+  scenarios = JSON.parse(File.read(File.join(ROOT, configuration.fetch(:scenarios)))).fetch("scenarios")
+  "#{scenarios.length} pairwise rows, "
+else
+  ""
+end
+puts "#{configuration.fetch(:label)} verified: #{coverage}" \
   "#{summary.fetch(0)} runs, #{summary.fetch(1)} assertions, zero skips"

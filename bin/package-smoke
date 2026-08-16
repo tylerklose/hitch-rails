@@ -394,12 +394,7 @@ Dir.mktmpdir("hitch-package-smoke-") do |directory|
         run!("bundle", "exec", "rails", "db:create", environment: database_environment, chdir: app)
         database_created = true
         run!("bundle", "exec", "rails", "db:migrate", environment: database_environment, chdir: app)
-        run!(
-          "bundle", "exec", "rails", "generate", "hitch:mcp:install",
-          environment: database_environment,
-          chdir: app
-        )
-        registry_path = File.join(app, "app/models/mcp_tool_registry.rb")
+        registry_path = File.join(app, "app/tools/mcp_tool_registry.rb")
         registry_before_tool_generation = File.binread(registry_path)
         run!(
           "bundle", "exec", "rails", "generate", "hitch:tool", "package_echo",

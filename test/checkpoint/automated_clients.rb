@@ -233,14 +233,7 @@ module HitchCheckpoint
           config.supported_scopes = %w[mcp admin]
           config.client_id_metadata_enabled = false
           config.dynamic_client_registration_enabled = false
-        end
-
-        Rails.application.config.action_controller.allow_forgery_protection = true
-      RUBY
-      File.write(File.join(app, "config/initializers/hitch_mcp.rb"), <<~RUBY)
-        # frozen_string_literal: true
-
-        Hitch.configure do |config|
+          config.mcp.enabled = true
           config.mcp.registry = "McpToolRegistry"
           config.mcp.server_info = ->(_context) { { name: "hitch-m5-smoke", version: "1.0.0" } }
           config.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
@@ -251,21 +244,23 @@ module HitchCheckpoint
           config.mcp.max_request_bytes = 1.megabyte
           config.mcp.max_result_bytes = 1.megabyte
         end
+
+        Rails.application.config.action_controller.allow_forgery_protection = true
       RUBY
 
-      package_tool_path = File.join(app, "app/models/mcp_tools/package_echo.rb")
+      package_tool_path = File.join(app, "app/tools/mcp_tools/package_echo.rb")
       FileUtils.mkdir_p(File.dirname(package_tool_path))
       File.write(package_tool_path, tool_source(
         class_name: "PackageEcho",
         tool_name: "package.echo",
         result_prefix: "echo"
       ))
-      File.write(File.join(app, "app/models/mcp_tools/admin_echo.rb"), tool_source(
+      File.write(File.join(app, "app/tools/mcp_tools/admin_echo.rb"), tool_source(
         class_name: "AdminEcho",
         tool_name: "admin.echo",
         result_prefix: "admin"
       ))
-      File.write(File.join(app, "app/models/mcp_tool_registry.rb"), <<~RUBY)
+      File.write(File.join(app, "app/tools/mcp_tool_registry.rb"), <<~RUBY)
         # frozen_string_literal: true
 
         class McpToolRegistry < Hitch::MCP::Registry

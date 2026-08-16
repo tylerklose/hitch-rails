@@ -80,7 +80,7 @@ module Hitch
         docs/public_api/0.2.0.md
         docs/removing.md
         docs/upgrading/0.2.0.md
-        lib/generators/hitch/mcp/install_generator.rb
+        lib/generators/hitch/install/install_generator.rb
         lib/generators/hitch/tool_generator.rb
         lib/hitch/doctor.rb
         lib/hitch/mcp/test_helper.rb

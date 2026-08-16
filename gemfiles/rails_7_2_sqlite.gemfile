@@ -12,3 +12,7 @@ gem "rubocop-rails-omakase", require: false
 # bin/ci-rate-limit. Hitch declares no runtime Redis dependency; see
 # docs/operator/rate_limiting.md.
 gem "redis", ">= 5", "< 7"
+
+# Rails 7.2's RedisCacheStore passes ConnectionPool.new a positional hash,
+# which connection_pool 3.x rejects; Rails 8.1 is unaffected.
+gem "connection_pool", "< 3"

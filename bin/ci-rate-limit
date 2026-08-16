@@ -1,16 +1,16 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+# Runs the cross-process rate-limit suites in both package profiles against a
+# disposable digest-pinned Redis, exercising RedisCacheStore as one supported
+# admission backend.
+
 require "open3"
-require "rbconfig"
-require "redis"
-require "securerandom"
 require "timeout"
 require "tmpdir"
-require "yaml"
+require_relative "../test/checkpoint/pinned_redis"
 
 ROOT = File.expand_path("..", __dir__)
-LOCK_PATH = File.join(ROOT, "test/conformance/toolchain.lock.yml")
 LANES = %w[rails_7_2_sqlite rails_8_1_postgresql].freeze
 MINIMUM_TEST_RUNS = 27
 TEST_FILES = %w[
@@ -20,14 +20,14 @@ TEST_FILES = %w[
   test/integration/mcp_rate_limit_test.rb
 ].freeze
 
-def capture!(*command, environment: {}, timeout_seconds: 180, stream: true)
+def capture!(*command, environment: {}, timeout_seconds: 180)
   output = +""
   status = nil
   Open3.popen2e(environment, *command, chdir: ROOT, pgroup: true) do |_stdin, io, wait_thread|
     reader = Thread.new do
       io.each do |chunk|
         output << chunk
-        $stdout.write(chunk) if stream
+        $stdout.write(chunk)
       end
     end
     status = Timeout.timeout(timeout_seconds) { wait_thread.value }
@@ -47,53 +47,14 @@ def capture!(*command, environment: {}, timeout_seconds: 180, stream: true)
   output
 end
 
-lock = YAML.safe_load_file(LOCK_PATH, permitted_classes: [], aliases: false)
-redis_lock = lock.fetch("redis")
-image = redis_lock.fetch("image")
-architecture = RbConfig::CONFIG.fetch("host_cpu")
-platform, digest_key = case architecture
-when /arm64|aarch64/ then [ "linux/arm64", "linux_arm64_digest" ]
-when /x86_64|amd64/ then [ "linux/amd64", "linux_amd64_digest" ]
-else
-  abort "Unsupported Docker architecture for the pinned Redis lane: #{architecture}"
-end
-platform_digest = redis_lock.fetch(digest_key)
-repository = image.sub(/:[^\/:]+\z/, "")
-pinned_image = "#{repository}@#{platform_digest}"
-container_name = "hitch-rate-limit-#{Process.pid}-#{SecureRandom.hex(4)}"
-
-capture!("docker", "pull", "--platform", platform, pinned_image, timeout_seconds: 300)
-container_id = capture!(
-  "docker", "run", "--detach", "--rm",
-  "--name", container_name,
-  "--platform", platform,
-  "--publish", "127.0.0.1::6379",
-  pinned_image,
-  "redis-server", "--save", "", "--appendonly", "no",
-  timeout_seconds: 60,
-  stream: false
-).strip
-
-begin
-  port_output = capture!("docker", "port", container_name, "6379/tcp", timeout_seconds: 30, stream: false)
-  port = port_output[/:(\d+)\s*\z/, 1]
-  abort "Could not resolve the pinned Redis container port" unless port
-  redis_url = "redis://127.0.0.1:#{port}/0"
-  redis = Redis.new(url: redis_url, timeout: 0.25, connect_timeout: 0.25, reconnect_attempts: 0)
-  deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 20
-  loop do
-    break if redis.ping == "PONG"
-  rescue Redis::BaseError, RedisClient::Error, SystemCallError
-    abort "Pinned Redis did not become ready" if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
-    sleep 0.05
-  end
+HitchCheckpoint::PinnedRedis.open(root: ROOT) do |redis_service|
   Dir.mktmpdir("hitch-rate-limit-lanes-") do |directory|
     rails_log = File.join(directory, "rails.log")
     File.open(rails_log, File::WRONLY | File::CREAT | File::EXCL, 0o600) { }
     LANES.each do |lane|
       lane_path = File.join(directory, "#{lane}.json")
       environment = {
-        "HITCH_MCP_REDIS_URL" => redis_url,
+        "HITCH_MCP_REDIS_URL" => redis_service.url,
         "HITCH_MCP_REQUEST_LIMIT_TO" => "12",
         "HITCH_MCP_REQUEST_LIMIT_WITHIN" => "30",
         "HITCH_RATE_LIMIT_PROCESS_COUNT" => "4",
@@ -115,8 +76,5 @@ begin
     end
   end
 
-  puts "Cross-process rate-limit lanes passed against pinned Redis (#{pinned_image})."
-ensure
-  redis&.close
-  Open3.capture3("docker", "stop", "--time", "1", container_name) if container_id
+  puts "Cross-process rate-limit lanes passed against pinned Redis."
 end

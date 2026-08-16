@@ -1,6 +1,4 @@
 schema_version: 1
-contract:
-  protocol_version: "2026-07-28"
 ruby_sdk:
   gem: mcp
   requirement: ">= 1.1.0, < 2"

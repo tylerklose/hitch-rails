@@ -19,8 +19,11 @@ module Hitch
 
     # Rack::MethodOverride would otherwise parse OAuth form bodies before the
     # controller-level strict admission boundary can cap or redact them.
+    # Anchored to ActionDispatch::Executor because it is present in both the
+    # full and api_only stacks (Rack::MethodOverride is not) and sits upstream
+    # of every body-reading middleware.
     initializer "hitch.guard_oauth_forms", before: :build_middleware_stack do |app|
-      app.middleware.insert_before Rack::MethodOverride, Hitch::RackFormGuard
+      app.middleware.insert_after ActionDispatch::Executor, Hitch::RackFormGuard
     end
 
     # Host apps see the engine's migrations via db:migrate without needing

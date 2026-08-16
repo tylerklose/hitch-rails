@@ -80,11 +80,9 @@ REQUIRED_PACKAGE_FILES = %w[
   app/models/hitch/mcp/tool.rb
   app/models/hitch/mcp/verified_request.rb
   lib/generators/hitch/install/install_generator.rb
+  lib/generators/hitch/install/templates/controller.rb.tt
   lib/generators/hitch/install/templates/initializer.rb
-  lib/generators/hitch/mcp/install_generator.rb
-  lib/generators/hitch/mcp/templates/controller.rb.tt
-  lib/generators/hitch/mcp/templates/initializer.rb.tt
-  lib/generators/hitch/mcp/templates/registry.rb.tt
+  lib/generators/hitch/install/templates/registry.rb
   lib/generators/hitch/tool_generator.rb
   lib/generators/hitch/tool/templates/tool.rb.tt
   lib/generators/hitch/tool/templates/tool_test.rb.tt

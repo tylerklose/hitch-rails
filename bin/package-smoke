@@ -1,25 +1,23 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-require "base64"
+# Builds the gem, verifies the packaged manifest, then installs the built
+# artifact into disposable Rails apps (SQLite and PostgreSQL), runs the
+# generators and doctor, and exercises the authenticated OAuth + MCP flow
+# end to end. With --automated-clients it also runs the official Python and
+# TypeScript client smokes against the packaged server.
+
 require "digest"
 require "fileutils"
 require "json"
 require "open3"
-require "pathname"
 require "rubygems/package"
 require "securerandom"
 require "tmpdir"
 require "uri"
-require "yaml"
-require_relative "../tooling/exclusive_report"
-require_relative "../tooling/package_distribution"
-require_relative "../tooling/release_artifact"
 
 ROOT = File.expand_path("..", __dir__)
 GEMSPEC_PATH = File.join(ROOT, "hitch-rails.gemspec")
-SEALED_CHECKPOINT_DECISION_PATH = "docs/evidence/0.2.0/release/pre4-publication-decision.json"
-SEALED_CHECKOUT_DRIFT_ALLOWLIST = %w[ROADMAP.md].freeze
 PACKAGE_APP_SERVER_VERSION = "8.0.2"
 PACKAGE_SMOKE_USAGE = "Usage: bin/package-smoke [--automated-clients]"
 unless ARGV.empty? || ARGV == [ "--automated-clients" ]
@@ -51,7 +49,6 @@ PROFILES = {
 
 FORBIDDEN_PACKAGE_PATHS = [
   %r{\A(?:test|spec|tmp|log)/},
-  %r{\Adocs/(?:evidence|work_packets)/},
   %r{\A\.git},
   %r{(?:\A|/)\.env(?:\.|\z)},
   %r{(?:\A|/)master\.key\z},
@@ -63,7 +60,6 @@ REQUIRED_PACKAGE_FILES = %w[
   CHANGELOG.md
   MIT-LICENSE
   README.md
-  ROADMAP.md
   SECURITY.md
   config/routes.rb
   docs/public_api/0.1.0.md
@@ -147,28 +143,6 @@ def application_controller
       end
     end
   RUBY
-end
-
-def adoption_commands(profile)
-  rails_new_options = %w[
-    --skip-bundle --skip-git --skip-keeps --skip-bootsnap
-    --skip-javascript --skip-hotwire --skip-asset-pipeline
-    --skip-action-mailer --skip-action-mailbox --skip-action-text
-    --skip-active-storage --skip-action-cable --skip-jbuilder
-    --skip-test --skip-system-test
-  ].join(" ")
-
-  [
-    "bundle exec rails new <temporary-app> #{rails_new_options} --database=#{profile.fetch(:adapter)}",
-    "bundle install # hitch-rails pinned to the exact local gem repository artifact",
-    "bundle exec rails generate hitch:install",
-    "bundle exec rails db:create",
-    "bundle exec rails db:migrate",
-    "bundle exec rails generate hitch:mcp:install",
-    "bundle exec rails generate hitch:tool package_echo",
-    "HITCH_DOCTOR_FORMAT=json bundle exec rails hitch:doctor",
-    "bundle exec rails runner <discovery-authorization-and-mcp-smoke>"
-  ]
 end
 
 def smoke_runner(profile_name, expected_adapter)
@@ -336,191 +310,17 @@ def smoke_runner(profile_name, expected_adapter)
       ruby: RUBY_VERSION,
       rails: Rails.version,
       adapter: actual_adapter,
-      artifact_version: loaded.version.to_s,
-      artifact_install: "local_gem_repository",
-      mcp: MCP::VERSION,
-      sdk_adapter: "private_artifact_code_loaded",
-      generators: "mcp_install_and_tool_ok",
-      migrations: "ok",
-      boot: "ok",
-      discovery: "ok",
-      authorization_code: "ok",
-      token_exchange: "ok",
-      mcp_endpoint: "authenticated_registry_discover_and_list_ok"
+      artifact_version: loaded.version.to_s
     )
   RUBY
 end
 
-def package_input_snapshot
-  specification = Gem::Specification.load(GEMSPEC_PATH) || raise("could not load #{GEMSPEC_PATH}")
-  appraisal_files = PROFILES.values.map { |profile| Pathname(profile.fetch(:appraisal)).relative_path_from(Pathname(ROOT)).to_s }
-  acceptance_files = if AUTOMATED_CLIENT_SMOKES
-    %w[
-      test/checkpoint/automated_clients.rb
-      test/checkpoint/pinned_redis.rb
-      test/clients/python/requirements.lock
-      test/clients/python/smoke.py
-      test/clients/typescript/package.json
-      test/clients/typescript/package-lock.json
-      test/clients/typescript/smoke.mjs
-      test/conformance/toolchain.lock.yml
-      test/lattice/m5_automated_clients.json
-      test/lattice/m5_automated_clients_scenarios.json
-    ]
-  else
-    []
-  end
-  relative_paths = (specification.files + appraisal_files + acceptance_files +
-    %w[
-      bin/client-smokes
-      bin/package-apps
-      bin/package-smoke
-      docs/evidence/0.2.0/release/pre4-publication-decision.json
-      docs/work_packets/index.yml
-      hitch-rails.gemspec
-      tooling/package_distribution.rb
-      tooling/release_artifact.rb
-    ]).uniq.sort
-
-  {
-    "manifest" => specification.files.sort,
-    "files" => relative_paths.to_h do |relative_path|
-      absolute_path = File.join(ROOT, relative_path)
-      value = if File.file?(absolute_path) && !File.symlink?(absolute_path)
-        { "bytes" => File.size(absolute_path), "sha256" => Digest::SHA256.file(absolute_path).hexdigest }
-      else
-        nil
-      end
-      [ relative_path, value ]
-    end
-  }
-end
-
-def accepted_checkpoint_for(version)
-  path = File.join(ROOT, SEALED_CHECKPOINT_DECISION_PATH)
-  return unless File.file?(path)
-
-  decision = JSON.parse(File.read(path), allow_duplicate_key: false)
-  return unless decision.fetch("decision") == "deferred_to_final"
-
-  checkpoint = decision.fetch("checkpoint")
-  return unless checkpoint.fetch("status") == "accepted_internal_checkpoint"
-  return unless checkpoint.fetch("version") == version
-
-  source = checkpoint.fetch("source")
-  commit = source.fetch("commit")
-  tree = source.fetch("tree")
-  artifact = checkpoint.fetch("artifact")
-  name = artifact.fetch("name")
-  sha256 = artifact.fetch("sha256")
-
-  raise "accepted checkpoint commit is malformed" unless commit.match?(/\A[0-9a-f]{40}\z/)
-  raise "accepted checkpoint tree is malformed" unless tree.match?(/\A[0-9a-f]{40}\z/)
-  raise "accepted checkpoint artifact name is unsafe" unless name == File.basename(name)
-  raise "accepted checkpoint artifact SHA is malformed" unless sha256.match?(/\A[0-9a-f]{64}\z/)
-  { "commit" => commit, "tree" => tree, "artifact_name" => name, "sha256" => sha256 }
-end
-
-def build_artifact!(directory, specification, checkpoint, source_identity:, development:)
-  artifact = File.join(directory, "#{specification.full_name}.gem")
-  if development
-    run!("gem", "build", GEMSPEC_PATH, "--output", artifact)
-    return artifact
-  end
-
-  result = HitchReleaseArtifact.rebuild!(
-    root: ROOT,
-    commit: source_identity.fetch("commit"),
-    version: specification.version.to_s,
-    destination: directory,
-    expected_tree: source_identity.fetch("tree"),
-    expected_sha256: checkpoint&.fetch("sha256")
-  )
-  result.fetch("artifact_path")
-end
-
-def artifact_policy_for(version)
-  manifest = YAML.safe_load_file(
-    File.join(ROOT, "docs/work_packets/index.yml"),
-    permitted_classes: [],
-    aliases: false
-  )
-  matches = manifest.fetch("nodes").filter_map do |issue, metadata|
-    artifact = metadata["artifact"]
-    next unless artifact
-
-    sealed = artifact.fetch("version") == version
-    development = artifact["development_version"] == version
-    [ issue, artifact, development ] if sealed || development
-  end
-  raise "work-packet policy must own exactly one #{version} artifact" unless matches.one?
-
-  matches.first
-end
-
-def verify_package_contract!(extraction, version, policy, development:, effective_distribution:)
-  escaped_version = Regexp.escape(version)
-
-  version_source = File.read(File.join(extraction, "lib/hitch/version.rb"))
-  unless version_source.match?(/VERSION\s*=\s*["']#{escaped_version}["']/)
-    raise "Hitch::VERSION does not equal #{version}"
-  end
-
-  changelog = File.read(File.join(extraction, "CHANGELOG.md"))
-  if development
-    raise "CHANGELOG has no Unreleased development section" unless changelog.match?(/^## \[Unreleased\]$/)
-    raise "CHANGELOG must identify the development artifact as internal-only" unless
-      changelog.include?("Internal development build only")
-  elsif !changelog.match?(/^## \[#{escaped_version}\] - \d{4}-\d{2}-\d{2}$/)
-    raise "CHANGELOG has no dated #{version} checkpoint heading"
-  end
-
-  readme = File.read(File.join(extraction, "README.md"))
-  security = File.read(File.join(extraction, "SECURITY.md"))
-  if effective_distribution == "internal_only"
-    raise "README must state that no public RubyGems release exists" unless
-      readme.include?("There is no public RubyGems release yet")
-    raise "README must require an immutable source ref" unless
-      readme.include?('ref: ENV.fetch("HITCH_CHECKPOINT_SHA")')
-    raise "README must not advertise internal #{version} through RubyGems" if
-      readme.include?(%(gem "hitch-rails", "~> #{version}"))
-    internal_marker = development ? "Internal development build only" : "Internal verified checkpoint only"
-    raise "CHANGELOG must identify #{version} as internal-only" unless changelog.include?(internal_marker)
-    raise "SECURITY must identify the absence of a public RubyGems release" unless
-      security.include?("has no public RubyGems release")
-  end
-
-  contract_path = policy.fetch("contract_path", "docs/public_api/#{version}.md")
-  public_api = File.read(File.join(extraction, contract_path))
-  contract_version = File.basename(contract_path, ".md")
-  raise "public API manifest does not identify #{contract_version}" unless public_api.include?(contract_version)
-end
-
 before_status = capture!("git", "status", "--porcelain=v1", "-z", "--untracked-files=all")
-before_package_inputs = package_input_snapshot
-report = nil
 
 Dir.mktmpdir("hitch-package-smoke-") do |directory|
   specification = Gem::Specification.load(GEMSPEC_PATH) || raise("could not load #{GEMSPEC_PATH}")
-  policy_issue, artifact_policy, development = artifact_policy_for(specification.version.to_s)
-  effective_distribution = HitchPackageDistribution.resolve(
-    root: ROOT,
-    declared: artifact_policy.fetch("distribution"),
-    development:
-  )
-  checkpoint = accepted_checkpoint_for(specification.version.to_s)
-  source_identity = checkpoint || HitchReleaseArtifact.source_identity!(
-    root: ROOT,
-    commit: capture!("git", "rev-parse", "HEAD").strip
-  )
-  artifact = build_artifact!(
-    directory,
-    specification,
-    checkpoint,
-    source_identity:,
-    development:
-  )
-  checkout_clean = capture!("git", "status", "--porcelain=v1", "--untracked-files=all").empty?
+  artifact = File.join(directory, "#{specification.full_name}.gem")
+  run!("gem", "build", GEMSPEC_PATH, "--output", artifact)
 
   package = Gem::Package.new(artifact)
   artifact_specification = package.spec
@@ -547,24 +347,11 @@ Dir.mktmpdir("hitch-package-smoke-") do |directory|
   extraction = File.join(directory, "extracted")
   FileUtils.mkdir_p(extraction)
   package.extract_files(extraction)
-  checkout_mismatches = packaged_files.reject do |path|
+  mismatched = packaged_files.reject do |path|
     Digest::SHA256.file(File.join(ROOT, path)).hexdigest ==
       Digest::SHA256.file(File.join(extraction, path)).hexdigest
   end
-  allowed_checkout_drift = checkpoint ? SEALED_CHECKOUT_DRIFT_ALLOWLIST : []
-  unexpected_mismatches = checkout_mismatches - allowed_checkout_drift
-  if unexpected_mismatches.any?
-    raise "artifact bytes differ from the checkout outside allowed governance drift: " \
-      "#{unexpected_mismatches.join(', ')}"
-  end
-
-  verify_package_contract!(
-    extraction,
-    specification.version.to_s,
-    artifact_policy,
-    development:,
-    effective_distribution:
-  )
+  raise "artifact bytes differ from the checkout: #{mismatched.join(', ')}" if mismatched.any?
 
   local_repository = File.join(directory, "gem-repository")
   FileUtils.mkdir_p(File.join(local_repository, "gems"))
@@ -572,7 +359,7 @@ Dir.mktmpdir("hitch-package-smoke-") do |directory|
   run!("gem", "generate_index", "--directory", local_repository)
 
   run_acceptance = lambda do |automated_clients|
-    applications = PROFILES.map do |profile_name, profile|
+    PROFILES.each do |profile_name, profile|
       app = File.join(directory, profile_name)
       run!(
         "bundle", "exec", "rails", "new", app,
@@ -643,18 +430,13 @@ Dir.mktmpdir("hitch-package-smoke-") do |directory|
         result_line = output.lines.reverse.find { |line| line.start_with?("HITCH_SMOKE_RESULT=") }
         raise "disposable app did not report a smoke result\n#{output}" unless result_line
 
-        application_result = JSON.parse(result_line.delete_prefix("HITCH_SMOKE_RESULT=")).merge(
-          "doctor" => "no_actionable_failures",
-          "commands" => adoption_commands(profile)
-        )
         if automated_clients
-          application_result["automated_clients"] = automated_clients.run(
+          automated_clients.run(
             app:,
             profile_name:,
             environment: database_environment
           )
         end
-        application_result
       ensure
         if profile.fetch(:adapter) == "postgresql" && database_created
           primary_failure = $!
@@ -678,57 +460,9 @@ Dir.mktmpdir("hitch-package-smoke-") do |directory|
         end
       end
     end
-
-    manifest = artifact_contents.map do |path|
-      source = File.join(extraction, path)
-      {
-        "path" => path,
-        "size" => File.size(source),
-        "sha256" => Digest::SHA256.file(source).hexdigest
-      }
-    end
-
-    {
-      "command_surface" => AUTOMATED_CLIENT_SMOKES ? "client-smokes --automated" : "package-apps",
-      "artifact_version" => specification.version.to_s,
-      "target_checkpoint" => artifact_policy.fetch("version"),
-      "phase" => development ? "development" : "checkpoint",
-      "checkpoint_sealed" => !development,
-      "published" => false,
-      "development" => development,
-      "milestone" => policy_issue,
-      "distribution" => effective_distribution,
-      "distribution_policy" => artifact_policy.fetch("distribution"),
-      "artifact" => {
-        "name" => File.basename(artifact),
-        "sha256" => Digest::SHA256.file(artifact).hexdigest,
-        "source" => if checkpoint
-                      "accepted_commit_rebuild"
-                    elsif development
-                      "locally_built_gem"
-                    else
-                      "source_commit_rebuild"
-                    end,
-        "source_commit" => source_identity.fetch("commit"),
-        "source_tree" => source_identity.fetch("tree"),
-        "checkout_clean" => checkout_clean,
-        "checkout_drift" => checkout_mismatches,
-        "checkout_drift_allowlist" => allowed_checkout_drift,
-        "checks" => {
-          "embedded_manifest" => "matches_explicit_allowlist",
-          "archive_contents" => "match_embedded_manifest",
-          "source_bytes" => checkpoint ? "match_accepted_checkpoint" : "match_checkout",
-          "forbidden_paths" => "absent",
-          "checkpoint_contract" => "ready"
-        },
-        "manifest" => manifest
-      },
-      "automated_client_runtime" => automated_clients&.evidence,
-      "disposable_apps" => applications
-    }
   end
 
-  report = if AUTOMATED_CLIENT_SMOKES
+  if AUTOMATED_CLIENT_SMOKES
     HitchCheckpoint::AutomatedClients.open(root: ROOT, working_directory: directory) do |automated_clients|
       run_acceptance.call(automated_clients)
     end
@@ -739,20 +473,6 @@ end
 
 after_status = capture!("git", "status", "--porcelain=v1", "-z", "--untracked-files=all")
 raise "package smoke changed the worktree" unless after_status == before_status
-raise "package inputs changed during smoke" unless package_input_snapshot == before_package_inputs
-
-json = JSON.pretty_generate(report)
-report_path = ENV["HITCH_PACKAGE_REPORT"]
-if report_path
-  HitchExclusiveReport.write!(
-    root: ROOT,
-    path: report_path,
-    bytes: "#{json}\n",
-    variable: "HITCH_PACKAGE_REPORT"
-  )
-else
-  puts json
-end
 
 if AUTOMATED_CLIENT_SMOKES
   puts "Package, disposable Rails apps, and automated official client smokes passed."

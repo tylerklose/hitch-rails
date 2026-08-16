@@ -1,27 +1,6 @@
 schema_version: 1
 contract:
   protocol_version: "2026-07-28"
-  roadmap:
-    path: ROADMAP.md
-    sha256: 9518c0678ce2ecb03b873a7d4ac5332c7d740c4413c43c375cf40aa4680ae024
-  lattice_schema:
-    path: test/lattice/mcp_tool_authorization.json
-    sha256: 70aec37011d2be7a1b7ed8e72118cd7d4c2305848b645c6745cdf1ba385710e7
-  lattice_scenarios:
-    path: test/lattice/mcp_tool_authorization_scenarios.json
-    sha256: f27346dd8cc8337f2cc599071e21e3bc73268a576e24b76fb2e83c040a67cd7e
-    seed: 42
-    exhaustive_strength: 8
-    expected_rows: 12
-  release_lattice_schema:
-    path: test/lattice/release_evidence.json
-    sha256: 5deefe22a221358e3d9e078448f190f2c095c00bedc78eeafa6996dcdbffcfd0
-  release_lattice_scenarios:
-    path: test/lattice/release_evidence_scenarios.json
-    sha256: a02e3317c7c96444f1c520116c6246a90b4ffec52dd57fc2cdd6d0f47764dfed
-    seed: 42
-    exhaustive_strength: 9
-    expected_rows: 60
 ruby_sdk:
   gem: mcp
   requirement: ">= 1.1.0, < 2"

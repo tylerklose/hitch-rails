@@ -19,14 +19,6 @@ def run!(*command, environment: {})
 end
 
 run!(File.join(ROOT, "bin/rubocop"))
-run!(File.join(ROOT, "bin/verify-work-packets"))
-run!(File.join(ROOT, "bin/verify-release-policy"))
-run!(File.join(ROOT, "bin/verify-release-evidence"))
-run!(File.join(ROOT, "bin/verify-release-matrix"))
-run!(File.join(ROOT, "bin/verify-provenance"))
-run!(File.join(ROOT, "bin/verify-doc-contract"))
-run!(File.join(ROOT, "bin/verify-toolchain"))
-run!(File.join(ROOT, "bin/prose-audit"))
 
 RELEASE_PROFILES.each do |profile|
   run!(

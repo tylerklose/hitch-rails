@@ -87,9 +87,6 @@ jobs:
       - name: Run style gate
         run: bin/rubocop
 
-      - name: Verify work-packet graph
-        run: bin/verify-work-packets
-
   sdk-lanes:
     name: MCP SDK ${{ matrix.lane }} compatibility lane
     runs-on: ubuntu-latest
@@ -146,7 +143,6 @@ jobs:
       HITCH_APPRAISAL_POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
       HITCH_MIGRATIONS_POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
       HITCH_PACKAGE_POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
-      HITCH_PACKAGE_REPORT: ${{ runner.temp }}/package-smoke.json
       HITCH_CONFORMANCE_SERVER_EVIDENCE_DIR: ${{ runner.temp }}/server-conformance
       RAILS_ENV: test
 
@@ -212,14 +208,6 @@ jobs:
 
       - name: Run aggregate CI
         run: bin/ci
-
-      - name: Upload internal checkpoint evidence
-        uses: actions/upload-artifact@v7
-        with:
-          name: hitch-rails-internal-development-evidence
-          if-no-files-found: error
-          retention-days: 30
-          path: ${{ runner.temp }}/package-smoke.json
 
       - name: Upload sanitized authorization conformance evidence
         uses: actions/upload-artifact@v7

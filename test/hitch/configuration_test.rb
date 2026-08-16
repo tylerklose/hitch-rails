@@ -18,14 +18,13 @@ class Hitch::ConfigurationTest < ActiveSupport::TestCase
     assert_instance_of Hitch::MCP::Configuration, configuration.mcp
     assert_same configuration.mcp, Hitch.configuration.mcp
     assert configuration.mcp.validate!
-    configuration.mcp.server_info = ->(_context) { { name: "example", version: "1" } }
-    assert_raises(ArgumentError) { configuration.mcp.validate! }
+    configuration.mcp.enabled = true
+    error = assert_raises(ArgumentError) { configuration.mcp.validate! }
+    assert_includes error.message, "mcp.registry is required"
     configuration.mcp.registry = "McpToolRegistry"
-    assert_raises(ArgumentError) { configuration.mcp.validate! }
-    configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { nil }
-    assert_raises(ArgumentError) { configuration.mcp.validate! }
-    configuration.mcp.request_limit = { to: 120, within: 1.minute }
     assert configuration.mcp.validate!
+    assert_raises(ArgumentError) { configuration.mcp.enabled = "yes" }
+    assert_raises(ArgumentError) { configuration.mcp.enabled = nil }
   end
 
   test "MCP endpoint configuration validates callable server info and integer byte caps" do
@@ -46,14 +45,20 @@ class Hitch::ConfigurationTest < ActiveSupport::TestCase
     end
   end
 
-  test "MCP request byte cap has one explicit development default" do
-    assert_equal 1_048_576, Hitch.configuration.mcp.max_request_bytes
-    assert_equal 1_048_576, Hitch.configuration.mcp.max_result_bytes
-    assert_nil Hitch.configuration.mcp.registry
-    assert_nil Hitch.configuration.mcp.server_info
-    assert_nil Hitch.configuration.mcp.scope_resolver
-    assert_nil Hitch.configuration.mcp.request_limit
-    assert_same ActionController::Base.cache_store, Hitch.configuration.mcp.rate_limit_store
+  test "MCP runtime defaults are disabled but complete" do
+    configuration = Hitch.configuration.mcp
+
+    assert_equal false, configuration.enabled
+    assert_nil configuration.registry
+    assert_nil configuration.scope_resolver
+    assert_equal({ to: 120, within: 60 }, configuration.request_limit)
+    assert_equal 1_048_576, configuration.max_request_bytes
+    assert_equal 1_048_576, configuration.max_result_bytes
+    assert_same ActionController::Base.cache_store, configuration.rate_limit_store
+
+    info = configuration.server_info.call(nil)
+    assert_equal "dummy", info.fetch(:name)
+    assert info.fetch(:version).is_a?(String)
   end
 
   test "MCP request limit normalizes a copied whole-second fixed window" do

@@ -223,28 +223,27 @@ class Hitch::EngineTest < ActiveSupport::TestCase
     Hitch.reset_configuration!
   end
 
-  test "boot refuses a partial MCP runtime without a scope resolver" do
+  test "boot refuses an enabled MCP runtime without a registry" do
     Hitch.reset_configuration!
     Hitch.configure do |configuration|
       configuration.resource_uri = "https://dummy.test/mcp"
-      configuration.mcp.registry = "McpToolRegistry"
+      configuration.mcp.enabled = true
+    end
+
+    error = assert_raises(ArgumentError) do
+      configuration_initializer.run(Rails.application)
+    end
+    assert_includes error.message, "mcp.registry is required"
+
+    Hitch.configuration.mcp.registry = "McpToolRegistry"
+    assert_nothing_raised { configuration_initializer.run(Rails.application) }
+
+    # Setting runtime knobs without the switch configures nothing at boot.
+    Hitch.reset_configuration!
+    Hitch.configure do |configuration|
+      configuration.resource_uri = "https://dummy.test/mcp"
       configuration.mcp.server_info = ->(_context) { { name: "dummy", version: "1" } }
     end
-
-    error = assert_raises(ArgumentError) do
-      configuration_initializer.run(Rails.application)
-    end
-    assert_includes error.message, "scope_resolver"
-
-    Hitch.configuration.mcp.scope_resolver = lambda do |principal:, access_token:, request:|
-      nil
-    end
-    error = assert_raises(ArgumentError) do
-      configuration_initializer.run(Rails.application)
-    end
-    assert_includes error.message, "request_limit"
-
-    Hitch.configuration.mcp.request_limit = { to: 120, within: 60 }
     assert_nothing_raised { configuration_initializer.run(Rails.application) }
   ensure
     Hitch.reset_configuration!

@@ -126,6 +126,7 @@ class Hitch::MCP::RegistryReloadTest < ActiveSupport::TestCase
     Hitch.configure do |configuration|
       configuration.resource_uri = "https://dummy.test/mcp"
       configuration.supported_scopes = [ "mcp" ]
+      configuration.mcp.enabled = true
       configuration.mcp.registry = "McpToolRegistry"
       configuration.mcp.server_info = ->(_context) { { name: "dummy", version: "1" } }
       configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
@@ -150,6 +151,7 @@ class Hitch::MCP::RegistryReloadTest < ActiveSupport::TestCase
     Hitch.instance_variable_set(:@configuration, fresh_configuration)
     Hitch.configure do |configuration|
       configuration.resource_uri = "https://dummy.test/mcp"
+      configuration.mcp.enabled = true
       configuration.mcp.registry = "MissingMcpToolRegistry"
       configuration.mcp.server_info = ->(_context) { { name: "dummy", version: "1" } }
       configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }

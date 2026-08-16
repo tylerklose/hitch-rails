@@ -117,7 +117,7 @@ module Hitch
       configuration = Hitch.configuration
       next if Hitch::Engine.doctor_command?
       next unless configuration.resource_uri.present?
-      next unless configuration.mcp.__send__(:runtime_configured?)
+      next unless configuration.mcp.enabled
 
       configuration.mcp.validate!
 

@@ -230,7 +230,7 @@ module Hitch
 
       def hitch_mcp_resolve_scope
         resolver = Hitch.configuration.mcp.scope_resolver
-        raise ArgumentError, "mcp.scope_resolver is required" unless resolver.respond_to?(:call)
+        return nil unless resolver
 
         resolver.call(
           principal: @hitch_mcp_principal,
@@ -258,8 +258,6 @@ module Hitch
 
       def hitch_mcp_server_info(context)
         callable = Hitch.configuration.mcp.server_info
-        raise ArgumentError, "mcp.server_info is required" unless callable
-
         value = callable.call(context)
         raise ArgumentError, "mcp.server_info must return a Hash" unless value.is_a?(Hash)
 

@@ -10,6 +10,7 @@ Hitch.configure do |config|
   config.dynamic_client_registration_enabled = true
   config.client_id_metadata_enabled = ENV["HITCH_CONFORMANCE"] == "1"
   config.brand_name = "Dummy"
+  config.mcp.enabled = true
   config.mcp.registry = "McpToolRegistry"
   config.mcp.server_info = ->(_context) {
     {

@@ -253,22 +253,31 @@ class MCPListingTest < ActionDispatch::IntegrationTest
       'resource_metadata="https://dummy.test/.well-known/oauth-protected-resource/mcp"'
   end
 
-  test "a missing or raising scope resolver fails closed before registry and sdk work" do
-    [
-      nil,
-      ->(principal:, access_token:, request:) { raise "resolver-secret" }
-    ].each do |resolver|
-      Hitch.configuration.mcp.scope_resolver = resolver
-      McpController.reset_wire_metrics!
-
-      post_mcp(method: "tools/list", token: @alpha_mcp)
-
-      assert_response :ok
-      assert_equal(-32603, JSON.parse(response.body).dig("error", "code"))
-      refute_includes response.body, "resolver-secret"
-      assert_equal 0, McpController.wire_metrics.fetch(:registry, 0)
-      assert_equal 0, McpController.wire_metrics.fetch(:sdk, 0)
+  test "a raising scope resolver fails closed before registry and sdk work" do
+    Hitch.configuration.mcp.scope_resolver = lambda do |principal:, access_token:, request:|
+      raise "resolver-secret"
     end
+    McpController.reset_wire_metrics!
+
+    post_mcp(method: "tools/list", token: @alpha_mcp)
+
+    assert_response :ok
+    assert_equal(-32603, JSON.parse(response.body).dig("error", "code"))
+    refute_includes response.body, "resolver-secret"
+    assert_equal 0, McpController.wire_metrics.fetch(:registry, 0)
+    assert_equal 0, McpController.wire_metrics.fetch(:sdk, 0)
+  end
+
+  test "an unset scope resolver resolves a nil scope and lists normally" do
+    Hitch.configuration.mcp.scope_resolver = nil
+
+    post_mcp(method: "tools/list", token: @alpha_mcp)
+
+    assert_response :ok
+    body = JSON.parse(response.body)
+    assert_nil body["error"]
+    assert_equal %w[alpha.tool zeta.tool],
+      body.dig("result", "tools").map { |tool| tool.fetch("name") }
   end
 
   test "raising and nonboolean availability fail closed without details" do

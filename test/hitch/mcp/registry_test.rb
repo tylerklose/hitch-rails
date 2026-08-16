@@ -195,14 +195,11 @@ class Hitch::MCP::RegistryTest < ActiveSupport::TestCase
 
   test "registry itself must be configured and resolve to its exact subclass" do
     assert @configuration.validate!
-    @configuration.server_info = ->(_context) { { name: "fixture", version: "1" } }
-    assert_raises(ArgumentError) { @configuration.validate! }
+    @configuration.enabled = true
+    error = assert_raises(ArgumentError) { @configuration.validate! }
+    assert_includes error.message, "mcp.registry is required"
 
     @configuration.registry = "MissingRegistry"
-    assert_raises(ArgumentError) { @configuration.validate! }
-    @configuration.scope_resolver = ->(principal:, access_token:, request:) { nil }
-    assert_raises(ArgumentError) { @configuration.validate! }
-    @configuration.request_limit = { to: 120, within: 60 }
     assert @configuration.validate!
     assert_raises(ArgumentError) { prepare_registry }
 
@@ -214,24 +211,14 @@ class Hitch::MCP::RegistryTest < ActiveSupport::TestCase
     assert_raises(ArgumentError) { prepare_registry }
   end
 
-  test "runtime configuration requires callable server identity and scope resolver together" do
+  test "runtime knobs validate callables even though only the registry is required" do
     registry = define_registry([ define_tool, [ "mcp" ] ])
+    @configuration.enabled = true
     @configuration.registry = registry.name
 
-    error = assert_raises(ArgumentError) { @configuration.validate! }
-    assert_includes error.message, "server_info"
-
-    @configuration.server_info = ->(_context) { { name: "fixture", version: "1" } }
-    error = assert_raises(ArgumentError) { @configuration.validate! }
-    assert_includes error.message, "scope_resolver"
-
-    @configuration.scope_resolver = ->(principal:, access_token:, request:) { nil }
-    error = assert_raises(ArgumentError) { @configuration.validate! }
-    assert_includes error.message, "request_limit"
-
-    @configuration.request_limit = { to: 120, within: 60 }
     assert @configuration.validate!
     assert_raises(ArgumentError) { @configuration.scope_resolver = Object.new }
+    assert_raises(ArgumentError) { @configuration.server_info = { name: "fixture" } }
   end
 
   test "runtime accepts only the exact internal snapshot type" do

@@ -140,7 +140,7 @@ module Hitch
       end
 
       def runtime_enabled?
-        Hitch.configuration.mcp.__send__(:runtime_configured?)
+        Hitch.configuration.mcp.enabled
       end
 
       def discovery_facts

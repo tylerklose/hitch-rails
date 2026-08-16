@@ -68,7 +68,7 @@ suites:
     required_tests:
       - simultaneous principals do not share scope or availability
       - a request overlapping reload waits and uses only the new current class
-      - a missing or raising scope resolver fails closed before registry and sdk work
+      - a raising scope resolver fails closed before registry and sdk work
   - id: tool_authorization
     path: test/hitch/mcp/tool_test.rb
     test_class: Hitch::MCP::ToolTest

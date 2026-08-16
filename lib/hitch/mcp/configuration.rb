@@ -5,21 +5,38 @@ module Hitch
     class Configuration
       DEFAULT_MAX_REQUEST_BYTES = 1_048_576
       DEFAULT_MAX_RESULT_BYTES = 1_048_576
+      DEFAULT_REQUEST_LIMIT = { to: 120, within: 60 }.freeze
+      DEFAULT_SERVER_INFO = lambda do |_context|
+        {
+          name: Rails.application.class.module_parent_name.underscore.dasherize,
+          version: "1.0.0"
+        }
+      end
       SETTING = "mcp.rate_limit_store"
 
-      attr_reader :registry, :server_info, :scope_resolver, :request_limit,
+      attr_reader :enabled, :registry, :scope_resolver, :request_limit,
         :max_request_bytes, :max_result_bytes
 
       def initialize
+        @enabled = false
         @registry = nil
         @registry_snapshot = nil
         @registry_mutex = Mutex.new
         @server_info = nil
         @scope_resolver = nil
-        @request_limit = nil
+        @request_limit = DEFAULT_REQUEST_LIMIT
         @rate_limit_store = nil
         @max_request_bytes = DEFAULT_MAX_REQUEST_BYTES
         @max_result_bytes = DEFAULT_MAX_RESULT_BYTES
+      end
+
+      # The one explicit switch for the authenticated /mcp endpoint runtime.
+      def enabled=(value)
+        unless value == true || value == false
+          raise ArgumentError, "mcp.enabled must be true or false"
+        end
+
+        @enabled = value
       end
 
       def registry=(value)
@@ -32,6 +49,10 @@ module Hitch
           @registry_snapshot = nil
         end
         @registry
+      end
+
+      def server_info
+        @server_info || DEFAULT_SERVER_INFO
       end
 
       def server_info=(value)
@@ -82,23 +103,10 @@ module Hitch
       end
 
       def validate!
-        return true unless runtime_configured?
+        return true unless enabled
 
         unless registry.is_a?(String) && !registry.empty?
-          raise ArgumentError,
-            "mcp.registry is required when the Hitch::MCP endpoint runtime is configured"
-        end
-        unless server_info.respond_to?(:call)
-          raise ArgumentError,
-            "mcp.server_info is required when the Hitch::MCP endpoint runtime is configured"
-        end
-        unless scope_resolver.respond_to?(:call)
-          raise ArgumentError,
-            "mcp.scope_resolver is required when the Hitch::MCP endpoint runtime is configured"
-        end
-        unless request_limit
-          raise ArgumentError,
-            "mcp.request_limit is required when the Hitch::MCP endpoint runtime is configured"
+          raise ArgumentError, "mcp.registry is required when mcp.enabled is true"
         end
 
         true
@@ -130,11 +138,6 @@ module Hitch
         @registry_mutex.synchronize do
           @registry_snapshot || raise(ArgumentError, "MCP registry is unavailable")
         end
-      end
-
-      def runtime_configured?
-        !registry.nil? || !server_info.nil? || !scope_resolver.nil? ||
-          !request_limit.nil? || !@rate_limit_store.nil?
       end
 
       def normalize_request_limit(value)

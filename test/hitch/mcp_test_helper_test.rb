@@ -172,6 +172,18 @@ class Hitch::MCPTestHelperTest < ActiveSupport::TestCase
     assert record.valid_for_resource?(resource)
   end
 
+  test "mint_mcp_token refuses scopes production could never grant" do
+    principal = User.create!(email: "mint-scope@example.test")
+
+    error = with_minting_resource("https://tools.example.test/mcp") do
+      assert_raises(ArgumentError) do
+        @helper.mint_mcp_token(principal: principal, scopes: %w[mcp superadmin])
+      end
+    end
+
+    assert_includes error.message, "superadmin"
+  end
+
   private
 
   def with_resource(uri)

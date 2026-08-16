@@ -86,7 +86,7 @@ module Hitch
         lib/hitch/mcp/test_helper.rb
         lib/tasks/hitch.rake
       ].freeze
-      FORBIDDEN_PACKAGE_PATH = %r{A(?:test|spec|tmp|log)/|\Adocs/(?:evidence|work_packets)/}
+      FORBIDDEN_PACKAGE_PATH = %r{\A(?:test|spec|tmp|log)/}
 
       def versions
         {

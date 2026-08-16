@@ -512,6 +512,32 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     assert_equal "shadowed", check.code
   end
 
+  # The regex once read %r{A(?:test|spec|tmp|log)/} — the missing \A made it
+  # match a literal "A", so packaged test/spec/tmp/log files were never
+  # flagged while innocent "Atest/"-style paths were.
+  test "the package leak check flags test spec tmp and log files by path root" do
+    system = Doctor.const_get(:System, false).new
+    specification = Struct.new(:version, :full_gem_path, :files).new(
+      Gem::Version.new("0.2.0"),
+      Dir.pwd,
+      %w[
+        lib/hitch/doctor.rb
+        lib/Atest/helper.rb
+        test/models/leak_test.rb
+        spec/leak_spec.rb
+        tmp/leak.json
+        log/leak.log
+      ]
+    )
+    loaded_specs = Gem.loaded_specs.merge("hitch-rails" => specification)
+
+    stub_class_method(Gem, :loaded_specs, -> { loaded_specs }) do
+      forbidden = system.package_facts.fetch("forbidden_files")
+
+      assert_equal %w[log/leak.log spec/leak_spec.rb test/models/leak_test.rb tmp/leak.json], forbidden
+    end
+  end
+
   test "installed package fallback inspects disk when the loaded gemspec omits files" do
     system_class = Doctor.const_get(:System, false)
     system = system_class.new

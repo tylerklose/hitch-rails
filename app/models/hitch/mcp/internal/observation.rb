@@ -16,6 +16,7 @@ module Hitch
         INVOCATION_EVENT = "invocation.hitch_mcp"
         IDENTITY_SALT = "hitch/mcp/observation/v1"
         CURRENT_REQUEST_KEY = :hitch_mcp_observation_request
+        REQUEST_ID_PATTERN = /\A[0-9a-f]{32}\z/
         TOOL_NAME_PATTERN = /\A[A-Za-z0-9_.-]{1,64}\z/
         PRINCIPAL_TYPE_PATTERN = /\A[A-Za-z_][A-Za-z0-9_:]{0,254}\z/
         MAX_IDENTITY_BYTES = 2_048
@@ -258,6 +259,18 @@ module Hitch
 
           private
 
+          def current_request_id
+            correlation_id(current_request&.request_id)
+          rescue StandardError, SystemStackError
+            nil
+          end
+
+          def correlation_id(request_id)
+            return unless request_id.instance_of?(String) && REQUEST_ID_PATTERN.match?(request_id)
+
+            request_id.dup.freeze
+          end
+
           def current_request
             ActiveSupport::IsolatedExecutionState[CURRENT_REQUEST_KEY]
           end
@@ -352,7 +365,7 @@ module Hitch
         private_constant :ReportedFailure, :RequestState, :InvocationState,
           :REQUEST_EVENT, :INVOCATION_EVENT, :IDENTITY_SALT,
           :CURRENT_REQUEST_KEY, :TOOL_NAME_PATTERN, :PRINCIPAL_TYPE_PATTERN,
-          :MAX_IDENTITY_BYTES, :PROTOCOL_OUTCOMES, :HTTP_OUTCOMES,
+          :REQUEST_ID_PATTERN, :MAX_IDENTITY_BYTES, :PROTOCOL_OUTCOMES, :HTTP_OUTCOMES,
           :HTTP_TERMINAL_OUTCOMES
       end
     end

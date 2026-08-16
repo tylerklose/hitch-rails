@@ -81,6 +81,7 @@ module Hitch
         )
       rescue StandardError
         request_id = verified_request && verified_request["id"]
+        Internal::EndpointErrorReporter.report(category: :dispatch)
         hitch_mcp_protocol_error!(200, -32603, "Internal error", request_id: request_id)
       ensure
         request.delete_header("RAW_POST_DATA") if request
@@ -153,7 +154,7 @@ module Hitch
           client_id.is_a?(String) && !client_id.empty?
         return hitch_mcp_unauthorized! unless valid
 
-        principal = access_token.principal
+        principal = hitch_mcp_token_principal(access_token)
         return hitch_mcp_unauthorized! unless principal
 
         @hitch_mcp_access_token = access_token
@@ -162,28 +163,34 @@ module Hitch
         @hitch_mcp_resource = resource.dup.freeze
         @hitch_mcp_granted_scopes = access_token.scopes.to_s.split.map { |scope| scope.dup.freeze }.freeze
         @hitch_mcp_observation&.authenticated!(principal:, client_id:)
-      rescue ActiveRecord::RecordNotFound, NameError
-        hitch_mcp_unauthorized!
       rescue StandardError
+        Internal::EndpointErrorReporter.report(category: :authentication)
         head :service_unavailable
       end
 
+      def hitch_mcp_token_principal(access_token)
+        access_token.principal
+      rescue ActiveRecord::RecordNotFound, NameError
+        nil
+      end
+
       def hitch_mcp_rate_admission!
-        admission = hitch_mcp_admit_authenticated_request(
+        limit = Hitch.configuration.mcp.request_limit
+        count = hitch_mcp_admit_authenticated_request(
           principal: @hitch_mcp_principal,
           client_id: @hitch_mcp_client_id
         )
-        return if admission == :allow
+        return if count.nil? || count <= limit.fetch(:to)
 
-        retry_after = admission[:retry_after] if admission.is_a?(Hash)
-        unless retry_after.is_a?(Integer) && retry_after.positive?
-          return head :service_unavailable
-        end
-
-        response.headers["Retry-After"] = retry_after.to_s
+        response.headers["Retry-After"] = limit.fetch(:within).to_s
         response.headers["Access-Control-Expose-Headers"] = "Retry-After"
         head :too_many_requests
-      rescue StandardError
+      # NotImplementedError is a ScriptError, not a StandardError: the base
+      # ActiveSupport::Cache::Store#increment raises it, and every subclass
+      # answers respond_to?(:increment), so a store that never overrode it
+      # passes validation and surfaces here.
+      rescue NotImplementedError, StandardError
+        Internal::EndpointErrorReporter.report(category: :request_admission)
         head :service_unavailable
       end
 
@@ -494,8 +501,21 @@ module Hitch
       # observation. The invocation hook remains only for the sealed dummy wire
       # fixture; final Tool calls emit through Internal::Observation directly.
 
+      # Counts through the host application's own cache store, exactly as
+      # ActionController::RateLimiting does. A nil count admits, same as
+      # Rails: :null_store returns nil (test, and development without
+      # caching — production refuses those stores at boot), and Redis and
+      # Solid Cache stores return nil during a backend outage rather than
+      # raising. This request is already authenticated, so an outage widens
+      # one token holder's quota, not the front door. Anything else a store
+      # returns fails the comparison above and becomes a 503.
       def hitch_mcp_admit_authenticated_request(principal:, client_id:)
-        RequestRateLimiter.call(principal:, client_id:)
+        configuration = Hitch.configuration.mcp
+        configuration.rate_limit_store.increment(
+          RateLimitKey.call(principal:, client_id:),
+          1,
+          expires_in: configuration.request_limit.fetch(:within)
+        )
       end
 
       def hitch_mcp_body_parse_started!; end

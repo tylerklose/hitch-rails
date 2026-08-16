@@ -26,7 +26,7 @@ class DoctorFixturesDispatchTest < ActiveSupport::TestCase
     stdout, stderr, status = Open3.capture3(COMMAND)
 
     assert_predicate status, :success?, stderr
-    assert_includes stdout, "Hitch doctor verified: 27 pairwise rows"
+    assert_includes stdout, "Hitch doctor verified: 28 pairwise rows"
     assert_match(/\d+ runs, \d+ assertions, zero skips/, stdout)
   end
 end

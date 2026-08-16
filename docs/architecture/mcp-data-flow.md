@@ -14,7 +14,8 @@ owner and a terminal result; later stages do no work after an earlier halt.
    with `Allow: POST, OPTIONS`.
 4. POST bearer authentication proves active token, exact audience, client, and
    principal; failure ends at 401 challenge.
-5. Authenticated Redis admission derives an HMAC principal/client key. Rejection
+5. Authenticated admission derives an HMAC principal/client key and counts it in
+   the host's configured cache store. Rejection
    ends at 429; store failure ends at 503. Neither parses the body.
 6. A capped reader parses exactly one JSON message with duplicate-sensitive
    structural handling. The verified-request builder validates JSON-RPC shape,

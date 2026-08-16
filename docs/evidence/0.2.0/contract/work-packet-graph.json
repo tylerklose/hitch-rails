@@ -119,6 +119,8 @@
       ],
       "artifact": {
         "version": "0.2.0.pre.1",
+        "development_version": "0.2.0.pre.1.dev",
+        "contract_path": "docs/public_api/0.2.0.md",
         "distribution": "internal_only",
         "verifier": "bin/package-smoke"
       }
@@ -145,6 +147,8 @@
       ],
       "artifact": {
         "version": "0.2.0.pre.2",
+        "development_version": "0.2.0.pre.2.dev",
+        "contract_path": "docs/public_api/0.2.0.md",
         "distribution": "internal_only",
         "verifier": "bin/package-smoke"
       }
@@ -186,6 +190,8 @@
       ],
       "artifact": {
         "version": "0.2.0.pre.3",
+        "development_version": "0.2.0.pre.3.dev",
+        "contract_path": "docs/public_api/0.2.0.md",
         "distribution": "internal_only",
         "verifier": "bin/package-smoke"
       }
@@ -220,6 +226,8 @@
       ],
       "artifact": {
         "version": "0.2.0.pre.4",
+        "development_version": "0.2.0.pre.4.dev",
+        "contract_path": "docs/public_api/0.2.0.md",
         "distribution": "public_optional",
         "verifier": "bin/package-smoke",
         "public_verifier": "bin/release-check"
@@ -233,6 +241,8 @@
       ],
       "artifact": {
         "version": "0.2.0.rc1",
+        "development_version": "0.2.0.rc1.dev",
+        "contract_path": "docs/public_api/0.2.0.md",
         "distribution": "public_if_pre4_published",
         "verifier": "bin/package-smoke",
         "public_verifier": "bin/release-check"
@@ -246,6 +256,8 @@
       ],
       "artifact": {
         "version": "0.2.0.rc2",
+        "development_version": "0.2.0.rc2.dev",
+        "contract_path": "docs/public_api/0.2.0.md",
         "distribution": "public_if_pre4_published",
         "verifier": "bin/package-smoke",
         "public_verifier": "bin/release-check"
@@ -259,6 +271,7 @@
       ],
       "artifact": {
         "version": "0.2.0",
+        "contract_path": "docs/public_api/0.2.0.md",
         "distribution": "public_required",
         "verifier": "bin/package-smoke",
         "public_verifier": "bin/release-check"

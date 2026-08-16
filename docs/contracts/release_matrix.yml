@@ -1,0 +1,36 @@
+schema_version: 1
+release: "0.2.0"
+sqlite_busy_timeout_ms: 5000
+lanes:
+  - name: rails_7_2_mcp_min_sqlite
+    ruby: "3.3"
+    rails: "~> 7.2.0"
+    mcp: "= 1.1.0"
+    mcp_lane: min
+    adapter: sqlite3
+    adapter_requirement: ">= 2.1, < 3"
+    gemfile: gemfiles/rails_7_2_mcp_min_sqlite.gemfile
+  - name: rails_7_2_mcp_latest_postgresql
+    ruby: "3.3"
+    rails: "~> 7.2.0"
+    mcp: ">= 1.1, < 2"
+    mcp_lane: latest
+    adapter: postgresql
+    adapter_requirement: ">= 1.5, < 2"
+    gemfile: gemfiles/rails_7_2_mcp_latest_postgresql.gemfile
+  - name: rails_8_0_mcp_min_postgresql
+    ruby: "3.4"
+    rails: "~> 8.0.0"
+    mcp: "= 1.1.0"
+    mcp_lane: min
+    adapter: postgresql
+    adapter_requirement: ">= 1.5, < 2"
+    gemfile: gemfiles/rails_8_0_mcp_min_postgresql.gemfile
+  - name: rails_8_1_mcp_latest_sqlite
+    ruby: "4.0"
+    rails: "~> 8.1.0"
+    mcp: ">= 1.1, < 2"
+    mcp_lane: latest
+    adapter: sqlite3
+    adapter_requirement: ">= 2.1, < 3"
+    gemfile: gemfiles/rails_8_1_mcp_latest_sqlite.gemfile

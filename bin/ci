@@ -1,7 +1,14 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+require "yaml"
+
 ROOT = File.expand_path("..", __dir__)
+RELEASE_PROFILES = YAML.safe_load_file(
+  File.join(ROOT, "docs/contracts/release_matrix.yml"),
+  permitted_classes: [],
+  aliases: false
+).fetch("lanes").map { |lane| lane.fetch("name") }.freeze
 
 def run!(*command, environment: {})
   puts
@@ -14,12 +21,14 @@ end
 run!(File.join(ROOT, "bin/rubocop"))
 run!(File.join(ROOT, "bin/verify-work-packets"))
 run!(File.join(ROOT, "bin/verify-release-policy"))
+run!(File.join(ROOT, "bin/verify-release-evidence"))
+run!(File.join(ROOT, "bin/verify-release-matrix"))
 run!(File.join(ROOT, "bin/verify-provenance"))
 run!(File.join(ROOT, "bin/verify-doc-contract"))
 run!(File.join(ROOT, "bin/verify-toolchain"))
 run!(File.join(ROOT, "bin/prose-audit"))
 
-%w[rails_7_2_sqlite rails_8_1_postgresql].each do |profile|
+RELEASE_PROFILES.each do |profile|
   run!(
     File.join(ROOT, "bin/ci-appraisal"), profile, "--",
     "bundle", "exec", "rake", "app:zeitwerk:check"
@@ -32,7 +41,7 @@ run!(File.join(ROOT, "bin/ci-sdk"), "latest")
 run!(File.join(ROOT, "bin/ci-wire"))
 run!(File.join(ROOT, "bin/conformance-server"))
 
-%w[rails_7_2_sqlite rails_8_1_postgresql].each do |profile|
+RELEASE_PROFILES.each do |profile|
   run!(
     File.join(ROOT, "bin/ci-appraisal"), profile, "--",
     File.join(ROOT, "bin/rails"), "test",

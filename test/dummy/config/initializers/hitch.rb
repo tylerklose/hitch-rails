@@ -24,7 +24,14 @@ Hitch.configure do |config|
     to: Integer(ENV.fetch("HITCH_MCP_REQUEST_LIMIT_TO", "120"), 10),
     within: Integer(ENV.fetch("HITCH_MCP_REQUEST_LIMIT_WITHIN", "60"), 10).seconds
   }
-  config.mcp.rate_limit_redis_url = ENV["HITCH_MCP_REDIS_URL"]
+  # The dummy test environment runs Rails' :null_store default, which cannot
+  # count. Admission tests need a real counter, and the cross-process lane
+  # needs one shared between processes.
+  config.mcp.rate_limit_store = if ENV["HITCH_MCP_REDIS_URL"]
+    ActiveSupport::Cache::RedisCacheStore.new(url: ENV.fetch("HITCH_MCP_REDIS_URL"))
+  else
+    ActiveSupport::Cache::MemoryStore.new
+  end
   config.mcp.max_request_bytes = 1_024
   config.mcp.max_result_bytes = 1_024
 end

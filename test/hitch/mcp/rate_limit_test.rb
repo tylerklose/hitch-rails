@@ -3,12 +3,11 @@
 require "test_helper"
 require "json"
 require "openssl"
+require "securerandom"
+require "tmpdir"
 
 class Hitch::MCP::RateLimitTest < ActiveSupport::TestCase
-  REDIS_STORE = Hitch::MCP.const_get(:RedisRateStore, false)
-  MEMORY_STORE = Hitch::MCP.const_get(:MemoryRateStore, false)
   RATE_LIMIT_KEY = Hitch::MCP.const_get(:RateLimitKey, false)
-  REQUEST_RATE_LIMITER = Hitch::MCP.const_get(:RequestRateLimiter, false)
 
   class KeyGenerator
     attr_reader :calls
@@ -24,59 +23,6 @@ class Hitch::MCP::RateLimitTest < ActiveSupport::TestCase
     end
   end
   private_constant :KeyGenerator
-
-  class RedisClient
-    attr_accessor :response
-    attr_reader :calls, :closed
-
-    def initialize(response)
-      @response = response
-      @calls = []
-      @closed = false
-    end
-
-    def eval(*arguments)
-      calls << arguments
-      response
-    end
-
-    def close
-      @closed = true
-    end
-  end
-  private_constant :RedisClient
-
-  class RecordingStore
-    attr_accessor :response
-    attr_reader :calls
-
-    def initialize(response)
-      @response = response
-      @calls = []
-    end
-
-    def increment(**arguments)
-      calls << arguments
-      response
-    end
-  end
-  private_constant :RecordingStore
-
-  class LimiterConfiguration
-    attr_reader :request_limit
-
-    def initialize(request_limit:, store:)
-      @request_limit = request_limit
-      @store = store
-    end
-
-    private
-
-    def rate_store!
-      @store
-    end
-  end
-  private_constant :LimiterConfiguration
 
   setup do
     Hitch.reset_configuration!
@@ -127,172 +73,95 @@ class Hitch::MCP::RateLimitTest < ActiveSupport::TestCase
     second_user&.destroy!
   end
 
-  test "memory store preserves first expiry and resets only after the window" do
-    now = 10.0
-    store = MEMORY_STORE.new(clock: -> { now })
+  test "the configured store defaults to the application controller cache store" do
+    configuration = Hitch::MCP::Configuration.new
 
-    assert_equal [ 1, 1_000 ], store.increment(key: "key", window_ms: 1_000)
-    now = 10.4
-    assert_equal [ 2, 600 ], store.increment(key: "key", window_ms: 1_000)
-    now = 10.9
-    assert_equal [ 3, 100 ], store.increment(key: "key", window_ms: 20_000)
-    now = 11.0
-    assert_equal [ 1, 20_000 ], store.increment(key: "key", window_ms: 20_000)
+    assert_same ActionController::Base.cache_store, configuration.rate_limit_store
   end
 
-  test "memory store increment is exact under simultaneous callers" do
-    store = MEMORY_STORE.new(clock: -> { 10.0 })
-    gate = Queue.new
-    threads = 24.times.map do
-      Thread.new do
-        gate.pop
-        store.increment(key: "shared", window_ms: 60_000).first
-      end
-    end
-    24.times { gate << true }
+  test "an explicit store is used verbatim and nil falls back" do
+    store = ActiveSupport::Cache::MemoryStore.new
+    configuration = Hitch::MCP::Configuration.new
+    configuration.rate_limit_store = store
 
-    assert_equal (1..24).to_a, threads.map(&:value).sort
-  ensure
-    threads&.each { |thread| thread.join if thread.alive? }
+    assert_same store, configuration.rate_limit_store
+
+    configuration.rate_limit_store = nil
+    assert_same ActionController::Base.cache_store, configuration.rate_limit_store
   end
 
-  test "Redis store uses one Lua increment and first-expiry call" do
-    client = RedisClient.new([ 1, 60_000 ])
-    store = REDIS_STORE.new(url: "redis://unused.example.test/0", client:)
+  test "a store that cannot increment is rejected at assignment" do
+    configuration = Hitch::MCP::Configuration.new
 
-    assert_equal [ 1, 60_000 ], store.increment(key: "synthetic-digest", window_ms: 60_000)
-    assert_equal 1, client.calls.length
-    script, keys, arguments = client.calls.fetch(0)
-    assert_match(/redis\.call\("INCR", KEYS\[1\]\)/, script)
-    assert_match(/if count == 1/, script)
-    assert_match(/redis\.call\("PEXPIRE", KEYS\[1\], ARGV\[1\]\)/, script)
-    assert_equal [ "synthetic-digest" ], keys
-    assert_equal [ 60_000 ], arguments
-
-    store.close
-    assert client.closed
+    error = assert_raises(ArgumentError) { configuration.rate_limit_store = Object.new }
+    assert_includes error.message, "mcp.rate_limit_store"
   end
 
-  test "Redis store rejects nil, malformed, and missing-expiry responses" do
-    client = RedisClient.new(nil)
-    store = REDIS_STORE.new(url: "redis://unused.example.test/0", client:)
-
-    [ nil, [ 1 ], [ "1", 60_000 ], [ 0, 60_000 ], [ 1, -1 ] ].each do |response|
-      client.response = response
-      assert_raises(ArgumentError, response.inspect) do
-        store.increment(key: "synthetic-digest", window_ms: 60_000)
-      end
-    end
-  end
-
-  test "request limiter holds the inclusive boundary and does not reset on limit changes" do
-    configuration = configured_runtime(to: 2, within: 60)
-
-    assert_equal :allow, REQUEST_RATE_LIMITER.call(
-      principal: @user,
-      client_id: "client-one",
-      configuration:
-    )
-    assert_equal :allow, REQUEST_RATE_LIMITER.call(
-      principal: @user,
-      client_id: "client-one",
-      configuration:
-    )
-    configuration.request_limit = { to: 3, within: 120 }
-    assert_equal :allow, REQUEST_RATE_LIMITER.call(
-      principal: @user,
-      client_id: "client-one",
-      configuration:
-    )
-    assert_equal({ retry_after: 120 }, REQUEST_RATE_LIMITER.call(
-      principal: @user,
-      client_id: "client-one",
-      configuration:
-    ))
-  end
-
-  test "request limiter validates its store contract and exact retry calculation" do
-    missing = LimiterConfiguration.new(request_limit: nil, store: RecordingStore.new([ 1, 60_000 ]))
-    error = assert_raises(ArgumentError) do
-      REQUEST_RATE_LIMITER.call(principal: @user, client_id: "client-one", configuration: missing)
-    end
-    assert_equal "MCP request limit is unavailable", error.message
-
-    invalid_responses = [
-      nil,
-      [ 1 ],
-      [ "1", 60_000 ],
-      [ 0, 60_000 ],
-      [ -1, 60_000 ],
-      [ 1.0, 60_000 ],
-      [ 1, "60000" ],
-      [ 1, 0 ],
-      [ 1, -1 ],
-      [ 1, 60_000.0 ]
+  test "production refuses a store that cannot count across processes" do
+    unshared = [
+      ActiveSupport::Cache::MemoryStore.new,
+      ActiveSupport::Cache::NullStore.new,
+      ActiveSupport::Cache::FileStore.new(Dir.mktmpdir)
     ]
-    invalid_responses.each do |response|
-      configuration = LimiterConfiguration.new(
-        request_limit: { to: 2, within: 60 },
-        store: RecordingStore.new(response)
-      )
-      error = assert_raises(ArgumentError, response.inspect) do
-        REQUEST_RATE_LIMITER.call(principal: @user, client_id: "client-one", configuration:)
+
+    unshared.each do |store|
+      configuration = configured_runtime(to: 2, within: 60, store:)
+
+      assert configuration.validate_rate_limit_store!,
+        "#{store.class.name} is allowed outside production"
+
+      in_production do
+        error = assert_raises(ArgumentError, store.class.name) do
+          configuration.validate_rate_limit_store!
+        end
+        assert_includes error.message, "cannot count one"
+        assert_includes error.message, store.class.name
       end
-      assert_equal "MCP request rate store returned an invalid response", error.message
-    end
-
-    store = RecordingStore.new([ 3, 60_501 ])
-    configuration = LimiterConfiguration.new(request_limit: { to: 2, within: 60 }, store:)
-    expected_key = RATE_LIMIT_KEY.call(principal: @user, client_id: "client-one")
-    denial = REQUEST_RATE_LIMITER.call(principal: @user, client_id: "client-one", configuration:)
-    assert_equal [ { key: expected_key, window_ms: 60_000 } ], store.calls
-    assert_equal({ retry_after: 61 }, denial)
-    assert_predicate denial, :frozen?
-  end
-
-  test "request limiter default resolves the live Hitch MCP configuration" do
-    store = RecordingStore.new([ 1, 60_000 ])
-    configuration = LimiterConfiguration.new(request_limit: { to: 2, within: 60 }, store:)
-    outer_configuration = Struct.new(:mcp).new(configuration)
-
-    stub_class_method(Hitch, :configuration, -> { outer_configuration }) do
-      assert_equal :allow, REQUEST_RATE_LIMITER.call(principal: @user, client_id: "client-one")
     end
   end
 
-  test "rate store connection is reused across limit changes and replaced after URL reload" do
-    configuration = configured_runtime(to: 2, within: 60)
-    memory = configuration.__send__(:rate_store!)
-    configuration.request_limit = { to: 5, within: 120 }
-    configuration.__send__(:prepare_rate_store!)
-    assert_same memory, configuration.__send__(:rate_store!)
+  test "production accepts a store that counts across processes" do
+    shared = Class.new(ActiveSupport::Cache::Store) do
+      def increment(name, amount = 1, **options) = 1
+    end.new
+    configuration = configured_runtime(to: 2, within: 60, store: shared)
 
-    configuration.rate_limit_redis_url = "redis://127.0.0.1:1/0"
-    configuration.__send__(:prepare_rate_store!)
-    first_redis = configuration.__send__(:rate_store!)
-    configuration.rate_limit_redis_url = "redis://127.0.0.1:1/0"
-    configuration.__send__(:prepare_rate_store!)
+    in_production { assert configuration.validate_rate_limit_store! }
+  end
 
-    assert_instance_of REDIS_STORE, first_redis
-    assert_instance_of REDIS_STORE, configuration.__send__(:rate_store!)
-    refute_same first_redis, configuration.__send__(:rate_store!)
+  test "validate! no longer demands a store, so a Solid Cache app boots in production" do
+    configuration = configured_runtime(to: 120, within: 60, store: nil)
+
+    in_production { assert configuration.validate! }
   end
 
   test "rate implementation constants are not public extension points" do
-    %i[RateLimitKey RedisRateStore MemoryRateStore RequestRateLimiter].each do |name|
-      assert_raises(NameError) { eval("Hitch::MCP::#{name}") }
+    assert_raises(NameError) { eval("Hitch::MCP::RateLimitKey") }
+  end
+
+  test "the removed private store classes are gone entirely" do
+    %i[RedisRateStore MemoryRateStore RequestRateLimiter].each do |name|
+      refute Hitch::MCP.const_defined?(name, false), "Hitch::MCP::#{name} still exists"
     end
   end
 
   private
 
-  def configured_runtime(to:, within:)
+  def configured_runtime(to:, within:, store: nil)
     Hitch::MCP::Configuration.new.tap do |configuration|
       configuration.registry = "McpToolRegistry"
       configuration.server_info = ->(_context) { { name: "rate-test", version: "0.2.0" } }
       configuration.scope_resolver = ->(principal:, access_token:, request:) { principal }
       configuration.request_limit = { to:, within: }
-      configuration.__send__(:prepare_rate_store!)
+      configuration.rate_limit_store = store
     end
+  end
+
+  def in_production
+    original = Rails.env
+    Rails.env = "production"
+    yield
+  ensure
+    Rails.env = original.to_s
   end
 end

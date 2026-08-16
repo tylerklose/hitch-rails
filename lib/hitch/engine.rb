@@ -83,15 +83,17 @@ module Hitch
       unless configuration.dynamic_client_registration_enabled_configured?
         Rails.logger&.warn(
           "[hitch] Dynamic Client Registration is enabled by the compatibility default. " \
-          "Set config.dynamic_client_registration_enabled explicitly. Production also " \
-          "requires config.dynamic_client_registration_rate_store; new installs disable DCR."
+          "Set config.dynamic_client_registration_enabled explicitly. Production requires " \
+          "the registration rate store (config.dynamic_client_registration_rate_store, " \
+          "default: your cache store) to count across processes; new installs disable DCR."
         )
       end
 
       next unless Rails.env.production?
 
-      Hitch::DynamicRegistrationRateLimit.validate_production_store!(
-        configuration.dynamic_client_registration_rate_store
+      Hitch::RateLimitStore.assert_shared!(
+        configuration.dynamic_client_registration_rate_store,
+        setting: Hitch::DynamicRegistrationRateLimit::SETTING
       )
     end
 
@@ -119,7 +121,7 @@ module Hitch
         :prepare_registry!,
         supported_scopes: configuration.supported_scopes
       )
-      configuration.mcp.__send__(:prepare_rate_store!)
+      configuration.mcp.validate_rate_limit_store!
     end
 
     # Filter OAuth secrets out of Rails request logs. Without this, a

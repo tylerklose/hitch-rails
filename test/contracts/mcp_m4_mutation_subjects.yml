@@ -17,7 +17,7 @@ subjects:
   - domain: audience
     expression: Hitch::AccessToken#valid_for_resource?
   - domain: admission
-    expression: Hitch::MCP::RequestRateLimiter.call
+    expression: Hitch::MCP::Endpoint#hitch_mcp_admit_authenticated_request
   - domain: registration
     expression: Hitch::MCP::Registry.validate_snapshot!
   - domain: availability

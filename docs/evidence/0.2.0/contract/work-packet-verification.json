@@ -11,7 +11,7 @@
   },
   "graph": {
     "path": "docs/evidence/0.2.0/contract/work-packet-graph.json",
-    "sha256": "3c490fdfb43b002f87b805ee2f40b029884a824efa2cd34fd193dd708936b5ba",
+    "sha256": "f907a891e7313c9db6cad738b2615ec5fd574cedc833b4ca8a92ee714ed237c8",
     "roadmap_nodes": 29,
     "packet_nodes": 28,
     "edges": 31,

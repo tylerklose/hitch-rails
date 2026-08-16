@@ -29,7 +29,7 @@ unless contract.is_a?(Hash)
   errors << "toolchain.lock.yml: contract must be a mapping"
   contract = {}
 end
-%w[roadmap lattice_schema lattice_scenarios].each do |key|
+%w[roadmap lattice_schema lattice_scenarios release_lattice_schema release_lattice_scenarios].each do |key|
   entry = contract[key]
   unless entry.is_a?(Hash) && entry["path"] && entry["sha256"].to_s.match?(/\A[0-9a-f]{64}\z/)
     errors << "contract.#{key}: path and SHA-256 pin are required"
@@ -41,6 +41,11 @@ end
   elsif Digest::SHA256.file(target).hexdigest != entry.fetch("sha256")
     errors << "contract.#{key}: checksum drift for #{entry.fetch('path')}"
   end
+end
+release_lattice = contract["release_lattice_scenarios"] || {}
+unless release_lattice["seed"] == 42 && release_lattice["exhaustive_strength"] == 9 &&
+    release_lattice["expected_rows"] == 60
+  errors << "contract.release_lattice_scenarios: exhaustive strength 9, seed 42, and 60 rows are required"
 end
 
 sdk = lock["ruby_sdk"] || {}

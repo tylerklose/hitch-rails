@@ -16,6 +16,8 @@ class VerifyDocContractTest < ActiveSupport::TestCase
     %w[adr architecture contracts security].each do |directory|
       FileUtils.cp_r(REPOSITORY_ROOT.join("docs", directory), File.join(@root, "docs", directory))
     end
+    FileUtils.cp(REPOSITORY_ROOT.join("CONTRIBUTING.md"), File.join(@root, "CONTRIBUTING.md"))
+    FileUtils.cp(REPOSITORY_ROOT.join("docs/releasing.md"), File.join(@root, "docs/releasing.md"))
   end
 
   teardown do
@@ -35,6 +37,16 @@ class VerifyDocContractTest < ActiveSupport::TestCase
     _stdout, stderr, status = run_verifier
     assert_not status.success?
     assert_includes stderr, "errors is missing"
+  end
+
+  test "rejects drift in the narrowly approved public API documentation erratum" do
+    mutate_yaml("docs/contracts/mcp_public_api.yml") do |document|
+      document.fetch("errata").first["corrected"] = "Constantized per request."
+    end
+
+    _stdout, stderr, status = run_verifier
+    assert_not status.success?
+    assert_includes stderr, "exact documentation erratum differs"
   end
 
   test "rejects a sensitive or changed event payload" do

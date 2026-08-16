@@ -1,0 +1,25 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require_relative "../tooling/evidence_draft"
+
+def usage!(message = nil)
+  warn message if message
+  warn "Usage: bin/validate-release-evidence-draft [--ready] KIND PATH"
+  exit 64
+end
+
+ready = ARGV.delete("--ready")
+kind = ARGV.shift
+path = ARGV.shift
+usage! unless kind && path
+usage!("Unexpected arguments: #{ARGV.join(' ')}") unless ARGV.empty?
+
+begin
+  result = HitchEvidenceDraft.validate!(kind:, path:, ready: !!ready)
+  puts JSON.pretty_generate(result)
+rescue HitchEvidenceDraft::VerificationError => error
+  warn error.message
+  exit 1
+end

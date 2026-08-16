@@ -38,7 +38,8 @@ class Hitch::MCPInstallGeneratorTest < Rails::Generators::TestCase
     initializer = read("config/initializers/hitch_mcp.rb")
     assert_includes initializer, 'config.mcp.registry = "McpToolRegistry"'
     assert_includes initializer, "scope_resolver = ->(principal:, access_token:, request:) { nil }"
-    assert_includes initializer, 'rate_limit_redis_url = ENV["HITCH_MCP_REDIS_URL"]'
+    assert_includes initializer, "# config.mcp.rate_limit_store ="
+    refute_includes initializer, "rate_limit_redis_url"
     assert_nothing_raised { RubyVM::AbstractSyntaxTree.parse(initializer) }
 
     routes = read("config/routes.rb")
@@ -94,6 +95,81 @@ class Hitch::MCPInstallGeneratorTest < Rails::Generators::TestCase
     assert_nil first_error
     assert_instance_of Thor::Error, second_error
     assert_includes second_error.message, "install refused"
+    assert_equal before, file_snapshot
+  end
+
+  test "an earlier wildcard route refuses before writing an unreachable MCP endpoint" do
+    routes_path = destination_path("config/routes.rb")
+    File.write(
+      routes_path,
+      read("config/routes.rb").sub(
+        "  mount Hitch::Engine",
+        "  match \"*path\", to: \"host#dispatch\", via: :all\n  mount Hitch::Engine"
+      )
+    )
+    before = file_snapshot
+
+    _output, error = invoke_generator
+
+    assert_instance_of Thor::Error, error
+    assert_includes error.message, "wildcard route that may shadow /mcp"
+    assert_equal before, file_snapshot
+  end
+
+  test "a slashless Rails MCP route refuses before writing a dual endpoint" do
+    %(
+      post "mcp", to: "legacy#dispatch"
+      match "mcp", to: "legacy#dispatch", via: :all
+    ).lines.map(&:strip).reject(&:empty?).each do |route|
+      routes_path = destination_path("config/routes.rb")
+      original = read("config/routes.rb")
+      File.write(
+        routes_path,
+        original.sub("  mount Hitch::Engine", "  #{route}\n  mount Hitch::Engine")
+      )
+      before = file_snapshot
+
+      _output, error = invoke_generator
+
+      assert_instance_of Thor::Error, error
+      assert_includes error.message, "already owns /mcp"
+      assert_equal before, file_snapshot
+      File.write(routes_path, original)
+    end
+  end
+
+  test "a nested MCP route does not collide with the exact canonical endpoint" do
+    routes_path = destination_path("config/routes.rb")
+    File.write(
+      routes_path,
+      read("config/routes.rb").sub(
+        "  mount Hitch::Engine",
+        "  post \"mcp/diagnostics\", to: \"diagnostics#create\"\n  mount Hitch::Engine"
+      )
+    )
+
+    _output, error = invoke_generator
+
+    assert_nil error
+    assert_includes read("config/routes.rb"), 'post "mcp/diagnostics"'
+    assert_includes read("config/routes.rb"), 'match "/mcp"'
+  end
+
+  test "an earlier root mount refuses before writing an unreachable MCP endpoint" do
+    routes_path = destination_path("config/routes.rb")
+    File.write(
+      routes_path,
+      read("config/routes.rb").sub(
+        "  mount Hitch::Engine",
+        "  mount Legacy::Engine => \"/\"\n  mount Hitch::Engine"
+      )
+    )
+    before = file_snapshot
+
+    _output, error = invoke_generator
+
+    assert_instance_of Thor::Error, error
+    assert_includes error.message, "root mount that may shadow /mcp"
     assert_equal before, file_snapshot
   end
 

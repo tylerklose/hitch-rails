@@ -5,12 +5,8 @@ require "test_helper"
 class RegistrationAdmissionTest < ActionDispatch::IntegrationTest
   REDIRECT_URI = "https://client.example/callback"
 
-  class FailingStore
-    def shared?
-      true
-    end
-
-    def increment_with_expiry(**)
+  class FailingStore < ActiveSupport::Cache::MemoryStore
+    def increment(*, **)
       raise "unavailable"
     end
   end

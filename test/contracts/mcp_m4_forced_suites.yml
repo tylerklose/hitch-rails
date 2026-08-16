@@ -92,18 +92,18 @@ suites:
       - request event once on every terminal path
       - sensitive canaries and subscriber failure are isolated
   - id: admission_store
-    path: test/hitch/mcp/rate_limit_test.rb
-    test_class: Hitch::MCP::RateLimitTest
+    path: test/integration/mcp_rate_limit_cache_store_test.rb
+    test_class: MCPRateLimitCacheStoreTest
     boundaries: [admission, concurrency]
     required_tests:
-      - memory store increment is exact under simultaneous callers
-      - Redis store rejects nil, malformed, and missing-expiry responses
+      - admission counts through the host application cache store by default
+      - a cache store failure is 503 before body registry SDK or host work
   - id: admission_integration
     path: test/integration/mcp_rate_limit_test.rb
     test_class: MCPRateLimitTest
     boundaries: [admission, audience]
     required_tests:
-      - Redis connection failure is 503 before body registry SDK or host work
+      - discover list and call share one exact authenticated boundary
       - rotating a token does not reset the principal-client quota
   - id: exhaustive_authorization_lattice
     path: test/integration/mcp_tool_authorization_lattice_test.rb

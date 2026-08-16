@@ -1,0 +1,267 @@
+{
+  "schema": "hitch.release-evidence-index.v1",
+  "release": "0.2.0",
+  "contract": {
+    "path": "docs/contracts/release_evidence.yml",
+    "schema_version": 1,
+    "sha256": "3d3065690491ac6d76b1089b4866657f8080c3121e1f719e214b0cbc8a0b8eb3"
+  },
+  "records": [
+    {
+      "milestone": "M6",
+      "kind": "copied_lineage",
+      "path": "docs/evidence/0.2.0/adoption/copied-lineage.json",
+      "schema": "hitch.m6-copied-lineage-adoption.v1",
+      "status": "pending",
+      "sha256": null
+    },
+    {
+      "milestone": "M7",
+      "kind": "independent",
+      "path": "docs/evidence/0.2.0/adoption/independent.json",
+      "schema": "hitch.m7-independent-adoption.v1",
+      "status": "pending",
+      "sha256": null
+    },
+    {
+      "milestone": "M5.4",
+      "kind": "automated_client_smokes",
+      "path": "docs/evidence/0.2.0/clients/automated-smokes.json",
+      "schema": "hitch.m5.4-automated-client-evidence.v1",
+      "status": "accepted",
+      "sha256": "949c29317be91069d8223cf7afc4670eb31be1785379c45b8ea24b2ec3700240"
+    },
+    {
+      "milestone": "M8",
+      "kind": "product_clients",
+      "path": "docs/evidence/0.2.0/clients/product-smokes.json",
+      "schema": "hitch.m8-product-client-evidence.v1",
+      "status": "pending",
+      "sha256": null
+    },
+    {
+      "milestone": "M8",
+      "kind": "hosted_matrix",
+      "path": "docs/evidence/0.2.0/release/hosted-matrix.json",
+      "schema": "hitch.m8-hosted-matrix.v1",
+      "status": "pending",
+      "sha256": null
+    },
+    {
+      "milestone": "M8",
+      "kind": "final_local_gates",
+      "path": "docs/evidence/0.2.0/release/final-local-gates.json",
+      "schema": "hitch.m8-final-local-gates.v1",
+      "status": "pending",
+      "sha256": null
+    },
+    {
+      "milestone": "M2.3",
+      "kind": "auth_conformance",
+      "path": "docs/evidence/0.2.0/conformance/auth-extension.json",
+      "schema": "hitch.m2.3-auth-extension-evidence.v1",
+      "status": "accepted",
+      "sha256": "a08555622fcef481caea26763309867ee6f907784e58e828d8491d48b5604748"
+    },
+    {
+      "milestone": "M2.3",
+      "kind": "server_conformance",
+      "path": "docs/evidence/0.2.0/conformance/server-checks.json",
+      "schema": "hitch.m2.3-server-evidence.v1",
+      "status": "accepted",
+      "sha256": "a8ca232a50bcbd6bb116f087f39dde9fbe07357df82e023e33fc897a1fe6b1f9"
+    },
+    {
+      "milestone": "M3.1",
+      "kind": "sdk_handoff",
+      "path": "docs/evidence/0.2.0/context/sdk-handoff.json",
+      "schema": "hitch.m3.1-context-evidence.v1",
+      "status": "accepted",
+      "sha256": "ad6d8618b6dd287051a00aec69c8091450afd7b3f2761307b4250f3f3a837b95"
+    },
+    {
+      "milestone": null,
+      "kind": "contract_verification",
+      "path": "docs/evidence/0.2.0/contract/contract-verification.json",
+      "schema": null,
+      "status": "accepted",
+      "sha256": "b609e329db48ca6ca5999d5c4a9b5838b8ab13f2a062d67f9fd5499372993847"
+    },
+    {
+      "milestone": null,
+      "kind": "document_contract_verification",
+      "path": "docs/evidence/0.2.0/contract/document-contract-verification.json",
+      "schema": null,
+      "status": "accepted",
+      "sha256": "3aaf1803003e2b49f36333a1dafe3f02bd1eaa6e3d3c112f83f107b288ab8181"
+    },
+    {
+      "milestone": null,
+      "kind": "provenance_verification",
+      "path": "docs/evidence/0.2.0/contract/provenance-verification.json",
+      "schema": null,
+      "status": "accepted",
+      "sha256": "e93395da6e6c95e9be3cd068a4e4a0aa861e0fa918de4a12b304c858a18ff863"
+    },
+    {
+      "milestone": null,
+      "kind": "work_packet_graph",
+      "path": "docs/evidence/0.2.0/contract/work-packet-graph.json",
+      "schema": null,
+      "status": "accepted",
+      "sha256": "f907a891e7313c9db6cad738b2615ec5fd574cedc833b4ca8a92ee714ed237c8"
+    },
+    {
+      "milestone": null,
+      "kind": "work_packet_verification",
+      "path": "docs/evidence/0.2.0/contract/work-packet-verification.json",
+      "schema": null,
+      "status": "accepted",
+      "sha256": "d448668cb10f7ea9a607cac440aaa56610df860156a3d8c4a2ef73f690c37a62"
+    },
+    {
+      "milestone": "M5.1",
+      "kind": "mcp_install_generator",
+      "path": "docs/evidence/0.2.0/generators/mcp-install.json",
+      "schema": "hitch.m5.1-mcp-install-evidence.v1",
+      "status": "accepted",
+      "sha256": "a38def2949634bb0b0013a6cbe169abfdeb05c13789b08b0956c1837a8790f09"
+    },
+    {
+      "milestone": "M5.2",
+      "kind": "tool_generator",
+      "path": "docs/evidence/0.2.0/generators/tool.json",
+      "schema": "hitch.m5.2-tool-generator-evidence.v1",
+      "status": "accepted",
+      "sha256": "75d33fb0dd3e841f95680a6deb5ca97faa74281592e347a578f039ef809af566"
+    },
+    {
+      "milestone": "M4.4",
+      "kind": "observation_event_contract",
+      "path": "docs/evidence/0.2.0/observation/event-contract.json",
+      "schema": "hitch.m4.4-observation-event-contract-evidence.v1",
+      "status": "accepted",
+      "sha256": "db7c6998e6a91d3e319737ef3ed1fd58995a3a01522799a974b101fc11012a05"
+    },
+    {
+      "milestone": "M5.3",
+      "kind": "doctor_snapshots",
+      "path": "docs/evidence/0.2.0/operator/doctor-snapshots.json",
+      "schema": "hitch.m5.3-doctor-snapshots-evidence.v1",
+      "status": "accepted",
+      "sha256": "898440a82247ebde97e5bb50dfb73e6c1bcd7205f7dac4dcd8dfa8c51f64fb52"
+    },
+    {
+      "milestone": "M5.3",
+      "kind": "prose_audit",
+      "path": "docs/evidence/0.2.0/operator/prose-audit.json",
+      "schema": "hitch.m5.3-prose-audit-evidence.v1",
+      "status": "accepted",
+      "sha256": "448b413a611e36108e9b1217505daed842c5cebda36dcbd60029109399550893"
+    },
+    {
+      "milestone": "M5.4",
+      "kind": "disposable_package_apps",
+      "path": "docs/evidence/0.2.0/package/disposable-apps.json",
+      "schema": "hitch.m5.4-package-evidence.v1",
+      "status": "accepted",
+      "sha256": "425c3fd3f8f8e6054409e7c2101aea2f4aec1c1cdf0ac77bdc698385a052e5ee"
+    },
+    {
+      "milestone": "M4.5",
+      "kind": "m4_contract_mutation",
+      "path": "docs/evidence/0.2.0/quality/m4-contract-mutation.json",
+      "schema": "hitch.m4.5-contract-mutation-evidence.v1",
+      "status": "accepted",
+      "sha256": "4ee8e9fe9a75790a9a0cef49f77abbb01178f4f4cde3ee5e9bc65d47c1d3ac58"
+    },
+    {
+      "milestone": "M4.3",
+      "kind": "rate_limit_cross_process",
+      "path": "docs/evidence/0.2.0/rate-limit/cross-process.json",
+      "schema": "hitch.m4.3-rate-limit-cross-process-evidence.v1",
+      "status": "pending",
+      "sha256": null
+    },
+    {
+      "milestone": "M3.3",
+      "kind": "registry_listing_isolation",
+      "path": "docs/evidence/0.2.0/registry/listing-isolation.json",
+      "schema": "hitch.m3.3-listing-isolation-evidence.v1",
+      "status": "accepted",
+      "sha256": "1f82c05a07aaf7d202c887f47776930d2128ece65a14a8d5be09cbf694f41d14"
+    },
+    {
+      "milestone": "M3.2",
+      "kind": "registry_reload_validation",
+      "path": "docs/evidence/0.2.0/registry/reload-validation.json",
+      "schema": "hitch.m3.2-registry-evidence.v1",
+      "status": "accepted",
+      "sha256": "69f55dbb63a2f7bf94756ceecb600acd783c8c70e9fdff9411d6b008a9d878a7"
+    },
+    {
+      "milestone": "M8",
+      "kind": "downloaded_gem",
+      "path": "docs/evidence/0.2.0/release/downloaded-gem.json",
+      "schema": "hitch.m8-downloaded-gem.v1",
+      "status": "pending",
+      "sha256": null
+    },
+    {
+      "milestone": "M8",
+      "kind": "final_check",
+      "path": "docs/evidence/0.2.0/release/final-check.json",
+      "schema": "hitch.m8-final-check.v1",
+      "status": "pending",
+      "sha256": null
+    },
+    {
+      "milestone": "M8",
+      "kind": "publication_authority",
+      "path": "docs/evidence/0.2.0/release/final-publication-authority.json",
+      "schema": "hitch.m8-publication-authority.v1",
+      "status": "pending",
+      "sha256": null
+    },
+    {
+      "milestone": "M5.4",
+      "kind": "pre4_publication_decision",
+      "path": "docs/evidence/0.2.0/release/pre4-publication-decision.json",
+      "schema": "hitch.m5.4-pre4-publication-decision.v1",
+      "status": "accepted",
+      "sha256": "f50e23d518d202fc39eed66f1cd9b6e14f5ded6cbf078a74e3c2aa6944425ad1"
+    },
+    {
+      "milestone": "M2.1",
+      "kind": "sdk_gap_ledger",
+      "path": "docs/evidence/0.2.0/sdk/gap-ledger.json",
+      "schema": null,
+      "status": "accepted",
+      "sha256": "14fb84215fae1ad41d077daecc251891990cb2a8a7497f8037262f7557ed323a"
+    },
+    {
+      "milestone": "M4.1",
+      "kind": "authorization_denials",
+      "path": "docs/evidence/0.2.0/tool/authorization-denials.json",
+      "schema": "hitch.m4.1-authorization-denial-evidence.v1",
+      "status": "accepted",
+      "sha256": "a65ded1a41599395aeffd805b65d9b6a04397a0e8bf9eee73cb2d0e522ba0457"
+    },
+    {
+      "milestone": "M4.2",
+      "kind": "result_normalization",
+      "path": "docs/evidence/0.2.0/tool/result-normalization.json",
+      "schema": "hitch.m4.2-result-normalization-evidence.v1",
+      "status": "accepted",
+      "sha256": "4d741a90d1a1afe6cd7a7753569af074424d48c119e9045927ca4312fa378719"
+    },
+    {
+      "milestone": "M2.2",
+      "kind": "wire_http_vectors",
+      "path": "docs/evidence/0.2.0/wire/http-vectors.json",
+      "schema": null,
+      "status": "accepted",
+      "sha256": "e9d2b7a11ef356f5e09e94956e63a08269266da907af16c007d4ba9d0798fd84"
+    }
+  ]
+}

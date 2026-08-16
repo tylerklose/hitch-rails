@@ -35,7 +35,9 @@ module Hitch
         ].freeze
         CONTROLLER_PATTERN = /\A[A-Z][A-Za-z0-9]*(?:::[A-Z][A-Za-z0-9]*)*Controller\z/
         ENGINE_MOUNT_PATTERN = /^([ \t]*)mount[ \t]+Hitch::Engine\b.*$/
-        MCP_ROUTE_PATTERN = /["']\/mcp(?:[\/"']|\z)/
+        MCP_ROUTE_PATTERN = /["']\/?mcp\/?["']/
+        WILDCARD_ROUTE_PATTERN = /\b(?:match|get|post|put|patch|delete|options)\s*(?:\(\s*)?["'][^"']*\*/
+        ROOT_MOUNT_PATTERN = /\bmount\s+.*?(?:=>|,\s*at:)\s*["']\/["']/
         ROUTE_BEGIN = "# BEGIN hitch:mcp:install"
         ROUTE_END = "# END hitch:mcp:install"
 
@@ -76,6 +78,10 @@ module Hitch
           errors << "#{ROUTES_PATH} must contain exactly one Hitch::Engine mount" unless mount_matches.length == 1
           errors << "#{ROUTES_PATH} already owns /mcp or contains a Hitch MCP install marker" if
             routes && route_collision?(routes)
+          errors << "#{ROUTES_PATH} has an earlier wildcard route that may shadow /mcp" if
+            routes && wildcard_route_before_engine?(routes)
+          errors << "#{ROUTES_PATH} has an earlier root mount that may shadow /mcp" if
+            routes && root_mount_before_engine?(routes)
 
           controller_path = controller_path_for(controller_name) if CONTROLLER_PATTERN.match?(controller_name)
           collision_paths = [ controller_path, MCP_INITIALIZER_PATH, REGISTRY_PATH, MANIFEST_PATH ].compact
@@ -217,6 +223,21 @@ module Hitch
         def route_collision?(routes)
           active_lines = routes.each_line.reject { |line| line.lstrip.start_with?("#") }.join
           routes.include?(ROUTE_BEGIN) || routes.include?(ROUTE_END) || MCP_ROUTE_PATTERN.match?(active_lines)
+        end
+
+        def wildcard_route_before_engine?(routes)
+          WILDCARD_ROUTE_PATTERN.match?(active_route_prefix(routes))
+        end
+
+        def root_mount_before_engine?(routes)
+          ROOT_MOUNT_PATTERN.match?(active_route_prefix(routes))
+        end
+
+        def active_route_prefix(routes)
+          engine_offset = routes.index(ENGINE_MOUNT_PATTERN)
+          return "" unless engine_offset
+
+          routes.byteslice(0, engine_offset).each_line.reject { |line| line.lstrip.start_with?("#") }.join
         end
 
         def controller_path_for(controller_name)

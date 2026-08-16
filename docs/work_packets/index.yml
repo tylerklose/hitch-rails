@@ -120,9 +120,11 @@ nodes:
       public_verifier: bin/release-check
   M6:
     depends_on: [M5.4]
-    creates_commands: []
+    creates_commands: [bin/verify-release-evidence, bin/milestone-local-gate, bin/prepare-release-artifact]
     artifact:
       version: 0.2.0.rc1
+      development_version: 0.2.0.rc1.dev
+      contract_path: docs/public_api/0.2.0.md
       distribution: public_if_pre4_published
       verifier: bin/package-smoke
       public_verifier: bin/release-check
@@ -131,14 +133,17 @@ nodes:
     creates_commands: []
     artifact:
       version: 0.2.0.rc2
+      development_version: 0.2.0.rc2.dev
+      contract_path: docs/public_api/0.2.0.md
       distribution: public_if_pre4_published
       verifier: bin/package-smoke
       public_verifier: bin/release-check
   M8:
     depends_on: [M7]
-    creates_commands: []
+    creates_commands: [bin/verify-release-matrix, bin/validate-release-evidence-draft, bin/final-local-gates]
     artifact:
       version: 0.2.0
+      contract_path: docs/public_api/0.2.0.md
       distribution: public_required
       verifier: bin/package-smoke
       public_verifier: bin/release-check

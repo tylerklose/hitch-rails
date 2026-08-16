@@ -30,7 +30,7 @@ class Hitch::DoctorTaskTest < ActiveSupport::TestCase
     assert_empty error_output
     assert_match(/\AHitch doctor v1: WARNING\n/, output)
     Doctor::CHECK_IDS.each { |id| assert_match(/\b#{Regexp.escape(id)}\b/, output) }
-    assert_includes output, "memory_nonproduction"
+    assert_includes output, "unshared"
     assert_includes output, "present_noncanonical"
   end
 
@@ -90,6 +90,7 @@ class Hitch::DoctorTaskTest < ActiveSupport::TestCase
       configuration.mcp.server_info = ->(_context) { { name: "hitch-dummy", version: "0.2.0" } }
       configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
       configuration.mcp.request_limit = { to: 120, within: 60 }
+      configuration.mcp.rate_limit_store = ActiveSupport::Cache::MemoryStore.new
     end
   end
 

@@ -1,0 +1,29 @@
+{
+  "schema": "hitch.m8-final-local-gates.v1",
+  "milestone": "M8",
+  "status": "<string:accepted>",
+  "verified_at": "<timestamp:generated verification time>",
+  "candidate": {
+    "version": "<string:0.2.0>",
+    "artifact": "<string:hitch-rails-0.2.0.gem>",
+    "sha256": "<sha256:final candidate gem>",
+    "source_commit": "<commit:final candidate commit>",
+    "source_tree": "<commit:final candidate tree>",
+    "clean_worktree": true
+  },
+  "gates": {
+    "full_ci": { "argv": [["bin/ci"]], "status": "<string:passed>", "exit_statuses": [0], "started_at": "<timestamp:gate start>", "completed_at": "<timestamp:gate completion>", "command_output_sha256s": ["<sha256:bin/ci output>"], "structured_report_sha256s": [], "output_sha256": "<sha256:derived output manifest>" },
+    "conformance": { "argv": [["bin/conformance-auth", "--profile", "metadata"], ["bin/conformance-auth", "--profile", "resource-aware-grants"], ["bin/conformance-server"]], "status": "<string:passed>", "exit_statuses": [0, 0, 0], "started_at": "<timestamp:gate start>", "completed_at": "<timestamp:gate completion>", "command_output_sha256s": ["<sha256:metadata output>", "<sha256:resource-aware grants output>", "<sha256:server output>"], "structured_report_sha256s": [], "output_sha256": "<sha256:derived output manifest>" },
+    "package_apps": { "argv": [["bin/package-apps"]], "status": "<string:passed>", "exit_statuses": [0], "started_at": "<timestamp:gate start>", "completed_at": "<timestamp:gate completion>", "command_output_sha256s": ["<sha256:package app output>"], "structured_report_sha256s": ["<sha256:candidate-bound package report>"], "output_sha256": "<sha256:derived output manifest>" },
+    "automated_clients": { "argv": [["bin/client-smokes", "--automated"]], "status": "<string:passed>", "exit_statuses": [0], "started_at": "<timestamp:gate start>", "completed_at": "<timestamp:gate completion>", "command_output_sha256s": ["<sha256:automated client output>"], "structured_report_sha256s": ["<sha256:candidate-bound automated-client report>"], "output_sha256": "<sha256:derived output manifest>" },
+    "mutation_mcp": { "argv": [["bin/mutation-mcp"]], "status": "<string:passed>", "exit_statuses": [0], "started_at": "<timestamp:gate start>", "completed_at": "<timestamp:gate completion>", "command_output_sha256s": ["<sha256:mutation output>"], "structured_report_sha256s": [], "output_sha256": "<sha256:derived output manifest>" },
+    "documentation": { "argv": [["bin/contract"]], "status": "<string:passed>", "exit_statuses": [0], "started_at": "<timestamp:gate start>", "completed_at": "<timestamp:gate completion>", "command_output_sha256s": ["<sha256:contract output>"], "structured_report_sha256s": [], "output_sha256": "<sha256:derived output manifest>" }
+  },
+  "redaction": {
+    "contains_credentials": false,
+    "contains_private_logs": false,
+    "contains_customer_data": false,
+    "contains_private_repository_paths": false,
+    "raw_outputs_retained": false
+  }
+}

@@ -2,6 +2,7 @@
 
 require "hitch/version"
 require "hitch/rack_form_guard"
+require "hitch/rate_limit_store"
 require "hitch/engine"
 require "hitch/resource_uri"
 require "hitch/pkce"
@@ -24,13 +25,13 @@ require "hitch/dynamic_registration_rate_limit"
 # channel independently validates and caps output, preserves only explicit safe
 # Result.error messages, and reports sanitized failure wrappers through Rails.
 # Authenticated discovery, listing, and calls share one HMAC principal/client
-# fixed window backed by an atomic Redis Lua operation in production; store
-# ambiguity fails closed before protocol or host work.
+# fixed window counted in the host application's own ActiveSupport::Cache
+# store; production refuses a store that cannot count across processes at boot.
 # Exactly-once request and post-schema invocation notifications expose only
 # frozen structural fields; subscriber and SDK callback failures cannot expose
 # request data or alter protocol responses.
 # The read-only doctor reports stable operator findings for configuration,
-# discovery, routes, schema, Registry, ingress, Redis, package contents, and
+# discovery, routes, schema, Registry, ingress, admission store, package contents, and
 # deprecated endpoint residue without repairing host state.
 #
 # Spec reference: https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization
@@ -58,9 +59,7 @@ module Hitch
 
     # Reset configuration (useful in tests).
     def reset_configuration!
-      @configuration&.mcp&.__send__(:shutdown_rate_store!)
       @configuration = nil
-      Hitch::DynamicRegistrationRateLimit.reset_nonproduction_store!
     end
   end
 end

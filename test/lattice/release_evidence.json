@@ -1,0 +1,98 @@
+{
+  "model_name": "hitch_0_2_release_evidence",
+  "_intent_notes": [
+    "Exhaustive state model for the 0.2.0 train from prerelease preflight through downloaded public bytes.",
+    "Every accepted state is downstream of its prerequisites: M6, M7, product clients, hosted matrix plus local gates, final check, publication authority, then downloaded gem.",
+    "Final publication authority is a separate exact-candidate decision, not a field inferred from a green final check.",
+    "The model covers lifecycle ordering only. M5.4 resolved the active train to deferred_to_final; direct adversarial tests cover identity, report reuse, generated local gates, and authority semantics."
+  ],
+  "strength": 9,
+  "parameters": [
+    {
+      "name": "requested_gate",
+      "values": ["pre4_preflight", "rc1_preflight", "rc2_preflight", "final_readiness", "final_preflight", "final_complete"]
+    },
+    {
+      "name": "m6_evidence",
+      "values": ["absent", "accepted"]
+    },
+    {
+      "name": "m7_evidence",
+      "values": ["absent", "accepted"]
+    },
+    {
+      "name": "product_client_evidence",
+      "values": ["absent", "accepted"]
+    },
+    {
+      "name": "hosted_matrix_evidence",
+      "values": ["absent", "accepted"]
+    },
+    {
+      "name": "final_local_gates_evidence",
+      "values": ["absent", "accepted"]
+    },
+    {
+      "name": "final_check_evidence",
+      "values": ["absent", "accepted"]
+    },
+    {
+      "name": "publication_authority",
+      "values": ["absent", "accepted"]
+    },
+    {
+      "name": "downloaded_gem_evidence",
+      "values": ["absent", "accepted"]
+    }
+  ],
+  "constraints": [
+    {
+      "type": "invalid_pair",
+      "_why": "Independent adoption is downstream of copied-lineage adoption.",
+      "if": { "parameter": "m6_evidence", "value": "absent" },
+      "then_not": { "parameter": "m7_evidence", "value": "accepted" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "Product-client evidence is downstream of independent adoption.",
+      "if": { "parameter": "m7_evidence", "value": "absent" },
+      "then_not": { "parameter": "product_client_evidence", "value": "accepted" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "Hosted matrix evidence uses the product-approved final candidate.",
+      "if": { "parameter": "product_client_evidence", "value": "absent" },
+      "then_not": { "parameter": "hosted_matrix_evidence", "value": "accepted" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "Final local gates use the product-approved final candidate.",
+      "if": { "parameter": "product_client_evidence", "value": "absent" },
+      "then_not": { "parameter": "final_local_gates_evidence", "value": "accepted" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "The final check binds hosted matrix evidence for the same candidate.",
+      "if": { "parameter": "hosted_matrix_evidence", "value": "absent" },
+      "then_not": { "parameter": "final_check_evidence", "value": "accepted" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "The final check binds generated local gate evidence for the same candidate.",
+      "if": { "parameter": "final_local_gates_evidence", "value": "absent" },
+      "then_not": { "parameter": "final_check_evidence", "value": "accepted" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "Publication authority can approve only an accepted final check.",
+      "if": { "parameter": "final_check_evidence", "value": "absent" },
+      "then_not": { "parameter": "publication_authority", "value": "accepted" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "Downloaded public bytes can exist only after explicit publication authority.",
+      "if": { "parameter": "publication_authority", "value": "absent" },
+      "then_not": { "parameter": "downloaded_gem_evidence", "value": "accepted" }
+    }
+  ]
+}

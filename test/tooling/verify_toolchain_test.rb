@@ -13,7 +13,7 @@ class VerifyToolchainTest < ActiveSupport::TestCase
 
   setup do
     @root = Dir.mktmpdir("hitch-toolchain")
-    %w[ROADMAP.md test/lattice/mcp_tool_authorization.json test/lattice/mcp_tool_authorization_scenarios.json test/lattice/m5_automated_clients.json test/lattice/m5_automated_clients_scenarios.json test/conformance/toolchain.lock.yml test/conformance/expected-failures.yml test/conformance/package.json test/conformance/package-lock.json test/conformance/harness.patch test/checkpoint/automated_clients.rb test/checkpoint/pinned_redis.rb test/clients/typescript/package.json test/clients/typescript/package-lock.json test/clients/typescript/smoke.mjs test/clients/python/requirements.lock test/clients/python/smoke.py].each do |relative_path|
+    %w[ROADMAP.md test/lattice/mcp_tool_authorization.json test/lattice/mcp_tool_authorization_scenarios.json test/lattice/release_evidence.json test/lattice/release_evidence_scenarios.json test/lattice/m5_automated_clients.json test/lattice/m5_automated_clients_scenarios.json test/conformance/toolchain.lock.yml test/conformance/expected-failures.yml test/conformance/package.json test/conformance/package-lock.json test/conformance/harness.patch test/checkpoint/automated_clients.rb test/checkpoint/pinned_redis.rb test/clients/typescript/package.json test/clients/typescript/package-lock.json test/clients/typescript/smoke.mjs test/clients/python/requirements.lock test/clients/python/smoke.py].each do |relative_path|
       destination = File.join(@root, relative_path)
       FileUtils.mkdir_p(File.dirname(destination))
       FileUtils.cp(REPOSITORY_ROOT.join(relative_path), destination)
@@ -35,6 +35,18 @@ class VerifyToolchainTest < ActiveSupport::TestCase
     _stdout, stderr, status = run_verifier
     assert_not status.success?
     assert_includes stderr, "checksum drift for ROADMAP.md"
+  end
+
+  test "rejects release matrix artifact or metadata drift" do
+    File.write(File.join(@root, "test/lattice/release_evidence_scenarios.json"), "{}")
+    mutate_lock do |lock|
+      lock.dig("contract", "release_lattice_scenarios")["expected_rows"] = 59
+    end
+
+    _stdout, stderr, status = run_verifier
+    assert_not status.success?
+    assert_includes stderr, "checksum drift for test/lattice/release_evidence_scenarios.json"
+    assert_includes stderr, "exhaustive strength 9, seed 42, and 60 rows are required"
   end
 
   test "rejects an SDK revision or missing lane" do

@@ -1,0 +1,89 @@
+{
+  "schema": "hitch.m8-hosted-matrix.v1",
+  "milestone": "M8",
+  "status": "<string:accepted>",
+  "verified_at": "<timestamp:verification time>",
+  "approval": {
+    "reviewed_by": "<string:named reviewer>",
+    "role": "<string:release_maintainer>",
+    "status": "<string:approved>",
+    "reviewed_at": "<timestamp:review time>"
+  },
+  "candidate": {
+    "version": "<string:0.2.0>",
+    "artifact": "<string:hitch-rails-0.2.0.gem>",
+    "sha256": "<sha256:final candidate gem>",
+    "source_commit": "<commit:final candidate commit>",
+    "source_tree": "<commit:final candidate tree>"
+  },
+  "provider": {
+    "name": "<string:GitHub Actions>",
+    "repository": "tylerklose/hitch-rails",
+    "head_repository": "tylerklose/hitch-rails",
+    "head_sha": "<commit:GitHub Actions run head SHA>",
+    "event": "<string:push>",
+    "run_id": "<positive-integer:GitHub Actions run id>",
+    "run_attempt": "<positive-integer:GitHub Actions run attempt>",
+    "run_url": "<url:https GitHub Actions run URL>",
+    "conclusion": "<string:success>",
+    "started_at": "<timestamp:run start>",
+    "completed_at": "<timestamp:run completion>",
+    "raw_report_sha256": "<sha256:downloaded provider report>"
+  },
+  "workflow": {
+    "path": "<path:.github/workflows/ci.yml>",
+    "sha256": "<sha256:workflow blob at candidate commit>"
+  },
+  "lanes": [
+    {
+      "name": "rails_7_2_mcp_min_sqlite",
+      "ruby": "3.3",
+      "job_id": "<positive-integer:GitHub Actions job id>",
+      "job_name": "Ruby 3.3 / 7.2 / sqlite3",
+      "job_url": "<url:GitHub Actions job URL>",
+      "run_attempt": "<positive-integer:GitHub Actions run attempt>",
+      "conclusion": "success",
+      "started_at": "<timestamp:job start>",
+      "completed_at": "<timestamp:job completion>"
+    },
+    {
+      "name": "rails_7_2_mcp_latest_postgresql",
+      "ruby": "3.3",
+      "job_id": "<positive-integer:GitHub Actions job id>",
+      "job_name": "Ruby 3.3 / 7.2 / postgresql",
+      "job_url": "<url:GitHub Actions job URL>",
+      "run_attempt": "<positive-integer:GitHub Actions run attempt>",
+      "conclusion": "success",
+      "started_at": "<timestamp:job start>",
+      "completed_at": "<timestamp:job completion>"
+    },
+    {
+      "name": "rails_8_0_mcp_min_postgresql",
+      "ruby": "3.4",
+      "job_id": "<positive-integer:GitHub Actions job id>",
+      "job_name": "Ruby 3.4 / 8.0 / postgresql",
+      "job_url": "<url:GitHub Actions job URL>",
+      "run_attempt": "<positive-integer:GitHub Actions run attempt>",
+      "conclusion": "success",
+      "started_at": "<timestamp:job start>",
+      "completed_at": "<timestamp:job completion>"
+    },
+    {
+      "name": "rails_8_1_mcp_latest_sqlite",
+      "ruby": "4.0",
+      "job_id": "<positive-integer:GitHub Actions job id>",
+      "job_name": "Ruby 4.0 / 8.1 / sqlite3",
+      "job_url": "<url:GitHub Actions job URL>",
+      "run_attempt": "<positive-integer:GitHub Actions run attempt>",
+      "conclusion": "success",
+      "started_at": "<timestamp:job start>",
+      "completed_at": "<timestamp:job completion>"
+    }
+  ],
+  "redaction": {
+    "contains_credentials": false,
+    "contains_private_logs": false,
+    "contains_customer_data": false,
+    "contains_private_repository_paths": false
+  }
+}

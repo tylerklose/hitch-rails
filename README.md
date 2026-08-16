@@ -46,8 +46,8 @@ validated host Registry descriptors. Per-principal registry resolution,
 filtered listing, and deny-default argument policy are active; the closed Result
 channel with schema validation, an exact byte cap, and sanitized failure
 reporting is active too. The production request boundary is active as well: one
-Redis-backed authenticated fixed window spans discovery, listing, and calls for
-each principal/client. Versioned structural request and invocation events are
+authenticated fixed window, counted in the host application's own cache store,
+spans discovery, listing, and calls for each principal/client. Versioned structural request and invocation events are
 active, with HMAC identities and subscriber-failure isolation. Integrated
 mutation/concurrency acceptance is complete for the internal pre.3 checkpoint.
 The accepted internal pre.4 checkpoint adds the Rails MCP installer: it creates
@@ -57,7 +57,7 @@ tools automatically. The explicit tool generator and public integration-test
 helper are active too; generated tools remain unavailable and unregistered
 until the host reviews and opts them in. The read-only `hitch:doctor` task now
 checks the loaded versions, configuration, discovery, route order, migrations,
-Registry, host/origin posture, Redis, package contents, and legacy endpoint
+Registry, host/origin posture, admission store, package contents, and legacy endpoint
 without exposing credentials or mutating application data. The exact built gem
 also passes fresh Rails 7.2/SQLite and Rails 8.1/PostgreSQL installs plus all
 eight official TypeScript/Python SDK 2.0.0 public/confidential OAuth rows.
@@ -73,10 +73,13 @@ failures executable instead of treating a missing fixture as evidence.
 Capability-gated subscription checks remain visible skips, and the caching
 scenario is excluded because it also probes prompts and resources.
 
-That is the current internal-checkpoint boundary. Hitch's direction is to become the
-opinionated Rails framework for providing MCP tools—from OAuth through an
-explicit registry and safe invocation conventions—while the host continues to
-own its business logic and policy. See the [roadmap](ROADMAP.md).
+That is the accepted internal-checkpoint boundary. The checkout now identifies
+itself as the unreleased `0.2.0.rc1.dev` line while M6 adoption work proceeds;
+the sealed `0.2.0.pre.4` source and gem bytes remain unchanged. Hitch's
+direction is to become the opinionated Rails framework for providing MCP
+tools—from OAuth through an explicit registry and safe invocation
+conventions—while the host continues to own its business logic and policy. See
+the [roadmap](ROADMAP.md).
 
 ## Why this gem exists
 
@@ -84,8 +87,8 @@ The official Ruby MCP SDK (the `mcp` gem) ships *client-side* OAuth but no
 server-side auth helpers, and no Ruby/Rails gem packaged the server-side
 OAuth 2.1 + PKCE plumbing an MCP server needs. Hitch fills that gap. It
 now directly depends on `mcp >= 1.1, < 2` and isolates it behind a private
-adapter. The 0.2 runtime also directly bounds `redis >= 5, < 7` for its
-production admission store. Hitch still provides the accepted auth substrate plus optional
+adapter. It declares no Redis dependency: request admission counts through
+whatever `config.cache_store` the application already uses. Hitch still provides the accepted auth substrate plus optional
 legacy response-shaping helpers during the internal 0.2 migration.
 
 It is opinionated about **what** to implement (the [2026-07-28 MCP
@@ -100,9 +103,13 @@ principal IDs use lossless string storage, so host models with integer, UUID,
 or ULID primary keys round-trip on either adapter.
 
 **Runtime:** The internal checkpoints target Ruby `>= 3.3, < 4.1`
-and Rails `>= 7.2, < 8.2`. Its matrix is Ruby 3.3/Rails 7.2/SQLite and Ruby
-4.0/Rails 8.1/PostgreSQL. Other adapters and runtime versions are outside that
-checkpoint contract.
+and Rails `>= 7.2, < 8.2`. The four-lane release matrix is Ruby 3.3/Rails
+7.2/minimum MCP/SQLite, Ruby 3.3/Rails 7.2/latest MCP/PostgreSQL, Ruby
+3.4/Rails 8.0/minimum MCP/PostgreSQL, and Ruby 4.0/Rails 8.1/latest
+MCP/SQLite. The separate fresh-package profiles remain Rails 7.2/SQLite and
+Rails 8.1/PostgreSQL installation smokes; they do not replace the release
+matrix. Other adapters and runtime versions are outside that checkpoint
+contract.
 
 ## Installation
 
@@ -113,7 +120,10 @@ registry, and filtered-listing checkpoint. `0.2.0.pre.3` identifies the verified
 safe-invocation, result, admission, and observation checkpoint. `0.2.0.pre.4`
 identifies the verified built-gem Rails golden path and exact official-client
 matrix. None is tagged or published; public publication is deferred to final
-`0.2.0`. An approved source adopter must pin the accepted checkpoint's
+`0.2.0`. For an approved M6 or M7 adoption, the maintainer stages the accepted
+internal gem outside the repository, transfers it through an authenticated
+private channel, and the host verifies its recorded SHA-256 before local
+installation. A source-only adopter may instead pin the accepted checkpoint's
 full commit SHA rather than a branch or a nonexistent RubyGems version:
 
 ```ruby
@@ -123,8 +133,11 @@ gem "hitch-rails",
   ref: ENV.fetch("HITCH_CHECKPOINT_SHA") # exact 40-character accepted SHA
 ```
 
+The source pin is not M6/M7 installed-byte evidence. Those milestones use
+`bin/prepare-release-artifact --checkpoint VERSION DESTINATION` and record the
+exact installed gem name and SHA-256 in the approved private host report.
+
 ```bash
-export HITCH_MCP_REDIS_URL=redis://127.0.0.1:6379/15
 bundle install
 bin/rails generate hitch:install       # adds auth initializer + mounts the engine
 bin/rails db:migrate                    # installs the Hitch auth schema
@@ -133,9 +146,10 @@ bin/rails generate hitch:tool echo      # adds a deny-default tool + focused Min
 bin/rails hitch:doctor                  # diagnoses the current host; does not repair it
 ```
 
-The local Redis URL above is an example for the fresh-app sequence. Production
-must inject its own protected fleet-shared URL; see the
-[Redis operator guide](docs/operator/redis.md). Implement and review the Tool,
+Request admission counts through the application's configured cache store, so
+there is nothing to provision if the app already caches. Production refuses a
+store that cannot count across processes; see the
+[request admission guide](docs/operator/rate_limiting.md). Implement and review the Tool,
 then add the generator's one printed `register` line before treating an empty
 Registry warning as resolved.
 
@@ -205,7 +219,8 @@ Hitch.configure do |config|
     principal.account
   }
   config.mcp.request_limit = { to: 120, within: 1.minute }
-  config.mcp.rate_limit_redis_url = ENV["HITCH_MCP_REDIS_URL"]
+  # Optional; defaults to your app's cache store (config.cache_store).
+  # config.mcp.rate_limit_store = ActiveSupport::Cache::RedisCacheStore.new(url: ENV["HITCH_MCP_REDIS_URL"])
   config.mcp.max_request_bytes = 1.megabyte
   config.mcp.max_result_bytes = 1.megabyte
   # Optional:
@@ -328,9 +343,10 @@ cannot replace framework-owned `.call`.
 Auth-only 0.1 adopters that configure no MCP runtime setting keep booting
 unchanged during this staged line. Configuring any MCP runtime setting requires
 the named registry, callable `server_info` and `scope_resolver`, and a positive
-`request_limit` at boot. Production also requires a `redis://` or `rediss://`
-`rate_limit_redis_url`; development and test may use the private in-process
-memory store. The resolver receives the validated principal, access-token
+`request_limit` at boot. Production also requires that the resolved admission
+store can count across processes — `:memory_store`, `:null_store`, and
+`:file_store` are refused. Set `rate_limit_store` only to keep MCP admission
+out of the application's general cache. The resolver receives the validated principal, access-token
 record, and request exactly once and returns one opaque host scope object or
 `nil`.
 
@@ -354,12 +370,18 @@ or unexpected host failure is generic and reports only sanitized structural
 context through `Rails.error`.
 
 Every authenticated `server/discover`, `tools/list`, and `tools/call` request
-shares one fixed-window quota for the validated principal and client. The Redis
+shares one fixed-window quota for the validated principal and client. The store
 key is an HMAC of those stable identifiers, so bearer-token rotation does not
-reset quota and raw identifiers are not stored as keys. Hitch increments and
-assigns first expiry in one Lua call. The exact configured count is admitted;
-the next request receives `429` plus `Retry-After`. Redis nil/errors return
-`503` before body, Registry, SDK, or host work.
+reset quota and raw identifiers are not stored as keys. Hitch calls
+`increment(key, 1, expires_in:)` on the configured store, exactly as
+`ActionController::RateLimiting` does; supported stores set expiry on first
+write only. The exact configured count is admitted; the next request receives
+`429` plus `Retry-After`. Store errors return `503` before body, Registry, SDK,
+or host work.
+
+Counting is approximate at window boundaries under concurrency, which is what a
+rate limit needs to be. See the
+[request admission guide](docs/operator/rate_limiting.md).
 
 Each non-OPTIONS endpoint request emits exactly one `request.hitch_mcp`
 ActiveSupport notification. A registered available tool emits exactly one
@@ -382,13 +404,13 @@ bin/rails hitch:doctor
 HITCH_DOCTOR_FORMAT=json bin/rails hitch:doctor
 ```
 
-The JSON document is identified by `hitch.doctor.v1` and always reports twelve
+The JSON document is identified by `hitch.doctor.v1` and always reports eleven
 ordered categories. Failures exit one after the complete report; warnings do
-not. Auth-only installations skip modern-route, Registry, and Redis checks.
-Development/test without Redis warns about the private in-process store, while an enabled
-production MCP runtime without Redis fails. The Redis probe uses a random
-five-second `hitch:doctor:v1:*` key, deletes it, and never touches Hitch quota
-keys. Doctor never edits configuration, routes, Registry declarations,
+not. Auth-only installations skip modern-route, Registry, and admission-store
+checks. Development and test warn when the store cannot count or is not shared
+across processes; an enabled production MCP runtime fails on either. The probe
+increments a random five-second `hitch:doctor:v1:*` key twice, deletes it, and
+never touches Hitch quota keys. Doctor never edits configuration, routes, Registry declarations,
 migrations, or application data. See the [doctor contract](docs/operator/doctor.md)
 for stable IDs, statuses, codes, and redaction rules.
 
@@ -480,18 +502,24 @@ config.dynamic_client_registration_enabled = false
 config.dynamic_client_registration_limit = { to: 20, within: 1.minute }
 ```
 
-Production DCR also requires `config.dynamic_client_registration_rate_store`.
-The store must be fleet-shared, return `true` from `shared?`, and implement one
-atomic operation:
+The registration quota counts through `config.cache_store`, like MCP request
+admission and Rails' own `rate_limit`. Set
+`config.dynamic_client_registration_rate_store` only to keep registration
+attempts out of the application's general cache; it accepts any
+`ActiveSupport::Cache` store. Production refuses a store that cannot count
+across processes, and because registration is unauthenticated it also refuses
+the request rather than admitting it. Failing stores make registration
+unavailable before request parsing or model work.
 
-```ruby
-increment_with_expiry(key:, expires_in:) # => positive post-increment Integer
-```
-
-That operation must establish expiry on the first increment without a split
-read/write or increment/expiry race. Missing, process-local, malformed, or
-failing stores make registration unavailable before request parsing or model
-work. Development and test use a private in-process fallback.
+The quota is keyed on `request.remote_ip`, so it is only as trustworthy as
+your proxy configuration — the standard Rails `remote_ip` contract, not a
+Hitch-specific knob. A caller who reaches the origin directly, or whose
+`X-Forwarded-For` values pass through proxies Rails trusts (private-range
+proxy addresses are trusted by default), can rotate spoofed values and mint
+a fresh window per request; a proxy Rails does not recognize collapses every
+caller onto its address instead. If you enable registration behind a CDN or
+load balancer, set `config.action_dispatch.trusted_proxies` to exactly your
+proxy addresses and keep the origin unreachable except through them.
 
 Registration accepts only `application/json`, capped at 16 KiB before Rails
 controller instrumentation. Duplicate JSON names, non-object documents,
@@ -610,7 +638,9 @@ scope step-up across both apps. The public API may still change before v1.0.0.
 
 No `hitch-rails` version is available from RubyGems today. The useful
 end-to-end `0.2.0.pre.4` checkpoint was eligible for public distribution, but
-publication was deferred. Final `0.2.0` is the first planned public release.
+publication was deferred. Final `0.2.0` is the first public release. It remains
+unpublished until M8's candidate gates and Tyler Klose's separate publication
+authority are accepted.
 
 Hitch is implemented against the MCP 2026-07-28 authorization profile.
 Conformance evidence distinguishes the unmodified official metadata runner

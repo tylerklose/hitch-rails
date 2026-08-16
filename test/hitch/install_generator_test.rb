@@ -42,8 +42,9 @@ class Hitch::InstallGeneratorTest < Rails::Generators::TestCase
     assert_match(/^\s*config\.allowed_hosts = \[\]$/, generated_initializer)
     assert_match(/^\s*config\.allowed_origins = \[\]$/, generated_initializer)
     assert_match(/^\s*config\.dynamic_client_registration_enabled = false$/, generated_initializer)
-    assert_match(/increment_with_expiry\(key:, expires_in:\)/, generated_initializer)
-    assert_match(/shared\?/, generated_initializer)
+    assert_match(/rate limit counts\n\s*#\s*through config\.cache_store/, generated_initializer,
+                 "enabling DCR must not ask the host to implement a store interface")
+    refute_match(/increment_with_expiry|shared\?/, generated_initializer)
   end
 
   test "it explains the egress requirement, which is why this is not a library default" do

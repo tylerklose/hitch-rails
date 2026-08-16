@@ -1,0 +1,61 @@
+{
+  "schema": "hitch.m8-final-check.v1",
+  "milestone": "M8",
+  "status": "<string:accepted>",
+  "verified_at": "<timestamp:final verification time>",
+  "approvals": {
+    "copied_lineage": "<string:accepted>",
+    "independent": "<string:accepted>",
+    "product_clients": "<string:approved>",
+    "maintainer_review": {
+      "reviewed_by": "<string:named reviewer>",
+      "role": "<string:release_maintainer>",
+      "status": "<string:approved>",
+      "approved_at": "<timestamp:after all prerequisite evidence>"
+    }
+  },
+  "release": {
+    "version": "<string:0.2.0>",
+    "artifact": "<string:hitch-rails-0.2.0.gem>",
+    "sha256": "<sha256:final candidate gem>",
+    "tag": "<string:v0.2.0>",
+    "source_commit": "<commit:final candidate commit>",
+    "source_tree": "<commit:final candidate tree>",
+    "clean_worktree": true
+  },
+  "prerequisites": [
+    {
+      "kind": "<string:indexed predecessor kind>",
+      "path": "<path:indexed predecessor path>",
+      "sha256": "<sha256:indexed predecessor record>"
+    }
+  ],
+  "gates": {
+    "full_ci": { "status": "<string:passed>", "verification": "<string:automated_local>", "command": "<command:bin/ci>", "report_sha256": "<sha256:final-local-gates index record>", "report_kind": "<string:final_local_gates>", "report_gate": "<string:full_ci>" },
+    "all_matrix_lanes": { "status": "<string:passed>", "verification": "<string:operator_reviewed_external>", "command": "<command:reviewed GitHub Actions run>", "report_sha256": "<sha256:hosted-matrix index record>" },
+    "conformance": { "status": "<string:passed>", "verification": "<string:automated_local>", "command": "<command:bin/conformance-auth --profile metadata && bin/conformance-auth --profile resource-aware-grants && bin/conformance-server>", "report_sha256": "<sha256:final-local-gates index record>", "report_kind": "<string:final_local_gates>", "report_gate": "<string:conformance>" },
+    "package_apps": { "status": "<string:passed>", "verification": "<string:automated_local>", "command": "<command:bin/package-apps>", "report_sha256": "<sha256:final-local-gates index record>", "report_kind": "<string:final_local_gates>", "report_gate": "<string:package_apps>" },
+    "automated_clients": { "status": "<string:passed>", "verification": "<string:automated_local>", "command": "<command:bin/client-smokes --automated>", "report_sha256": "<sha256:final-local-gates index record>", "report_kind": "<string:final_local_gates>", "report_gate": "<string:automated_clients>" },
+    "product_clients": { "status": "<string:passed>", "verification": "<string:operator_reviewed_external>", "command": "<command:reviewed product-client runs>", "report_sha256": "<sha256:product-client index record>" },
+    "mutation_mcp": { "status": "<string:passed>", "verification": "<string:automated_local>", "command": "<command:bin/mutation-mcp>", "report_sha256": "<sha256:final-local-gates index record>", "report_kind": "<string:final_local_gates>", "report_gate": "<string:mutation_mcp>" },
+    "copied_adoption": { "status": "<string:passed>", "verification": "<string:operator_reviewed_external>", "command": "<command:reviewed copied adoption>", "report_sha256": "<sha256:copied-lineage index record>" },
+    "independent_adoption": { "status": "<string:passed>", "verification": "<string:operator_reviewed_external>", "command": "<command:reviewed independent adoption>", "report_sha256": "<sha256:independent index record>" },
+    "documentation": { "status": "<string:passed>", "verification": "<string:automated_local>", "command": "<command:bin/contract>", "report_sha256": "<sha256:final-local-gates index record>", "report_kind": "<string:final_local_gates>", "report_gate": "<string:documentation>" }
+  },
+  "routes": { "legacy_routes_absent": true, "dual_route": false },
+  "security": { "owned_controls": true, "unowned_controls": [] },
+  "blockers": [],
+  "conformance": {
+    "unexpected_failures": [],
+    "unexplained_skips": [],
+    "stale_baseline_entries": [],
+    "untestable_capability_probes": ["<string:documented probe id>"],
+    "capability_gated_not_applicable": ["<string:documented capability-gated row>"],
+    "exclusions": {
+      "caching": "unconditionally probes prompts and resources, which Hitch 0.2 does not implement"
+    }
+  },
+  "requirements": { "hidden_database_requirements": [], "hidden_client_requirements": [] },
+  "public_api": { "undocumented_surfaces": [] },
+  "evidence_index": "docs/evidence/0.2.0/index.json"
+}

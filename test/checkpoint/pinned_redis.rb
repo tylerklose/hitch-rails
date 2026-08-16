@@ -54,10 +54,7 @@ module HitchCheckpoint
       @pinned_image = "#{repository}@#{@platform_digest}"
       @container_name = "hitch-checkpoint-redis-#{Process.pid}-#{SecureRandom.hex(4)}"
 
-      capture!(
-        "docker", "pull", "--platform", @platform, @pinned_image,
-        timeout_seconds: 300
-      )
+      resolve_pinned_image!
       @container_id = capture!(
         "docker", "run", "--detach", "--rm",
         "--name", @container_name,
@@ -90,7 +87,8 @@ module HitchCheckpoint
         "index_digest" => @index_digest,
         "platform" => @platform,
         "platform_digest" => @platform_digest,
-        "pulled_reference" => @pinned_image,
+        "resolved_reference" => @pinned_image,
+        "resolution" => @image_resolution,
         "server_version" => @server_version,
         "gem_requirement" => @redis_lock.fetch("gem_requirement"),
         "gem_version" => Redis::VERSION,
@@ -101,6 +99,7 @@ module HitchCheckpoint
     end
 
     def stop!
+      container_cleanup_complete = @container_name.nil?
       close_failure = begin
         @redis&.close
         nil
@@ -108,26 +107,32 @@ module HitchCheckpoint
         error
       end
 
-      if @container_name && container_exists?
-        begin
-          capture!(
-            "docker", "stop", "--time", "1", @container_name,
-            timeout_seconds: 15
-          )
-        rescue CommandFailed, CommandTimedOut
-          capture!(
-            "docker", "rm", "--force", @container_name,
-            timeout_seconds: 15
-          )
+      if @container_name
+        if container_exists?
+          begin
+            capture!(
+              "docker", "stop", "--time", "1", @container_name,
+              timeout_seconds: 15
+            )
+          rescue CommandFailed, CommandTimedOut
+            capture!(
+              "docker", "rm", "--force", @container_name,
+              timeout_seconds: 15
+            )
+          end
         end
         raise "pinned Redis container survived cleanup" if container_exists?
+
+        container_cleanup_complete = true
       end
       raise close_failure if close_failure
     ensure
       @redis = nil
       @url = nil
-      @container_id = nil
-      @container_name = nil
+      if container_cleanup_complete
+        @container_id = nil
+        @container_name = nil
+      end
     end
 
     private
@@ -140,6 +145,32 @@ module HitchCheckpoint
       else
         raise "unsupported Docker architecture for pinned Redis: #{architecture}"
       end
+    end
+
+    def resolve_pinned_image!
+      if local_pinned_image_matches_platform?
+        @image_resolution = "verified_local_digest"
+        return
+      end
+
+      capture!(
+        "docker", "pull", "--platform", @platform, @pinned_image,
+        timeout_seconds: 300
+      )
+      unless local_pinned_image_matches_platform?
+        raise "pinned Redis image does not match locked platform #{@platform}"
+      end
+
+      @image_resolution = "pulled_exact_digest"
+    end
+
+    def local_pinned_image_matches_platform?
+      capture!(
+        "docker", "image", "inspect", "--format", "{{.Os}}/{{.Architecture}}", @pinned_image,
+        timeout_seconds: 15
+      ).strip == @platform
+    rescue CommandFailed
+      false
     end
 
     def wait_until_ready!
@@ -155,10 +186,12 @@ module HitchCheckpoint
     end
 
     def container_exists?
-      capture!("docker", "inspect", @container_name, timeout_seconds: 15)
-      true
-    rescue CommandFailed
-      false
+      output = capture!(
+        "docker", "container", "ls", "--all", "--quiet",
+        "--filter", "name=^/#{@container_name}$",
+        timeout_seconds: 15
+      )
+      !output.lines.map(&:strip).reject(&:empty?).empty?
     end
 
     def capture!(*command, timeout_seconds:)

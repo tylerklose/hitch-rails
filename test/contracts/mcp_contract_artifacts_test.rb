@@ -152,23 +152,32 @@ class McpContractArtifactsTest < ActiveSupport::TestCase
 
   test "mutation gate owns one exact executable subject map" do
     command = REPOSITORY_ROOT.join("bin/mutation-mcp")
-    coverage = REPOSITORY_ROOT.join("test/mutation/mcp_coverage_test.rb")
-    manifest = load_yaml("test/contracts/mcp_m4_mutation_subjects.yml")
+    coverage_paths = %w[
+      test/mutation/mcp_coverage_test.rb
+      test/mutation/mcp_post_m4_coverage_test.rb
+    ]
+    manifests = %w[
+      test/contracts/mcp_m4_mutation_subjects.yml
+      test/contracts/mcp_post_m4_mutation_subjects.yml
+    ].map { |path| load_yaml(path) }
 
     assert_predicate command, :executable?
-    assert_predicate coverage, :file?
+    coverage_paths.each { |path| assert_predicate REPOSITORY_ROOT.join(path), :file? }
     source = command.read
-    declarations = coverage.read.scan(/cover "([^"]+)"/).flatten.uniq
-    subjects = manifest.fetch("subjects")
+    declarations = coverage_paths.flat_map do |path|
+      REPOSITORY_ROOT.join(path).read.scan(/cover "([^"]+)"/).flatten
+    end.uniq
+    subjects = manifests.flat_map { |manifest| manifest.fetch("subjects") }
     expressions = subjects.map { |subject| subject.fetch("expression") }
     domains = subjects.map { |subject| subject.fetch("domain") }.uniq
 
-    assert_equal 1, manifest.fetch("schema_version")
-    assert_equal 15, expressions.length
+    assert manifests.all? { |manifest| manifest.fetch("schema_version") == 1 }
+    assert_equal 18, expressions.length
     assert_equal expressions.uniq, expressions
-    assert_equal manifest.fetch("required_domains"), domains
+    assert_equal manifests.flat_map { |manifest| manifest.fetch("required_domains") }, domains
     assert_empty expressions - declarations
     assert_includes source, "test/contracts/mcp_m4_mutation_subjects.yml"
+    assert_includes source, "test/contracts/mcp_post_m4_mutation_subjects.yml"
     assert_includes source, '"--usage", "opensource"'
     assert_includes source, '"--mutation-timeout", timeout_seconds.to_s'
     assert_includes source, '"--jobs", jobs.to_s'

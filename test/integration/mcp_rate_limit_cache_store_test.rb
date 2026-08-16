@@ -28,17 +28,29 @@ class MCPRateLimitCacheStoreTest < ActionDispatch::IntegrationTest
       @increments = []
     end
 
-    def increment(name, amount = 1, options = nil)
-      @increments << { name: name, amount: amount, expires_in: options && options[:expires_in] }
+    def increment(name, amount = 1, **options)
+      @increments << { name: name, amount: amount, expires_in: options[:expires_in] }
       super
     end
   end
 
   # A store that cannot count. Admission must fail closed rather than admit.
   class BrokenCacheStore < ActiveSupport::Cache::MemoryStore
-    def increment(*)
+    def increment(*, **)
       raise Errno::ECONNREFUSED, "cache backend unavailable"
     end
+  end
+
+  # The nil that RedisCacheStore and Solid Cache return when their backend is
+  # down (their failsafe swallows the error), and that :null_store always
+  # returns.
+  class OutageNilStore < ActiveSupport::Cache::Store
+    def increment(_name, _amount = 1, **) = nil
+  end
+
+  # A store whose increment returns something no comparison can use.
+  class GarbageCountStore < ActiveSupport::Cache::Store
+    def increment(_name, _amount = 1, **) = "not-a-count"
   end
 
   setup do
@@ -117,6 +129,32 @@ class MCPRateLimitCacheStoreTest < ActionDispatch::IntegrationTest
     assert_nil failed.headers["retry-after"]
     assert_equal 0, input.bytes_read
     assert_equal({ body_parses: 0, registry: 0, sdk: 0, host: 0 }, downstream_metrics)
+  end
+
+  test "a nil count admits authenticated traffic, the posture Rails takes" do
+    configure_runtime(to: 1, within: 60, store: OutageNilStore.new)
+
+    3.times do
+      post_mcp(method: "tools/list", token: @token)
+      assert_response :ok,
+        "a store that cannot count must not reject already-authenticated requests"
+    end
+  end
+
+  test "a store that never overrode increment is 503, not a host 500" do
+    # The base ActiveSupport::Cache::Store#increment raises NotImplementedError,
+    # which is a ScriptError; admission must still degrade to its designed 503.
+    configure_runtime(to: 3, within: 60, store: ActiveSupport::Cache::Store.new)
+
+    post_mcp(method: "tools/list", token: @token)
+    assert_response :service_unavailable
+  end
+
+  test "a non-numeric count is 503" do
+    configure_runtime(to: 3, within: 60, store: GarbageCountStore.new)
+
+    post_mcp(method: "tools/list", token: @token)
+    assert_response :service_unavailable
   end
 
   test "rotating a token does not reset the principal client quota" do

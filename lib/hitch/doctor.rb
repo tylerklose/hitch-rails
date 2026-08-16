@@ -2,7 +2,6 @@
 
 require "json"
 require "rack/mock"
-require "redis"
 require "securerandom"
 require "uri"
 
@@ -18,23 +17,11 @@ module Hitch
       registry
       hosts
       origins
-      redis_connectivity
-      redis_atomicity_expiry
+      rate_limit_store
       package
       legacy_endpoint
     ].freeze
     STATUS_ORDER = { "pass" => 0, "skip" => 1, "warn" => 2, "fail" => 3 }.freeze
-    REDIS_PROBE_LUA = <<~LUA.freeze
-      if redis.call("EXISTS", KEYS[1]) ~= 0 then
-        return { 0, 0, 0, 0 }
-      end
-      local first = redis.call("INCR", KEYS[1])
-      redis.call("PEXPIRE", KEYS[1], ARGV[1])
-      local second = redis.call("INCR", KEYS[1])
-      local ttl = redis.call("PTTL", KEYS[1])
-      local removed = redis.call("DEL", KEYS[1])
-      return { first, second, ttl, removed }
-    LUA
 
     Check = Data.define(:id, :status, :code, :summary, :details) do
       def initialize(id:, status:, code:, summary:, details: {})
@@ -115,10 +102,10 @@ module Hitch
       REQUIRED_PACKAGE_FILES = %w[
         app/controllers/concerns/hitch/mcp/endpoint.rb
         app/models/hitch/mcp/registry.rb
-        app/models/hitch/mcp/redis_rate_store.rb
+        app/models/hitch/mcp/rate_limit_key.rb
         app/models/hitch/mcp/tool.rb
         docs/operator/doctor.md
-        docs/operator/redis.md
+        docs/operator/rate_limiting.md
         docs/public_api/0.2.0.md
         docs/removing.md
         docs/upgrading/0.2.0.md
@@ -147,11 +134,38 @@ module Hitch
         configuration = Hitch.configuration
         configuration.validate!
         if Rails.env.production? && configuration.dynamic_client_registration_enabled
-          Hitch::DynamicRegistrationRateLimit.validate_production_store!(
-            configuration.dynamic_client_registration_rate_store
+          store = configuration.dynamic_client_registration_rate_store
+          Hitch::RateLimitStore.assert_shared!(
+            store, setting: Hitch::DynamicRegistrationRateLimit::SETTING
           )
+          probe_registration_store!(store)
         end
         true
+      end
+
+      # A dedicated-but-unreachable registration store passes the class check
+      # while every production registration 503s; drive it like the admission
+      # probe does. Registration refuses on an uncountable store, so this
+      # mirrors the request path rather than adding a stricter one.
+      def probe_registration_store!(store)
+        key = "hitch:doctor:v1:#{SecureRandom.hex(16)}"
+        count = begin
+          store.increment(key, 1, expires_in: 5)
+        rescue NotImplementedError
+          nil
+        end
+        return true if count.is_a?(Integer)
+
+        raise Hitch::DynamicRegistrationRateLimit::Unavailable,
+          "#{Hitch::DynamicRegistrationRateLimit::SETTING} cannot count registration attempts"
+      ensure
+        begin
+          store&.delete(key)
+        # NotImplementedError included: a raise here would replace the
+        # Unavailable this method exists to report.
+        rescue NotImplementedError, StandardError
+          nil
+        end
       end
 
       def runtime_enabled?
@@ -177,7 +191,8 @@ module Hitch
       end
 
       def route_facts
-        resource_path = URI.parse(Hitch.configuration.resource_uri.to_s).path
+        resource = URI.parse(Hitch.configuration.resource_uri.to_s)
+        resource_path = resource.path
         resource_path = "/" if resource_path.empty?
         routes = Rails.application.routes.routes.to_a
         endpoint_indexes = routes.each_index.select do |index|
@@ -186,6 +201,17 @@ module Hitch
         end
         engine_indexes = routes.each_index.select { |index| hitch_engine_route?(routes.fetch(index)) }
         endpoint_index = endpoint_indexes.one? ? endpoint_indexes.first : nil
+        endpoint_route = routes.fetch(endpoint_index) if endpoint_index
+        expected_target = if endpoint_route
+          {
+            "controller" => endpoint_route.defaults[:controller].to_s,
+            "action" => endpoint_route.defaults[:action].to_s
+          }
+        end
+        recognized_targets = ActionDispatch::Request::HTTP_METHODS.to_h do |http_method|
+          method = http_method.downcase
+          [ method, recognized_route_target(resource.to_s, method) ]
+        end
         predecessors = if endpoint_index
           routes.each_index.select do |index|
             index < endpoint_index && normalized_route_path(routes.fetch(index)) == resource_path
@@ -198,6 +224,8 @@ module Hitch
           "resource_path" => resource_path,
           "endpoint_indexes" => endpoint_indexes,
           "endpoint_all_verbs" => endpoint_index ? routes.fetch(endpoint_index).verb.to_s.empty? : false,
+          "endpoint_reachable" => expected_target && recognized_targets.values.all? { |target| target == expected_target },
+          "recognized_targets" => recognized_targets,
           "same_path_predecessor_indexes" => predecessors,
           "engine_mount_indexes" => engine_indexes,
           "engine_mount_paths" => engine_indexes.map { |index| normalized_route_path(routes.fetch(index)) }
@@ -261,46 +289,32 @@ module Hitch
         }
       end
 
-      def redis_url
-        Hitch.configuration.mcp.rate_limit_redis_url
-      end
-
-      def redis_target
-        uri = URI.parse(redis_url.to_s)
-        host = uri.host.to_s.include?(":") ? "[#{uri.host}]" : uri.host
-        database = uri.path.to_s.match?(%r{\A/[0-9]+\z}) ? uri.path : "/0"
-        "#{uri.scheme}://#{host}:#{uri.port || 6379}#{database}"
-      rescue URI::InvalidURIError
-        "configured Redis"
-      end
-
-      def redis_probe
-        return @redis_probe if defined?(@redis_probe)
-
+      # Drives the real store rather than describing it: two increments on an
+      # isolated key must return 1 then 2, and the key must expire on its own.
+      def rate_limit_store_facts
+        configuration = Hitch.configuration.mcp
+        store = configuration.rate_limit_store
         key = "hitch:doctor:v1:#{SecureRandom.hex(16)}"
-        client = Redis.new(
-          url: redis_url,
-          timeout: 1.0,
-          connect_timeout: 1.0,
-          reconnect_attempts: 0
-        )
-        ping = client.ping
-        response = client.eval(REDIS_PROBE_LUA, [ key ], [ 5_000 ])
-        @redis_probe = {
-          "connected" => ping == "PONG",
-          "atomicity" => response.is_a?(Array) && response.values_at(0, 1, 3) == [ 1, 2, 1 ],
-          "expiry_ms" => response.is_a?(Array) ? response.fetch(2, nil) : nil,
-          "cleanup" => response.is_a?(Array) && response.fetch(3, nil) == 1
+        first = store.increment(key, 1, expires_in: 5)
+        second = store.increment(key, 1, expires_in: 5)
+
+        {
+          "store_class" => store.class.name,
+          "counts" => [ first, second ] == [ 1, 2 ],
+          # Integers and nil verbatim; anything else only by class, so a
+          # broken store cannot put message text into the report.
+          "returned" => [ first, second ].map do |value|
+            value.is_a?(Integer) || value.nil? ? value : value.class.name
+          end,
+          "unshared" => Hitch::RateLimitStore.unshared?(store),
+          "environment" => environment_name
         }
       ensure
         begin
-          client&.del(key)
-        rescue StandardError
-          nil
-        end
-        begin
-          client&.close
-        rescue StandardError
+          store&.delete(key)
+        # NotImplementedError included so a store without delete cannot
+        # replace this probe's own result mid-ensure.
+        rescue NotImplementedError, StandardError
           nil
         end
       end
@@ -390,6 +404,16 @@ module Hitch
         route.path.spec.to_s.sub(/\(\.?:format\)\z/, "").sub("(.:format)", "")
       end
 
+      def recognized_route_target(resource_uri, method)
+        parameters = Rails.application.routes.recognize_path(resource_uri, method: method.to_sym)
+        {
+          "controller" => parameters[:controller].to_s,
+          "action" => parameters[:action].to_s
+        }
+      rescue ActionController::RoutingError, AbstractController::ActionNotFound, NameError
+        nil
+      end
+
       def modern_endpoint_route?(route)
         controller_uses?(route, Hitch::MCP::Endpoint) && route.defaults[:action].to_s == "handle"
       end
@@ -456,8 +480,6 @@ module Hitch
 
     def initialize(system:)
       @system = system
-      @redis_probe = nil
-      @redis_probe_error = nil
     end
 
     def call
@@ -470,8 +492,7 @@ module Hitch
         registry_check,
         hosts_check,
         origins_check,
-        redis_connectivity_check,
-        redis_atomicity_expiry_check,
+        rate_limit_store_check,
         package_check,
         legacy_endpoint_check
       ]
@@ -572,7 +593,7 @@ module Hitch
       return fail_check("route_order", "wrong_verbs", "The modern MCP route must admit the endpoint's full method contract", details) unless
         facts.fetch("endpoint_all_verbs")
       return fail_check("route_order", "shadowed", "A host route shadows the canonical MCP endpoint", details) if
-        facts.fetch("same_path_predecessor_indexes").any?
+        facts.fetch("same_path_predecessor_indexes").any? || !facts.fetch("endpoint_reachable")
       return fail_check("route_order", "after_engine", "The modern MCP route must precede the Hitch engine mount", details) unless
         endpoints.first < mounts.first
 
@@ -636,78 +657,42 @@ module Hitch
       probe_failure("origins", error)
     end
 
-    def redis_connectivity_check
-      return skip("redis_connectivity", "runtime_disabled", "Redis is not applicable while the MCP runtime is disabled") unless
-        system.runtime_enabled?
-      unless system.redis_url
-        return fail_check(
-          "redis_connectivity",
-          "required_missing",
-          "Production MCP runtime requires Redis",
-          "environment" => system.environment_name
-        ) if system.environment_name == "production"
-
-        return warning(
-          "redis_connectivity",
-          "memory_nonproduction",
-          "Nonproduction MCP runtime is using the private in-process rate store",
-          "environment" => system.environment_name
-        )
-      end
-
-      probe = load_redis_probe
-      return pass(
-        "redis_connectivity",
-        "connected",
-        "The isolated Redis diagnostic connected successfully",
-        "target" => system.redis_target
-      ) if probe && probe.fetch("connected")
-
-      fail_check(
-        "redis_connectivity",
-        "unavailable",
-        "The isolated Redis diagnostic could not connect",
-        "target" => system.redis_target,
-        "error_class" => @redis_probe_error&.class&.name
-      )
-    end
-
-    def redis_atomicity_expiry_check
+    def rate_limit_store_check
       return skip(
-        "redis_atomicity_expiry",
+        "rate_limit_store",
         "runtime_disabled",
-        "Redis atomicity is not applicable while the MCP runtime is disabled"
+        "Request admission is not applicable while the MCP runtime is disabled"
       ) unless system.runtime_enabled?
-      return skip(
-        "redis_atomicity_expiry",
-        "redis_not_configured",
-        "Redis atomicity is not applicable without a configured Redis URL"
-      ) unless system.redis_url
 
-      probe = load_redis_probe
-      return skip(
-        "redis_atomicity_expiry",
-        "connectivity_failed",
-        "Redis atomicity was not attempted because connectivity failed"
-      ) unless probe&.fetch("connected")
+      facts = system.rate_limit_store_facts
+      # The code names the defect; the status says how much it matters. Only
+      # production refuses, matching the runtime.
+      report = system.environment_name == "production" ? method(:fail_check) : method(:warning)
 
-      valid_expiry = probe.fetch("expiry_ms").is_a?(Integer) && probe.fetch("expiry_ms").between?(1, 5_000)
-      if probe.fetch("atomicity") && valid_expiry && probe.fetch("cleanup")
-        return pass(
-          "redis_atomicity_expiry",
-          "verified",
-          "An isolated Redis key incremented atomically, had expiry, and was removed",
-          "target" => system.redis_target,
-          "probe_namespace" => "hitch:doctor:v1"
-        )
-      end
+      return report.call(
+        "rate_limit_store",
+        "uncountable",
+        "The configured store cannot count MCP requests",
+        facts
+      ) unless facts.fetch("counts")
 
-      fail_check(
-        "redis_atomicity_expiry",
-        "invalid",
-        "The isolated Redis atomicity, expiry, or cleanup contract failed",
-        "target" => system.redis_target
+      return report.call(
+        "rate_limit_store",
+        "unshared",
+        "The configured store cannot count one principal's requests across processes",
+        facts
+      ) if facts.fetch("unshared")
+
+      pass(
+        "rate_limit_store",
+        "shared",
+        "Request admission counts through a store shared across processes",
+        facts
       )
+    # NotImplementedError (a ScriptError): the base Store#increment raises it
+    # when a store never overrode increment; the report must survive that.
+    rescue NotImplementedError, StandardError => error
+      probe_failure("rate_limit_store", error)
     end
 
     def package_check
@@ -739,15 +724,6 @@ module Hitch
       pass("legacy_endpoint", "absent", "No deprecated ServerEndpoint route remains", facts)
     rescue StandardError => error
       probe_failure("legacy_endpoint", error)
-    end
-
-    def load_redis_probe
-      return @redis_probe if @redis_probe || @redis_probe_error
-
-      @redis_probe = system.redis_probe
-    rescue StandardError => error
-      @redis_probe_error = error
-      nil
     end
 
     def pass(id, code, summary, details = {})

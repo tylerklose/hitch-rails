@@ -1,5 +1,16 @@
 schema_version: 1
 release: 0.2.0
+errata:
+  - id: endpoint_registry_prepare_cycle
+    checkpoint: 0.2.0.pre.4
+    classification: documentation_correction
+    incorrect: Resolves configured registry class by name on each request.
+    corrected: Each request reads the current immutable snapshot; the configured registry is constantized and validated on every Rails prepare cycle.
+    runtime_evidence:
+      - lib/hitch/engine.rb
+      - lib/hitch/mcp/configuration.rb
+      - app/controllers/concerns/hitch/mcp/endpoint.rb
+      - test/hitch/mcp/registry_reload_test.rb
 entries:
   - name: Hitch::MCP::Endpoint
     kind: concern
@@ -8,7 +19,7 @@ entries:
     inputs: Host controller inclusion and one catch-all route.
     outputs: POST JSON MCP responses, OPTIONS preflight, exact non-POST status/headers, and challenges/identity rooted only at canonical resource_uri.
     errors: Boot configuration errors and frozen HTTP/protocol mappings.
-    reload_behavior: Resolves configured registry class by name on each request.
+    reload_behavior: Each request reads the current immutable snapshot; the configured registry is constantized and validated on every Rails prepare cycle.
   - name: Hitch::MCP::Context
     kind: value
     visibility: public
@@ -56,15 +67,23 @@ entries:
     inputs: Mapping with positive to count and within duration.
     outputs: Validated endpoint-wide fixed-window profile.
     errors: Invalid values fail boot.
-    reload_behavior: Revalidated on configuration reload; active Redis windows are not rewritten.
-  - name: Hitch::MCP::Configuration#rate_limit_redis_url=
+    reload_behavior: Revalidated on configuration reload; active windows are not rewritten.
+  - name: Hitch::MCP::Configuration#rate_limit_store=
     kind: method
     visibility: public
     introduced: M4.3
-    inputs: Redis URL String in production; nil permits private memory store only outside production.
+    inputs: An ActiveSupport::Cache store responding to increment, or nil to use config.action_controller.cache_store.
     outputs: Validated store configuration.
-    errors: Missing/invalid production URL fails boot; runtime store error returns 503.
-    reload_behavior: New store connection after configuration reload; HMAC key rotation resets windows.
+    errors: A value that cannot increment fails assignment; a production store that cannot count across processes fails boot; runtime store error returns 503.
+    reload_behavior: Resolved per request from configuration; HMAC key rotation resets windows.
+  - name: Hitch::MCP::Configuration#rate_limit_store
+    kind: method
+    visibility: public
+    introduced: M4.3
+    inputs: None.
+    outputs: The explicitly configured store, or the application's ActionController cache store.
+    errors: None.
+    reload_behavior: Reflects the current configuration and application cache store.
   - name: Hitch::MCP::Configuration#max_request_bytes=
     kind: method
     visibility: public

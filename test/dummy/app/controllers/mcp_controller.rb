@@ -66,12 +66,13 @@ class McpController < ActionController::API
 
   private
 
+  # Returns a running count, matching Hitch::MCP::Endpoint. A nil means the
+  # configured store cannot count, which admits the request.
   def hitch_mcp_admit_authenticated_request(**identity)
     case request.get_header("HTTP_X_HITCH_WIRE_ADMISSION")
-    when "reject" then { retry_after: 60 }
+    when "reject" then Hitch.configuration.mcp.request_limit.fetch(:to) + 1
     when "raise" then raise "wire-admission-secret"
     when "runtime" then super(**identity)
-    else :allow
     end
   end
 

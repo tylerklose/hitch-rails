@@ -29,7 +29,7 @@ the gem must not silently delete OAuth audit data or principal bindings.
 
 `hitch:doctor` has no repair or uninstall mode. It is safe to use as a final
 read-only inventory before step 5, but its findings do not authorize deletion.
-The isolated Redis diagnostic key is removed by the probe and has a five-second
+The isolated diagnostic key is removed by the probe and has a five-second
 expiry; Hitch's ordinary rate-limit keys expire under their configured windows
 and require no uninstall sweep.
 

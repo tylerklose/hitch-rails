@@ -31,35 +31,22 @@ Hitch.configure do |config|
   # config.principal_method = :current_user
 
   # Accept an https URL as a client_id and fetch the client's metadata
-  # from it — Client ID Metadata Documents, which MCP 2026-07-28 makes a
-  # SHOULD for authorization servers, having deprecated Dynamic Client
-  # Registration. Clients read `client_id_metadata_document_supported`
-  # from your discovery document to decide which to use, so leaving this
-  # off keeps clients from selecting CIMD. DCR is controlled separately below.
-  #
-  # This needs your app to reach arbitrary https hosts on port 443
-  # DIRECTLY. Hitch deliberately ignores http_proxy — honouring it would
-  # reach the destination from the proxy's egress rather than your app's,
-  # which is part of what keeps this from being an SSRF hole. If your
-  # only outbound path is a proxy, or this tier has no outbound internet,
-  # set this to false; otherwise the server advertises support it cannot
-  # deliver, and conformant clients will stop falling back to DCR.
+  # from it — Client ID Metadata Documents, the registration mechanism
+  # MCP 2026-07-28 prefers over DCR. Requires DIRECT outbound https on
+  # port 443 (Hitch deliberately ignores http_proxy); if this tier has no
+  # direct egress, set false so discovery does not advertise support it
+  # cannot deliver. Background in the README's CIMD section. Verify with:
   #
   #   bin/rails 'hitch:cimd:check[https://some-client.example/client.json]'
-  #
-  # exercises the real fetch path against a document you trust, to
-  # confirm egress before you rely on it.
   config.client_id_metadata_enabled = true
 
   # Dynamic Client Registration is unauthenticated and deprecated by the MCP
-  # specification, so new installations do not expose it. If you enable it in
-  # production, also configure a fleet-shared store whose
-  # increment_with_expiry(key:, expires_in:) atomically increments and sets the
-  # first-write expiry, returns the post-increment Integer, and whose shared?
-  # method returns true. Missing or failed stores make registration unavailable.
+  # specification, so new installations do not expose it. Its rate limit counts
+  # through config.cache_store; set the store below only to keep registration
+  # attempts out of the application's general cache.
   config.dynamic_client_registration_enabled = false
   config.dynamic_client_registration_limit = { to: 20, within: 1.minute }
-  # config.dynamic_client_registration_rate_store = MyDcrRateStore.new
+  # config.dynamic_client_registration_rate_store = ActiveSupport::Cache::RedisCacheStore.new(url: ENV["REDIS_URL"])
 
   # Bounds on outbound metadata fetches. Both are per process, so a fleet
   # ceiling is the value times your worker count.

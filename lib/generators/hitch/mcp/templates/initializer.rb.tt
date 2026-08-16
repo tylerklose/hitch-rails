@@ -14,8 +14,11 @@ Hitch.configure do |config|
   config.mcp.scope_resolver = ->(principal:, access_token:, request:) { nil }
 
   config.mcp.request_limit = { to: 120, within: 1.minute }
-  # Production refuses to boot the MCP runtime without this Redis URL.
-  config.mcp.rate_limit_redis_url = ENV["HITCH_MCP_REDIS_URL"]
+  # Admission counts through config.cache_store by default. Set this only to
+  # keep MCP admission out of the application's general cache. Production
+  # refuses a store that cannot count across processes; see
+  # docs/operator/rate_limiting.md.
+  # config.mcp.rate_limit_store = ActiveSupport::Cache::RedisCacheStore.new(url: ENV["HITCH_MCP_REDIS_URL"])
   config.mcp.max_request_bytes = 1.megabyte
   config.mcp.max_result_bytes = 1.megabyte
 end

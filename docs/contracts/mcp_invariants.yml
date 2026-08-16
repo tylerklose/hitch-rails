@@ -109,11 +109,11 @@ invariants:
     mutation: Return exception, validation, registry, scope, or policy detail.
     killing_tests: [test/hitch/mcp/result_test.rb#test_failure_canaries_never_cross_hitch_boundaries]
   - id: INV-MCP-019
-    statement: One Redis Lua operation increments and sets first expiry for the HMAC principal/client fixed-window key; store errors deny with 503.
+    statement: One increment against the host's configured ActiveSupport::Cache store advances the HMAC principal/client fixed-window key and sets expiry on first write only; store errors deny with 503.
     owner_issue: M4.3
-    source_targets: [app/models/hitch/mcp/redis_rate_store.rb, app/models/hitch/mcp/rate_limit_key.rb, app/models/hitch/mcp/request_rate_limiter.rb, app/controllers/concerns/hitch/mcp/endpoint.rb]
-    mutation: Split increment/expiry, use token/raw IDs, reset per method/tool, or allow on error.
-    killing_tests: [test/hitch/mcp/rate_limit_test.rb#test_Redis_store_uses_one_Lua_increment_and_first-expiry_call, test/integration/mcp_rate_limit_cross_process_contract.rb#test_one_Redis_window_is_exact_across_independent_Rails_processes, test/integration/mcp_rate_limit_test.rb#test_Redis_connection_failure_is_503_before_body_registry_SDK_or_host_work]
+    source_targets: [app/models/hitch/mcp/rate_limit_key.rb, app/controllers/concerns/hitch/mcp/endpoint.rb, lib/hitch/mcp/configuration.rb]
+    mutation: Rewrite expiry per increment, use token/raw IDs, reset per method/tool, allow on error, or require a Hitch-owned store.
+    killing_tests: [test/integration/mcp_rate_limit_cache_store_test.rb#test_admission_counts_through_the_host_application_cache_store_by_default, test/integration/mcp_rate_limit_cache_store_test.rb#test_a_cache_store_failure_is_503_before_body_registry_SDK_or_host_work, test/integration/mcp_rate_limit_cross_process_contract.rb#test_one_window_is_exact_across_independent_Rails_processes]
   - id: INV-MCP-020
     statement: request.hitch_mcp fires exactly once for every non-OPTIONS request, including early halts.
     owner_issue: M4.4

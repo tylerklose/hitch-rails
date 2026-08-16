@@ -53,7 +53,7 @@ class Hitch::ConfigurationTest < ActiveSupport::TestCase
     assert_nil Hitch.configuration.mcp.server_info
     assert_nil Hitch.configuration.mcp.scope_resolver
     assert_nil Hitch.configuration.mcp.request_limit
-    assert_nil Hitch.configuration.mcp.rate_limit_redis_url
+    assert_same ActionController::Base.cache_store, Hitch.configuration.mcp.rate_limit_store
   end
 
   test "MCP request limit normalizes a copied whole-second fixed window" do
@@ -83,37 +83,39 @@ class Hitch::ConfigurationTest < ActiveSupport::TestCase
     end
   end
 
-  test "MCP Redis URL accepts copied Redis URLs and rejects ambiguous endpoints" do
-    source = +"rediss://user:password@redis.example.test:6380/2?timeout=1"
-    Hitch.configuration.mcp.rate_limit_redis_url = source
-    source.replace("redis://attacker.example.test/0")
+  test "MCP rate limit store accepts any cache store and rejects one that cannot count" do
+    store = ActiveSupport::Cache::MemoryStore.new
+    Hitch.configuration.mcp.rate_limit_store = store
 
-    assert_equal "rediss://user:password@redis.example.test:6380/2?timeout=1",
-      Hitch.configuration.mcp.rate_limit_redis_url
-    assert_predicate Hitch.configuration.mcp.rate_limit_redis_url, :frozen?
+    assert_same store, Hitch.configuration.mcp.rate_limit_store
 
-    [ "", "http://redis.example.test", "redis:/missing-host", "redis://redis.example.test/db",
-      "redis://redis.example.test/0#fragment", "redis://redis.example.test/0 bad" ].each do |value|
-      assert_raises(ArgumentError, value) do
-        Hitch.configuration.mcp.rate_limit_redis_url = value
+    [ Object.new, "redis://redis.example.test/0", 42 ].each do |value|
+      assert_raises(ArgumentError, value.inspect) do
+        Hitch.configuration.mcp.rate_limit_store = value
       end
     end
   end
 
-  test "production MCP runtime refuses a missing Redis URL" do
+  test "production MCP runtime refuses a store that cannot count across processes" do
     configuration = Hitch.configuration.mcp
     configuration.registry = "McpToolRegistry"
     configuration.server_info = ->(_context) { { name: "example", version: "1" } }
     configuration.scope_resolver = ->(principal:, access_token:, request:) { principal }
     configuration.request_limit = { to: 10, within: 60 }
+    configuration.rate_limit_store = ActiveSupport::Cache::MemoryStore.new
     production = ActiveSupport::EnvironmentInquirer.new("production")
 
     stub_class_method(Rails, :env, -> { production }) do
-      error = assert_raises(ArgumentError) { configuration.validate! }
-      assert_includes error.message, "rate_limit_redis_url is required in production"
-
-      configuration.rate_limit_redis_url = "redis://redis.example.test/0"
+      # Booting needs no store at all; only the resolved store is constrained.
       assert configuration.validate!
+
+      error = assert_raises(ArgumentError) { configuration.validate_rate_limit_store! }
+      assert_includes error.message, "cannot count one"
+
+      configuration.rate_limit_store = Class.new(ActiveSupport::Cache::Store) do
+        def increment(name, amount = 1, **options) = 1
+      end.new
+      assert configuration.validate_rate_limit_store!
     end
   end
 

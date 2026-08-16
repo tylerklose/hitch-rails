@@ -36,5 +36,8 @@ metadata. Artifact versions are unique. `internal_only` checkpoints name only a
 local package verifier; `public_optional`, `public_if_pre4_published`, and
 `public_required` artifacts also name the public-download verifier. M5.4 must own
 the first public-eligible version and the `published_pre4`/`deferred_to_final`
-decision. M8 owns the required final public release. A later packet may invoke a
+decision. For the 0.2 train, `published_pre4` remains historical schema context:
+the accepted decision is `deferred_to_final`, active M6/M7 templates are
+internal-only, and only final `0.2.0` may enter public preflight. M8 owns the
+required final public release. A later packet may invoke a
 verifier only when its creator is a transitive predecessor.

@@ -1,0 +1,2431 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "date"
+require "json"
+require "optparse"
+require "open3"
+require "pathname"
+require "time"
+require "uri"
+require "yaml"
+require_relative "../tooling/release_artifact"
+require_relative "../tooling/final_local_gates"
+
+CONTRACT_PATH = "docs/contracts/release_evidence.yml"
+INDEX_PATH = "docs/evidence/0.2.0/index.json"
+RELEASE = "0.2.0"
+VERSIONS = %w[0.2.0.pre.4 0.2.0.rc1 0.2.0.rc2 0.2.0].freeze
+MILESTONES = %w[M6 M7 M8].freeze
+SHA256 = /\A[0-9a-f]{64}\z/
+COMMIT = /\A[0-9a-f]{40}\z/
+
+EXPECTED_ACCEPTED_RECORDS = {
+  "automated_client_smokes" => {
+    "milestone" => "M5.4",
+    "path" => "docs/evidence/0.2.0/clients/automated-smokes.json",
+    "schema" => "hitch.m5.4-automated-client-evidence.v1"
+  },
+  "auth_conformance" => {
+    "milestone" => "M2.3",
+    "path" => "docs/evidence/0.2.0/conformance/auth-extension.json",
+    "schema" => "hitch.m2.3-auth-extension-evidence.v1"
+  },
+  "server_conformance" => {
+    "milestone" => "M2.3",
+    "path" => "docs/evidence/0.2.0/conformance/server-checks.json",
+    "schema" => "hitch.m2.3-server-evidence.v1"
+  },
+  "sdk_handoff" => {
+    "milestone" => "M3.1",
+    "path" => "docs/evidence/0.2.0/context/sdk-handoff.json",
+    "schema" => "hitch.m3.1-context-evidence.v1"
+  },
+  "contract_verification" => {
+    "milestone" => nil,
+    "path" => "docs/evidence/0.2.0/contract/contract-verification.json",
+    "schema" => nil
+  },
+  "document_contract_verification" => {
+    "milestone" => nil,
+    "path" => "docs/evidence/0.2.0/contract/document-contract-verification.json",
+    "schema" => nil
+  },
+  "provenance_verification" => {
+    "milestone" => nil,
+    "path" => "docs/evidence/0.2.0/contract/provenance-verification.json",
+    "schema" => nil
+  },
+  "work_packet_graph" => {
+    "milestone" => nil,
+    "path" => "docs/evidence/0.2.0/contract/work-packet-graph.json",
+    "schema" => nil
+  },
+  "work_packet_verification" => {
+    "milestone" => nil,
+    "path" => "docs/evidence/0.2.0/contract/work-packet-verification.json",
+    "schema" => nil
+  },
+  "mcp_install_generator" => {
+    "milestone" => "M5.1",
+    "path" => "docs/evidence/0.2.0/generators/mcp-install.json",
+    "schema" => "hitch.m5.1-mcp-install-evidence.v1"
+  },
+  "tool_generator" => {
+    "milestone" => "M5.2",
+    "path" => "docs/evidence/0.2.0/generators/tool.json",
+    "schema" => "hitch.m5.2-tool-generator-evidence.v1"
+  },
+  "observation_event_contract" => {
+    "milestone" => "M4.4",
+    "path" => "docs/evidence/0.2.0/observation/event-contract.json",
+    "schema" => "hitch.m4.4-observation-event-contract-evidence.v1"
+  },
+  "doctor_snapshots" => {
+    "milestone" => "M5.3",
+    "path" => "docs/evidence/0.2.0/operator/doctor-snapshots.json",
+    "schema" => "hitch.m5.3-doctor-snapshots-evidence.v1"
+  },
+  "prose_audit" => {
+    "milestone" => "M5.3",
+    "path" => "docs/evidence/0.2.0/operator/prose-audit.json",
+    "schema" => "hitch.m5.3-prose-audit-evidence.v1"
+  },
+  "disposable_package_apps" => {
+    "milestone" => "M5.4",
+    "path" => "docs/evidence/0.2.0/package/disposable-apps.json",
+    "schema" => "hitch.m5.4-package-evidence.v1"
+  },
+  "m4_contract_mutation" => {
+    "milestone" => "M4.5",
+    "path" => "docs/evidence/0.2.0/quality/m4-contract-mutation.json",
+    "schema" => "hitch.m4.5-contract-mutation-evidence.v1"
+  },
+  "registry_listing_isolation" => {
+    "milestone" => "M3.3",
+    "path" => "docs/evidence/0.2.0/registry/listing-isolation.json",
+    "schema" => "hitch.m3.3-listing-isolation-evidence.v1"
+  },
+  "registry_reload_validation" => {
+    "milestone" => "M3.2",
+    "path" => "docs/evidence/0.2.0/registry/reload-validation.json",
+    "schema" => "hitch.m3.2-registry-evidence.v1"
+  },
+  "pre4_publication_decision" => {
+    "milestone" => "M5.4",
+    "path" => "docs/evidence/0.2.0/release/pre4-publication-decision.json",
+    "schema" => "hitch.m5.4-pre4-publication-decision.v1"
+  },
+  "sdk_gap_ledger" => {
+    "milestone" => "M2.1",
+    "path" => "docs/evidence/0.2.0/sdk/gap-ledger.json",
+    "schema" => nil
+  },
+  "authorization_denials" => {
+    "milestone" => "M4.1",
+    "path" => "docs/evidence/0.2.0/tool/authorization-denials.json",
+    "schema" => "hitch.m4.1-authorization-denial-evidence.v1"
+  },
+  "result_normalization" => {
+    "milestone" => "M4.2",
+    "path" => "docs/evidence/0.2.0/tool/result-normalization.json",
+    "schema" => "hitch.m4.2-result-normalization-evidence.v1"
+  },
+  "wire_http_vectors" => {
+    "milestone" => "M2.2",
+    "path" => "docs/evidence/0.2.0/wire/http-vectors.json",
+    "schema" => nil
+  }
+}.freeze
+
+EXPECTED_FUTURE_RECORDS = {
+  # Reopened by the M4.3 erratum: admission moved to the host's own cache store,
+  # so the accepted cross-process record no longer describes the shipped design.
+  "rate_limit_cross_process" => {
+    "milestone" => "M4.3",
+    "path" => "docs/evidence/0.2.0/rate-limit/cross-process.json",
+    "schema" => "hitch.m4.3-rate-limit-cross-process-evidence.v1",
+    "release" => "0.2.0.rc1"
+  },
+  "copied_lineage" => {
+    "milestone" => "M6",
+    "path" => "docs/evidence/0.2.0/adoption/copied-lineage.json",
+    "schema" => "hitch.m6-copied-lineage-adoption.v1",
+    "release" => "0.2.0.rc1"
+  },
+  "independent" => {
+    "milestone" => "M7",
+    "path" => "docs/evidence/0.2.0/adoption/independent.json",
+    "schema" => "hitch.m7-independent-adoption.v1",
+    "release" => "0.2.0.rc2"
+  },
+  "product_clients" => {
+    "milestone" => "M8",
+    "path" => "docs/evidence/0.2.0/clients/product-smokes.json",
+    "schema" => "hitch.m8-product-client-evidence.v1",
+    "release" => RELEASE
+  },
+  "hosted_matrix" => {
+    "milestone" => "M8",
+    "path" => "docs/evidence/0.2.0/release/hosted-matrix.json",
+    "schema" => "hitch.m8-hosted-matrix.v1",
+    "release" => RELEASE
+  },
+  "final_local_gates" => {
+    "milestone" => "M8",
+    "path" => "docs/evidence/0.2.0/release/final-local-gates.json",
+    "schema" => "hitch.m8-final-local-gates.v1",
+    "release" => RELEASE
+  },
+  "final_check" => {
+    "milestone" => "M8",
+    "path" => "docs/evidence/0.2.0/release/final-check.json",
+    "schema" => "hitch.m8-final-check.v1",
+    "release" => RELEASE
+  },
+  "publication_authority" => {
+    "milestone" => "M8",
+    "path" => "docs/evidence/0.2.0/release/final-publication-authority.json",
+    "schema" => "hitch.m8-publication-authority.v1",
+    "release" => RELEASE
+  },
+  "downloaded_gem" => {
+    "milestone" => "M8",
+    "path" => "docs/evidence/0.2.0/release/downloaded-gem.json",
+    "schema" => "hitch.m8-downloaded-gem.v1",
+    "release" => RELEASE
+  }
+}.freeze
+
+EXPECTED_REQUIREMENTS = {
+  "0.2.0.pre.4" => [],
+  "0.2.0.rc1" => %w[copied_lineage],
+  "0.2.0.rc2" => %w[copied_lineage independent],
+  RELEASE => %w[
+    copied_lineage independent product_clients hosted_matrix final_local_gates final_check publication_authority
+  ]
+}.freeze
+EXPECTED_COMPLETION = %w[
+  copied_lineage independent product_clients hosted_matrix final_local_gates final_check publication_authority downloaded_gem
+].freeze
+EXPECTED_READINESS = %w[
+  copied_lineage independent product_clients hosted_matrix final_local_gates final_check
+].freeze
+FINAL_PREREQUISITE_KINDS = (
+  EXPECTED_ACCEPTED_RECORDS.keys +
+    # Reopened by the M4.3 erratum and still required before final 0.2.0.
+    %w[rate_limit_cross_process] +
+    %w[copied_lineage independent product_clients hosted_matrix final_local_gates]
+).sort.freeze
+PREREQUISITE_COMPLETION_AUTHORITIES = {
+  "automated_client_smokes" => %w[automated_client_smokes verified_at],
+  "auth_conformance" => %w[auth_conformance recorded_at],
+  "authorization_denials" => %w[authorization_denials verified_at],
+  "contract_verification" => %w[contract_verification verified_on],
+  "copied_lineage" => %w[copied_lineage verified_at],
+  "disposable_package_apps" => %w[disposable_package_apps verified_at],
+  "doctor_snapshots" => %w[doctor_snapshots verified_at],
+  "document_contract_verification" => %w[document_contract_verification verified_on],
+  "final_local_gates" => %w[final_local_gates verified_at],
+  "hosted_matrix" => %w[hosted_matrix verified_at],
+  "independent" => %w[independent verified_at],
+  "m4_contract_mutation" => %w[m4_contract_mutation verified_at],
+  "mcp_install_generator" => %w[mcp_install_generator verified_at],
+  "observation_event_contract" => %w[observation_event_contract verified_at],
+  "pre4_publication_decision" => %w[pre4_publication_decision recorded_at],
+  "product_clients" => %w[product_clients verified_at],
+  "prose_audit" => %w[prose_audit verified_at],
+  "provenance_verification" => %w[provenance_verification verified_on],
+  "rate_limit_cross_process" => %w[rate_limit_cross_process verified_at],
+  "registry_listing_isolation" => %w[registry_listing_isolation verified_at],
+  "registry_reload_validation" => %w[registry_reload_validation verified_at],
+  "result_normalization" => %w[result_normalization verified_at],
+  "sdk_gap_ledger" => %w[sdk_gap_ledger verified_at],
+  "sdk_handoff" => %w[sdk_handoff verified_at],
+  "server_conformance" => %w[server_conformance recorded_at],
+  "tool_generator" => %w[tool_generator verified_at],
+  "wire_http_vectors" => %w[wire_http_vectors verified_at],
+  "work_packet_graph" => %w[work_packet_verification verified_on],
+  "work_packet_verification" => %w[work_packet_verification verified_on]
+}.freeze
+EXPECTED_PUBLIC_POLICY = {
+  "decision_path" => "docs/evidence/0.2.0/release/pre4-publication-decision.json",
+  "resolved_decision" => "deferred_to_final",
+  "internal_checkpoint_versions" => %w[0.2.0.pre.4 0.2.0.rc1 0.2.0.rc2],
+  "public_versions" => [ RELEASE ]
+}.freeze
+EXPECTED_PROBES = %w[
+  server-stateless:sep-2575-server-rejects-undeclared-capability
+  server-stateless:sep-2575-missing-capability-http-400
+].freeze
+EXPECTED_CAPABILITY_SKIPS = %w[
+  server-stateless:sep-2575-server-sends-subscription-ack
+  server-stateless:sep-2575-server-tags-subscription-id
+  server-stateless:sep-2575-server-honors-notification-filter
+  server-stateless:sep-2575-server-sends-prompts-list-changed-on-subscription
+  server-stateless:sep-2575-server-sends-tools-list-changed-on-subscription
+].freeze
+EXPECTED_EXCLUSIONS = {
+  "caching" => "unconditionally probes prompts and resources, which Hitch 0.2 does not implement"
+}.freeze
+EXPECTED_PRODUCT_CLIENTS = [
+  { "name" => "Codex CLI", "version" => "0.146.0-alpha.3.1" },
+  { "name" => "Claude Code", "version" => "2.1.220" }
+].freeze
+EXPECTED_PRODUCT_CHECKS = {
+  "oauth_pkce_s256" => "passed",
+  "resource_discovery" => "passed",
+  "tools_list" => "passed",
+  "tools_call" => "passed",
+  "scope_step_up" => "passed"
+}.freeze
+HOSTED_REPOSITORY = "tylerklose/hitch-rails"
+PUBLIC_API_PATH = "docs/contracts/mcp_public_api.yml"
+VERSION_PATH = "lib/hitch/version.rb"
+FRAMEWORK_SOURCE_PATHS = %w[app config db lib hitch-rails.gemspec].freeze
+VERSION_TRANSITIONS = {
+  "M6" => [ "0.2.0.pre.4", "0.2.0.rc1" ],
+  "M7" => [ "0.2.0.rc1", "0.2.0.rc2" ],
+  "M8" => [ "0.2.0.rc2", RELEASE ]
+}.freeze
+VERSION_ASSIGNMENT = /^(?<prefix>[ \t]*VERSION[ \t]*=[ \t]*)(?<quote>["'])(?<version>[^"'\r\n]+)\k<quote>(?<suffix>[ \t]*(?:#.*)?\r?)$/.freeze
+OUTPUT_RERUN_FIELDS = %w[
+  status host command source_commit source_tree artifact_sha256 verified_at report_sha256
+].freeze
+M6_PUBLIC_API_ERRATUM = {
+  "id" => "endpoint_registry_prepare_cycle",
+  "checkpoint" => "0.2.0.pre.4",
+  "classification" => "documentation_correction",
+  "incorrect" => "Resolves configured registry class by name on each request.",
+  "corrected" => "Each request reads the current immutable snapshot; the configured registry is constantized and validated on every Rails prepare cycle.",
+  "runtime_evidence" => %w[
+    lib/hitch/engine.rb
+    lib/hitch/mcp/configuration.rb
+    app/controllers/concerns/hitch/mcp/endpoint.rb
+    test/hitch/mcp/registry_reload_test.rb
+  ]
+}.freeze
+M6_BENCHMARK_RUNS = 5
+M6_BENCHMARK_REQUESTS_PER_RUN = 1_000
+EXPECTED_FINAL_LOCAL_GATE_COMMANDS = HitchFinalLocalGates::COMMANDS
+MILESTONE_APPROVAL_SCOPES = {
+  "M6" => "adopt Hitch in approved copied-lineage host and deploy",
+  "M7" => "adopt Hitch in approved independent host and deploy"
+}.freeze
+MILESTONE_LOCAL_GATES = {
+  "M6" => {
+    "package_smoke" => { "command" => "bin/package-smoke", "structured_report" => true }
+  },
+  "M7" => {
+    "mutation_mcp" => { "command" => "bin/mutation-mcp", "structured_report" => false }
+  }
+}.freeze
+MILESTONE_LOCAL_GATE_SCHEMA = "hitch.milestone-local-gate.v1"
+
+Options = Data.define(:root, :mode, :value)
+
+def usage!(message = nil)
+  warn message if message
+  warn "Usage: bin/verify-release-evidence [--root PATH] [--through M6|M7|M8 | --ready-for-authority 0.2.0 | --preflight VERSION | --complete 0.2.0]"
+  exit 64
+end
+
+def parse_options(argv)
+  root = File.expand_path("..", __dir__)
+  selections = []
+  parser = OptionParser.new do |options|
+    options.on("--root PATH", "Repository root") { |path| root = File.expand_path(path) }
+    options.on("--through MILESTONE", "Require evidence through a milestone") do |milestone|
+      selections << [ :through, milestone ]
+    end
+    options.on("--preflight VERSION", "Require public preflight evidence") do |version|
+      selections << [ :preflight, version ]
+    end
+    options.on("--ready-for-authority VERSION", "Require the exact final candidate before publication authority") do |version|
+      selections << [ :ready_for_authority, version ]
+    end
+    options.on("--complete VERSION", "Require post-publication reconciliation") do |version|
+      selections << [ :complete, version ]
+    end
+  end
+  parser.parse!(argv)
+  usage!("Unexpected arguments: #{argv.join(' ')}") unless argv.empty?
+  usage!("Choose only one evidence gate") if selections.length > 1
+
+  mode, value = selections.fetch(0, [ :current, nil ])
+  usage!("MILESTONE must be one of #{MILESTONES.join(', ')}") if mode == :through && !MILESTONES.include?(value)
+  usage!("VERSION must be one of #{VERSIONS.join(', ')}") if mode == :preflight && !VERSIONS.include?(value)
+  usage!("--ready-for-authority supports only #{RELEASE}") if mode == :ready_for_authority && value != RELEASE
+  usage!("--complete supports only #{RELEASE}") if mode == :complete && value != RELEASE
+  Options.new(root:, mode:, value:)
+rescue OptionParser::ParseError => error
+  usage!(error.message)
+end
+
+class ReleaseEvidenceVerifier
+  attr_reader :errors
+
+  def initialize(options, artifact_authenticator: HitchReleaseArtifact.method(:rebuild!))
+    @root = options.root
+    @mode = options.mode
+    @value = options.value
+    @errors = []
+    @evidence = {}
+    @indexed = {}
+    @artifact_authenticator = artifact_authenticator
+  end
+
+  def verify
+    @contract = load_yaml(CONTRACT_PATH)
+    validate_contract
+    @index = load_json(INDEX_PATH)
+    validate_index
+    validate_policy_decision
+    validate_future_evidence
+    validate_order
+    validate_requested_gate
+    errors.uniq
+  end
+
+  def summary
+    accepted = @indexed.values.count { |record| record["status"] == "accepted" }
+    pending = @indexed.values.count { |record| record["status"] == "pending" }
+    case @mode
+    when :current
+      "Validated release evidence ledger: #{accepted} accepted, #{pending} pending; M6-M8 remain fail-closed."
+    when :through
+      "Validated repository evidence through #{@value}."
+    when :preflight
+      "Validated #{@value} public-release preflight against the human-reviewed repository trust root."
+    when :ready_for_authority
+      release = @evidence.fetch("final_check").fetch("release")
+      final_record = @indexed.fetch("final_check")
+      "Validated #{@value} ready for publication-authority review: " \
+        "#{release.fetch('artifact')} sha256=#{release.fetch('sha256')} " \
+        "commit=#{release.fetch('source_commit')} tree=#{release.fetch('source_tree')}; " \
+        "#{final_record.fetch('path')} sha256=#{final_record.fetch('sha256')}."
+    when :complete
+      "Validated recorded #{@value} post-publication evidence; " \
+        "run bin/release-check --complete #{@value} for live tag and RubyGems reconciliation."
+    end
+  end
+
+  private
+
+  def absolute(relative_path)
+    File.join(@root, relative_path)
+  end
+
+  def load_yaml(relative_path)
+    path = absolute(relative_path)
+    unless File.file?(path)
+      errors << "missing #{relative_path}"
+      return {}
+    end
+
+    value = YAML.safe_load_file(path, permitted_classes: [], aliases: false)
+    return value if value.is_a?(Hash)
+
+    errors << "#{relative_path} must contain an object"
+    {}
+  rescue Psych::Exception => error
+    errors << "#{relative_path}: invalid YAML: #{error.message}"
+    {}
+  end
+
+  def load_json(relative_path)
+    path = absolute(relative_path)
+    unless File.file?(path)
+      errors << "missing #{relative_path}"
+      return nil
+    end
+    errors << "#{relative_path} must be a regular file, not a symlink" if File.symlink?(path)
+
+    JSON.parse(File.read(path), allow_duplicate_key: false)
+  rescue JSON::ParserError => error
+    errors << "#{relative_path}: invalid JSON: #{error.message}"
+    nil
+  end
+
+  def exact_object(value, label, keys)
+    unless value.is_a?(Hash)
+      errors << "#{label} must be an object"
+      return {}
+    end
+
+    errors << "#{label} fields must be exactly #{keys.join(', ')}" unless value.keys.sort == keys.sort
+    value
+  end
+
+  def exact_array(value, label)
+    return value if value.is_a?(Array)
+
+    errors << "#{label} must be an array"
+    []
+  end
+
+  def nonempty_string?(value)
+    value.is_a?(String) && !value.empty?
+  end
+
+  def iso8601?(value)
+    return false unless value.is_a?(String)
+
+    Time.iso8601(value)
+    true
+  rescue ArgumentError
+    false
+  end
+
+  def parsed_time(value)
+    Time.iso8601(value) if value.is_a?(String)
+  rescue ArgumentError
+    nil
+  end
+
+  def parsed_prerequisite_completion(field, value)
+    case field
+    when "verified_at"
+      parsed_time(value)
+    when "recorded_at"
+      parsed_time(value) || parsed_date_end(value)
+    when "verified_on"
+      parsed_date_end(value)
+    end
+  end
+
+  def parsed_date_end(value)
+    return unless value.is_a?(String) && value.match?(/\A\d{4}-\d{2}-\d{2}\z/)
+
+    date = Date.iso8601(value)
+    Time.utc(date.year, date.month, date.day, 23, 59, 59)
+  rescue Date::Error
+    nil
+  end
+
+  def require_not_before(later, earlier, label)
+    later_time = parsed_time(later)
+    earlier_time = parsed_time(earlier)
+    return unless later_time && earlier_time
+
+    errors << "#{label} is out of order" if later_time < earlier_time
+  end
+
+  def relative_json_path?(value)
+    return false unless value.is_a?(String) && value.start_with?("docs/evidence/0.2.0/") && value.end_with?(".json")
+
+    path = Pathname.new(value)
+    !path.absolute? && path.cleanpath.to_s == value && !path.each_filename.include?("..")
+  end
+
+  def validate_contract
+    contract = exact_object(
+      @contract,
+      "release evidence contract",
+      %w[schema_version release index accepted_records future_records requirements readiness completion public_policy]
+    )
+    return if contract.empty?
+
+    errors << "release evidence contract schema must be 1" unless contract["schema_version"] == 1
+    errors << "release evidence contract must describe #{RELEASE}" unless contract["release"] == RELEASE
+    errors << "final prerequisite completion authority map drifted" unless
+      PREREQUISITE_COMPLETION_AUTHORITIES.keys.sort == FINAL_PREREQUISITE_KINDS
+    index = exact_object(contract["index"], "release evidence contract index", %w[path schema])
+    errors << "release evidence index path must be #{INDEX_PATH}" unless index["path"] == INDEX_PATH
+    errors << "release evidence index schema drifted" unless index["schema"] == "hitch.release-evidence-index.v1"
+    errors << "accepted release evidence contract drifted" unless
+      contract["accepted_records"] == EXPECTED_ACCEPTED_RECORDS
+    errors << "future release evidence contract drifted" unless
+      contract["future_records"] == EXPECTED_FUTURE_RECORDS
+    errors << "release evidence requirements drifted" unless contract["requirements"] == EXPECTED_REQUIREMENTS
+    errors << "release evidence readiness set drifted" unless contract["readiness"] == EXPECTED_READINESS
+    errors << "release evidence completion set drifted" unless contract["completion"] == EXPECTED_COMPLETION
+    errors << "release evidence public policy drifted" unless contract["public_policy"] == EXPECTED_PUBLIC_POLICY
+  end
+
+  def validate_index
+    index = exact_object(@index, "release evidence index", %w[schema release contract records])
+    return if index.empty?
+
+    errors << "release evidence index schema drifted" unless index["schema"] == "hitch.release-evidence-index.v1"
+    errors << "release evidence index must identify #{RELEASE}" unless index["release"] == RELEASE
+    contract = exact_object(index["contract"], "release evidence index contract", %w[path schema_version sha256])
+    errors << "indexed contract path must be #{CONTRACT_PATH}" unless contract["path"] == CONTRACT_PATH
+    errors << "indexed contract schema must be 1" unless contract["schema_version"] == 1
+    expected_contract_sha = File.file?(absolute(CONTRACT_PATH)) ? Digest::SHA256.file(absolute(CONTRACT_PATH)).hexdigest : nil
+    errors << "indexed release evidence contract SHA-256 drifted" unless contract["sha256"] == expected_contract_sha
+
+    records = exact_array(index["records"], "release evidence index records")
+    records.each_with_index { |record, offset| validate_index_record(record, offset + 1) }
+    validate_index_uniqueness(records)
+    validate_index_completeness(records)
+    validate_accepted_index_records
+    validate_future_index_records
+  end
+
+  def validate_index_record(value, position)
+    record = exact_object(
+      value,
+      "release evidence index record #{position}",
+      %w[milestone kind path schema status sha256]
+    )
+    return if record.empty?
+
+    kind = record["kind"]
+    path = record["path"]
+    errors << "release evidence index record #{position} needs a nonempty kind" unless nonempty_string?(kind)
+    errors << "release evidence index record #{position} has an unsafe path" unless relative_json_path?(path) && path != INDEX_PATH
+    errors << "release evidence index record #{position} milestone must be a string or null" unless
+      record["milestone"].nil? || nonempty_string?(record["milestone"])
+    errors << "release evidence index record #{position} schema must be a string or null" unless
+      record["schema"].nil? || nonempty_string?(record["schema"])
+    errors << "release evidence index record #{position} status must be accepted or pending" unless
+      %w[accepted pending].include?(record["status"])
+    return unless nonempty_string?(kind)
+
+    @indexed[kind] = record unless @indexed.key?(kind)
+    validate_indexed_file(record)
+  end
+
+  def validate_indexed_file(record)
+    path = record["path"]
+    return unless relative_json_path?(path)
+
+    case record["status"]
+    when "accepted"
+      errors << "accepted evidence #{path} needs a SHA-256 pin" unless record["sha256"].is_a?(String) && SHA256.match?(record["sha256"])
+      evidence = load_json(path)
+      return unless evidence
+
+      digest = Digest::SHA256.file(absolute(path)).hexdigest
+      errors << "accepted evidence #{path} SHA-256 drifted" unless record["sha256"] == digest
+      errors << "accepted evidence #{path} must contain an object" unless evidence.is_a?(Hash)
+      if evidence.is_a?(Hash)
+        errors << "accepted evidence #{path} schema drifted" if record["schema"] && evidence["schema"] != record["schema"]
+        errors << "accepted evidence #{path} milestone drifted" if record["milestone"] && evidence["milestone"] != record["milestone"]
+        @evidence[record["kind"]] = evidence
+      end
+    when "pending"
+      errors << "pending evidence #{path} must have a null SHA-256" unless record.key?("sha256") && record["sha256"].nil?
+      errors << "pending evidence #{path} must be absent until it is accepted" if File.exist?(absolute(path))
+    end
+  end
+
+  def validate_index_uniqueness(records)
+    %w[kind path].each do |field|
+      duplicates = records.filter_map { |record| record[field] if record.is_a?(Hash) }
+        .tally.select { |_value, count| count > 1 }.keys
+      errors << "release evidence index has duplicate #{field}: #{duplicates.join(', ')}" if duplicates.any?
+    end
+  end
+
+  def validate_index_completeness(records)
+    indexed_paths = records.filter_map { |record| record["path"] if record.is_a?(Hash) && relative_json_path?(record["path"]) }
+    actual_paths = Dir.glob(absolute("docs/evidence/0.2.0/**/*.json")).filter_map do |path|
+      relative = Pathname.new(path).relative_path_from(Pathname.new(@root)).to_s
+      relative unless relative == INDEX_PATH
+    end
+    unindexed = actual_paths - indexed_paths
+    errors << "release evidence files are not indexed: #{unindexed.sort.join(', ')}" if unindexed.any?
+  end
+
+  def validate_future_index_records
+    EXPECTED_FUTURE_RECORDS.each do |kind, contract|
+      record = @indexed[kind]
+      unless record
+        errors << "release evidence index is missing future record #{kind}"
+        next
+      end
+      errors << "release evidence index future record #{kind} drifted" unless
+        record.values_at("milestone", "path", "schema") == contract.values_at("milestone", "path", "schema")
+    end
+  end
+
+  def validate_accepted_index_records
+    EXPECTED_ACCEPTED_RECORDS.each do |kind, contract|
+      record = @indexed[kind]
+      unless record
+        errors << "release evidence index is missing accepted record #{kind}"
+        next
+      end
+      errors << "release evidence index accepted record #{kind} drifted" unless
+        record.values_at("milestone", "path", "schema", "status") ==
+          [ *contract.values_at("milestone", "path", "schema"), "accepted" ]
+    end
+    validate_work_packet_graph_completion_authority
+  end
+
+  def validate_work_packet_graph_completion_authority
+    graph_record = @indexed["work_packet_graph"] || {}
+    verification = @evidence["work_packet_verification"] || {}
+    graph_binding = verification["graph"]
+    valid = graph_binding.is_a?(Hash) &&
+      graph_binding["path"] == graph_record["path"] &&
+      graph_binding["sha256"] == graph_record["sha256"]
+    return if valid
+
+    errors <<
+      "work_packet_graph completion authority must bind its accepted path and SHA-256"
+  end
+
+  def validate_policy_decision
+    path = EXPECTED_PUBLIC_POLICY.fetch("decision_path")
+    decision = @evidence["pre4_publication_decision"] || load_json(path)
+    return unless decision.is_a?(Hash)
+
+    @decision = decision
+    errors << "M5.4 decision schema drifted" unless decision["schema"] == "hitch.m5.4-pre4-publication-decision.v1"
+    errors << "M5.4 decision milestone drifted" unless decision["milestone"] == "M5.4"
+    errors << "M5.4 decision must remain the resolved deferred_to_final decision" unless
+      decision["decision"] == EXPECTED_PUBLIC_POLICY.fetch("resolved_decision")
+    checkpoint = exact_object(decision["checkpoint"], "M5.4 checkpoint", %w[status version source artifact])
+    artifact = exact_object(checkpoint["artifact"], "M5.4 checkpoint artifact", %w[name sha256])
+    errors << "M5.4 checkpoint version drifted" unless checkpoint["version"] == "0.2.0.pre.4"
+    errors << "M5.4 checkpoint artifact name drifted" unless artifact["name"] == "hitch-rails-0.2.0.pre.4.gem"
+    errors << "M5.4 checkpoint artifact needs a SHA-256 pin" unless artifact["sha256"].is_a?(String) && SHA256.match?(artifact["sha256"])
+    input = exact_object(decision["m6_input"], "M5.4 M6 input", %w[kind artifact sha256])
+    errors << "M5.4 M6 input kind drifted" unless input["kind"] == "accepted_internal_artifact"
+    errors << "M5.4 M6 input must match the accepted checkpoint bytes" unless
+      input["artifact"] == artifact["name"] && input["sha256"] == artifact["sha256"]
+  end
+
+  def validate_future_evidence
+    validate_m6(@evidence["copied_lineage"]) if @evidence["copied_lineage"]
+    validate_m7(@evidence["independent"]) if @evidence["independent"]
+    validate_product_clients(@evidence["product_clients"]) if @evidence["product_clients"]
+    validate_hosted_matrix(@evidence["hosted_matrix"]) if @evidence["hosted_matrix"]
+    validate_final_local_gates(@evidence["final_local_gates"]) if @evidence["final_local_gates"]
+    validate_final_check(@evidence["final_check"]) if @evidence["final_check"]
+    validate_publication_authority(@evidence["publication_authority"]) if @evidence["publication_authority"]
+    validate_downloaded_gem(@evidence["downloaded_gem"]) if @evidence["downloaded_gem"]
+  end
+
+  def validate_base_evidence(value, kind, keys, status: "accepted")
+    expected = EXPECTED_FUTURE_RECORDS.fetch(kind)
+    evidence = exact_object(value, "#{kind} evidence", keys)
+    errors << "#{kind} evidence schema drifted" unless evidence["schema"] == expected.fetch("schema")
+    errors << "#{kind} evidence milestone drifted" unless evidence["milestone"] == expected.fetch("milestone")
+    errors << "#{kind} evidence status must be #{status}" unless evidence["status"] == status
+    errors << "#{kind} evidence needs an ISO-8601 verified_at" unless iso8601?(evidence["verified_at"])
+    evidence
+  end
+
+  def validate_approval(value, label)
+    approval = exact_object(
+      value,
+      "#{label} approval",
+      %w[
+        authority status approved_at repository_access deployment_access
+        host_identity_sha256 input_artifact_sha256 scope
+      ]
+    )
+    errors << "#{label} approval authority must be Tyler Klose" unless approval["authority"] == "Tyler Klose"
+    errors << "#{label} approval must be approved" unless approval["status"] == "approved"
+    errors << "#{label} approval needs an ISO-8601 approved_at" unless iso8601?(approval["approved_at"])
+    errors << "#{label} approval must grant repository access" unless approval["repository_access"] == true
+    errors << "#{label} approval must grant deployment access" unless approval["deployment_access"] == true
+    errors << "#{label} approval needs an approved host identity" unless
+      approval["host_identity_sha256"].is_a?(String) && SHA256.match?(approval["host_identity_sha256"])
+    errors << "#{label} approval needs the approved input artifact" unless
+      approval["input_artifact_sha256"].is_a?(String) && SHA256.match?(approval["input_artifact_sha256"])
+    errors << "#{label} approval scope drifted" unless approval["scope"] == MILESTONE_APPROVAL_SCOPES.fetch(label)
+    approval
+  end
+
+  def validate_host(value, label)
+    host = exact_object(
+      value,
+      "#{label} host",
+      %w[
+        name identity_sha256 commit tree clean_worktree installed_artifact
+        installed_artifact_sha256 private_report_sha256
+      ]
+    )
+    errors << "#{label} host needs a name" unless nonempty_string?(host["name"])
+    errors << "#{label} host needs an approval-bound identity" unless
+      host["identity_sha256"].is_a?(String) && SHA256.match?(host["identity_sha256"])
+    errors << "#{label} host commit must be 40-hex" unless host["commit"].is_a?(String) && COMMIT.match?(host["commit"])
+    errors << "#{label} host tree must be 40-hex" unless host["tree"].is_a?(String) && COMMIT.match?(host["tree"])
+    errors << "#{label} host must record a clean worktree" unless host["clean_worktree"] == true
+    errors << "#{label} host needs the installed artifact name" unless nonempty_string?(host["installed_artifact"])
+    errors << "#{label} installed artifact needs a SHA-256 pin" unless
+      host["installed_artifact_sha256"].is_a?(String) && SHA256.match?(host["installed_artifact_sha256"])
+    errors << "#{label} private report needs a SHA-256 pin" unless
+      host["private_report_sha256"].is_a?(String) && SHA256.match?(host["private_report_sha256"])
+    host
+  end
+
+  def normalized_host_name(value)
+    value.to_s.downcase.gsub(/[^a-z0-9]+/, " ").strip
+  end
+
+  def validate_route(value, label, requires_sdk_upgrade: false)
+    fields = %w[preview canonical_path cutover legacy_dispatch_removed dual_route rollback]
+    fields << "sdk_upgraded_behind_legacy_endpoint" if requires_sdk_upgrade
+    route = exact_object(
+      value,
+      "#{label} route",
+      fields
+    )
+    errors << "#{label} preview must pass" unless route["preview"] == "passed"
+    errors << "#{label} canonical route must be /mcp" unless route["canonical_path"] == "/mcp"
+    errors << "#{label} cutover must be atomic" unless route["cutover"] == "atomic"
+    errors << "#{label} must remove legacy dispatch" unless route["legacy_dispatch_removed"] == true
+    errors << "#{label} must not retain a dual route" unless route["dual_route"] == false
+    errors << "#{label} rollback must be verified" unless route["rollback"] == "verified"
+    if requires_sdk_upgrade
+      errors << "#{label} must upgrade the SDK behind the legacy endpoint before Hitch cutover" unless
+        route["sdk_upgraded_behind_legacy_endpoint"] == true
+    end
+  end
+
+  def validate_redaction(value, label)
+    redaction = exact_object(
+      value,
+      "#{label} redaction",
+      %w[contains_credentials contains_private_logs contains_customer_data contains_private_repository_paths]
+    )
+    redaction.each do |field, setting|
+      errors << "#{label} redaction #{field} must be false" unless setting == false
+    end
+  end
+
+  def validate_local_gate_redaction(value)
+    redaction = exact_object(
+      value,
+      "M8 final local gates redaction",
+      %w[contains_credentials contains_private_logs contains_customer_data contains_private_repository_paths raw_outputs_retained]
+    )
+    %w[contains_credentials contains_private_logs contains_customer_data contains_private_repository_paths].each do |field|
+      errors << "M8 final local gates redaction #{field} must be false" unless redaction[field] == false
+    end
+    errors << "M8 final local gates must not retain raw command output" unless redaction["raw_outputs_retained"] == false
+  end
+
+  def validate_friction_items(value, label)
+    exact_array(value, "#{label} friction items").each_with_index do |item, offset|
+      item = exact_object(item, "#{label} friction item #{offset + 1}", %w[description disposition framework_test])
+      errors << "#{label} friction item #{offset + 1} needs a description" unless nonempty_string?(item["description"])
+      errors << "#{label} friction item #{offset + 1} has an unsupported disposition" unless
+        %w[host_specific framework_change documented_limitation].include?(item["disposition"])
+      if item["disposition"] == "framework_change"
+        path = item["framework_test"]
+        valid_path = path.is_a?(String) && path.start_with?("test/") && Pathname.new(path).cleanpath.to_s == path
+        errors << "#{label} framework friction needs an existing Hitch test" unless valid_path && File.file?(absolute(path))
+      else
+        errors << "#{label} non-framework friction must have a null framework_test" unless item["framework_test"].nil?
+      end
+    end
+  end
+
+  def validate_checkpoint(value, label, version)
+    checkpoint = exact_object(
+      value,
+      "#{label} checkpoint",
+      %w[version status source_commit source_tree artifact sha256]
+    )
+    errors << "#{label} checkpoint version must be #{version}" unless checkpoint["version"] == version
+    errors << "#{label} checkpoint status drifted" unless
+      %w[accepted_internal_checkpoint accepted_public_checkpoint].include?(checkpoint["status"])
+    if @decision&.fetch("decision", nil) == "deferred_to_final" &&
+        checkpoint["status"] != "accepted_internal_checkpoint"
+      errors << "#{label} checkpoint must remain internal after the M5.4 publication deferral"
+    end
+    errors << "#{label} checkpoint source commit must be 40-hex" unless
+      checkpoint["source_commit"].is_a?(String) && COMMIT.match?(checkpoint["source_commit"])
+    errors << "#{label} checkpoint source tree must be 40-hex" unless
+      checkpoint["source_tree"].is_a?(String) && COMMIT.match?(checkpoint["source_tree"])
+    errors << "#{label} checkpoint artifact name drifted" unless checkpoint["artifact"] == "hitch-rails-#{version}.gem"
+    errors << "#{label} checkpoint needs a SHA-256 pin" unless
+      checkpoint["sha256"].is_a?(String) && SHA256.match?(checkpoint["sha256"])
+    validate_source_bound_artifact(checkpoint, "#{label} checkpoint", version)
+    checkpoint
+  end
+
+  def validate_source_bound_artifact(value, label, version)
+    commit = value["source_commit"]
+    tree = value["source_tree"]
+    sha256 = value["sha256"]
+    return unless commit.is_a?(String) && COMMIT.match?(commit)
+    return unless tree.is_a?(String) && COMMIT.match?(tree)
+    return unless sha256.is_a?(String) && SHA256.match?(sha256)
+
+    Dir.mktmpdir("hitch-release-evidence-artifact-") do |destination|
+      @artifact_authenticator.call(
+        root: @root,
+        commit:,
+        version:,
+        destination:,
+        expected_tree: tree,
+        expected_sha256: sha256
+      )
+    end
+  rescue HitchReleaseArtifact::VerificationError => error
+    errors << "#{label} artifact proof failed: #{error.message}"
+  end
+
+  def validate_m6(value)
+    evidence = validate_base_evidence(
+      value,
+      "copied_lineage",
+      %w[schema milestone status verified_at approval provenance input host route parity benchmark friction gates checkpoint redaction]
+    )
+    approval = validate_approval(evidence["approval"], "M6")
+    provenance = exact_object(
+      evidence["provenance"],
+      "M6 provenance",
+      %w[class host basis substitution_approved target_is_skillit skillit_repository_changed]
+    )
+    errors << "M6 provenance must be copied_lineage" unless provenance["class"] == "copied_lineage"
+    errors << "M6 provenance needs a named host" unless nonempty_string?(provenance["host"])
+    errors << "M6 provenance basis drifted" unless %w[skillit_root approved_lineage_substitute].include?(provenance["basis"])
+    expected_substitution = provenance["basis"] == "approved_lineage_substitute"
+    errors << "M6 substitution approval does not match its provenance basis" unless
+      provenance["substitution_approved"] == expected_substitution
+    errors << "M6 may not target Skillit" unless provenance["target_is_skillit"] == false
+    errors << "M6 may not change the Skillit repository" unless provenance["skillit_repository_changed"] == false
+
+    input = exact_object(evidence["input"], "M6 input", %w[version kind artifact sha256])
+    checkpoint_artifact = @decision&.dig("checkpoint", "artifact") || {}
+    expected_kind = @decision&.dig("m6_input", "kind")
+    errors << "M6 input version must be 0.2.0.pre.4" unless input["version"] == "0.2.0.pre.4"
+    errors << "M6 input kind must match the M5.4 decision" unless input["kind"] == expected_kind
+    errors << "M6 input must use the exact accepted pre4 bytes" unless
+      input["artifact"] == checkpoint_artifact["name"] && input["sha256"] == checkpoint_artifact["sha256"]
+
+    host = validate_host(evidence["host"], "M6")
+    errors << "M6 provenance and host identity differ" unless provenance["host"] == host["name"]
+    errors << "M6 host identity contradicts the non-Skillit declaration" if
+      normalized_host_name(host["name"]).include?("skillit")
+    errors << "M6 approval does not bind the adopted host" unless
+      approval["host_identity_sha256"] == host["identity_sha256"]
+    errors << "M6 approval does not bind the installed input artifact" unless
+      approval["input_artifact_sha256"] == input["sha256"]
+    errors << "M6 host did not install the accepted input artifact" unless
+      host["installed_artifact"] == input["artifact"] && host["installed_artifact_sha256"] == input["sha256"]
+    validate_route(evidence["route"], "M6", requires_sdk_upgrade: true)
+    validate_m6_parity(evidence["parity"])
+    validate_m6_benchmark(evidence["benchmark"])
+    friction = exact_object(
+      evidence["friction"],
+      "M6 friction",
+      %w[items public_api framework_changed framework_change_proofs output_rerun]
+    )
+    checkpoint = validate_checkpoint(evidence["checkpoint"], "M6", "0.2.0.rc1")
+    validate_evidence_gates(
+      evidence["gates"],
+      "M6",
+      %w[sdk_upgrade host_ci mcp_smoke isolation doctor package_smoke],
+      external: %w[sdk_upgrade host_ci mcp_smoke isolation doctor],
+      external_report_sha256: host["private_report_sha256"],
+      milestone_local: MILESTONE_LOCAL_GATES.fetch("M6"),
+      checkpoint:,
+      approval_at: approval["approved_at"],
+      evidence_verified_at: evidence["verified_at"]
+    )
+    validate_m6_public_api(friction["public_api"], checkpoint)
+    validate_m6_friction(
+      friction,
+      checkpoint,
+      host:,
+      evidence_verified_at: evidence["verified_at"],
+      approval_at: evidence.dig("approval", "approved_at")
+    )
+    validate_redaction(evidence["redaction"], "M6")
+  end
+
+  def validate_m6_friction(friction, checkpoint, host:, evidence_verified_at:, approval_at:)
+    items = validate_friction_items(friction["items"], "M6")
+    framework_tests = framework_test_paths(items)
+    input_commit = @decision&.dig("checkpoint", "source", "commit")
+    changed_paths = meaningful_framework_paths(
+      input_commit,
+      checkpoint["source_commit"],
+      "M6 source delta",
+      transition: VERSION_TRANSITIONS.fetch("M6")
+    )
+    framework_changed = changed_paths.any?
+    validate_framework_change_declaration(
+      friction,
+      "M6",
+      framework_tests:,
+      framework_changed:
+    )
+    validate_framework_proofs(
+      friction["framework_change_proofs"],
+      framework_tests,
+      checkpoint,
+      milestone: "M6",
+      input_commit:
+    )
+    validate_output_rerun(
+      friction["output_rerun"],
+      label: "M6 output rerun",
+      required: framework_changed,
+      host: host["name"],
+      checkpoint:,
+      evidence_verified_at:,
+      approval_at:,
+      forbidden_report_sha256s: [ host["private_report_sha256"] ]
+    )
+  end
+
+  def validate_m6_public_api(value, checkpoint)
+    proof = exact_object(
+      value,
+      "M6 public API proof",
+      %w[
+        path input_source_commit input_sha256 checkpoint_source_commit checkpoint_sha256
+        unchanged documentation_errata
+      ]
+    )
+    path = "docs/contracts/mcp_public_api.yml"
+    input_commit = @decision&.dig("checkpoint", "source", "commit")
+    errors << "M6 public API proof path drifted" unless proof["path"] == path
+    errors << "M6 public API input commit must match the accepted pre4 source" unless
+      proof["input_source_commit"] == input_commit
+    errors << "M6 public API checkpoint commit must match the RC1 source" unless
+      proof["checkpoint_source_commit"] == checkpoint["source_commit"]
+    %w[input_sha256 checkpoint_sha256].each do |field|
+      errors << "M6 public API proof #{field} needs a SHA-256 pin" unless
+        proof[field].is_a?(String) && SHA256.match?(proof[field])
+    end
+    input_sha = git_file_sha(input_commit, path, "accepted pre4 public API")
+    checkpoint_sha = git_file_sha(checkpoint["source_commit"], path, "RC1 public API")
+    errors << "M6 public API input SHA differs from the accepted pre4 source" unless proof["input_sha256"] == input_sha
+    errors << "M6 public API checkpoint SHA differs from the RC1 source" unless proof["checkpoint_sha256"] == checkpoint_sha
+    if input_sha && checkpoint_sha && input_sha == checkpoint_sha
+      errors << "M6 unchanged public API proof must be truthful" unless
+        proof["unchanged"] == true && proof["documentation_errata"] == []
+    else
+      errors << "M6 public API change must be the one approved documentation erratum" unless
+        proof["unchanged"] == false &&
+          proof["documentation_errata"] == [ M6_PUBLIC_API_ERRATUM.fetch("id") ] &&
+          approved_m6_public_api_erratum?(input_commit, checkpoint["source_commit"], path)
+    end
+  end
+
+  def approved_m6_public_api_erratum?(input_commit, checkpoint_commit, path)
+    input = git_yaml(input_commit, path)
+    checkpoint = git_yaml(checkpoint_commit, path)
+    return false unless input.is_a?(Hash) && checkpoint.is_a?(Hash)
+    return false unless input["errata"].nil? && checkpoint["errata"] == [ M6_PUBLIC_API_ERRATUM ]
+
+    normalized = JSON.parse(JSON.generate(checkpoint))
+    normalized.delete("errata")
+    endpoint = Array(normalized["entries"]).find { |entry| entry["name"] == "Hitch::MCP::Endpoint" }
+    return false unless endpoint && endpoint["reload_behavior"] == M6_PUBLIC_API_ERRATUM.fetch("corrected")
+
+    endpoint["reload_behavior"] = M6_PUBLIC_API_ERRATUM.fetch("incorrect")
+    normalized == input
+  end
+
+  def git_yaml(commit, path)
+    return unless commit.is_a?(String) && COMMIT.match?(commit)
+
+    bytes, status = Open3.capture2e("git", "show", "#{commit}:#{path}", chdir: @root)
+    return unless status.success?
+
+    YAML.safe_load(bytes, permitted_classes: [], aliases: false)
+  rescue SystemCallError, Psych::Exception
+    nil
+  end
+
+  def git_file_contents(commit, path, label)
+    unless commit.is_a?(String) && COMMIT.match?(commit)
+      errors << "#{label} commit must be 40-hex"
+      return nil
+    end
+
+    bytes, status = Open3.capture2e("git", "show", "#{commit}:#{path}", chdir: @root)
+    unless status.success?
+      errors << "#{label} is absent from its recorded source"
+      return nil
+    end
+    bytes
+  rescue SystemCallError => error
+    errors << "#{label} could not be read: #{error.class}"
+    nil
+  end
+
+  def git_file_sha(commit, path, label)
+    bytes = git_file_contents(commit, path, label)
+    Digest::SHA256.hexdigest(bytes) if bytes
+  end
+
+  def validate_m6_parity(value)
+    parity = exact_object(
+      value,
+      "M6 parity",
+      %w[tool_names schemas authentication audit_meaning business_policy_imported migration_evidence_sha256]
+    )
+    fields = %w[tool_names schemas authentication audit_meaning]
+    fields.each do |field|
+      errors << "M6 parity #{field} must be preserved or a documented migration" unless
+        %w[preserved documented_migration].include?(parity[field])
+    end
+    errors << "M6 must not import host business policy" unless parity["business_policy_imported"] == false
+    migration = fields.any? { |field| parity[field] == "documented_migration" }
+    if migration
+      errors << "M6 documented migration needs a SHA-256 evidence pin" unless
+        parity["migration_evidence_sha256"].is_a?(String) && SHA256.match?(parity["migration_evidence_sha256"])
+    else
+      errors << "M6 preserved parity must have a null migration evidence SHA" unless parity["migration_evidence_sha256"].nil?
+    end
+  end
+
+  def validate_m6_benchmark(value)
+    benchmark = exact_object(
+      value,
+      "M6 benchmark",
+      %w[same_host same_data warmed concurrency runs operations]
+    )
+    %w[same_host same_data warmed].each do |field|
+      errors << "M6 benchmark #{field} must be true" unless benchmark[field] == true
+    end
+    errors << "M6 benchmark concurrency must be 16" unless benchmark["concurrency"] == 16
+    errors << "M6 benchmark must run five times" unless benchmark["runs"] == M6_BENCHMARK_RUNS
+    operations = exact_array(benchmark["operations"], "M6 benchmark operations")
+    errors << "M6 benchmark operations must be tools/list and tools/call" unless
+      operations.filter_map { |operation| operation["name"] if operation.is_a?(Hash) } == %w[tools/list tools/call]
+    operations.each { |operation| validate_m6_benchmark_operation(operation) }
+  end
+
+  def validate_m6_benchmark_operation(value)
+    operation = exact_object(
+      value,
+      "M6 benchmark operation",
+      %w[
+        name old_runs new_runs old_median_p95_ms new_median_p95_ms regression_percent
+        accepted_performance_issue accepted_issue
+      ]
+    )
+    name = operation["name"]
+    old_run_p95s = validate_m6_benchmark_runs(operation["old_runs"], "M6 benchmark #{name} old")
+    new_run_p95s = validate_m6_benchmark_runs(operation["new_runs"], "M6 benchmark #{name} new")
+    old_p95 = operation["old_median_p95_ms"]
+    new_p95 = operation["new_median_p95_ms"]
+    unless old_p95.is_a?(Numeric) && old_p95.positive? && new_p95.is_a?(Numeric) && new_p95.positive?
+      errors << "M6 benchmark #{name} median p95 values must be positive numbers"
+      return
+    end
+    errors << "M6 benchmark #{name} old median p95 drifted from its five runs" unless
+      old_run_p95s.length == M6_BENCHMARK_RUNS && old_p95 == median(old_run_p95s)
+    errors << "M6 benchmark #{name} new median p95 drifted from its five runs" unless
+      new_run_p95s.length == M6_BENCHMARK_RUNS && new_p95 == median(new_run_p95s)
+    calculated = ((new_p95 - old_p95) / old_p95.to_f) * 100
+    recorded = operation["regression_percent"]
+    errors << "M6 benchmark #{name} regression arithmetic drifted" unless
+      recorded.is_a?(Numeric) && (recorded - calculated).abs <= 0.1
+    accepted_issue = operation["accepted_performance_issue"] == true
+    if calculated > 15
+      errors << "M6 benchmark #{name} regression exceeds 15% without an accepted issue" unless
+        accepted_issue && nonempty_string?(operation["accepted_issue"])
+    else
+      errors << "M6 benchmark #{name} must not claim an accepted issue below the threshold" unless
+        operation["accepted_performance_issue"] == false && operation["accepted_issue"].nil?
+    end
+  end
+
+  def validate_m6_benchmark_runs(value, label)
+    runs = exact_array(value, "#{label} runs")
+    errors << "#{label} must contain exactly five runs" unless runs.length == M6_BENCHMARK_RUNS
+    runs.each_with_index.filter_map do |value, offset|
+      position = offset + 1
+      run = exact_object(value, "#{label} run #{position}", %w[requests errors p95_ms])
+      errors << "#{label} run #{position} must execute 1,000 requests" unless
+        run["requests"] == M6_BENCHMARK_REQUESTS_PER_RUN
+      errors << "#{label} run #{position} must have zero errors" unless run["errors"] == 0
+      p95 = run["p95_ms"]
+      errors << "#{label} run #{position} p95 must be a positive number" unless
+        p95.is_a?(Numeric) && p95.positive?
+      p95 if p95.is_a?(Numeric) && p95.positive?
+    end
+  end
+
+  def median(values)
+    values.sort.fetch(values.length / 2)
+  end
+
+  def validate_evidence_gates(
+    value,
+    label,
+    fields,
+    external: [],
+    external_report_sha256: nil,
+    linked_evidence: {},
+    local_bundle_kind: nil,
+    milestone_local: {},
+    checkpoint: nil,
+    approval_at: nil,
+    evidence_verified_at: nil
+  )
+    gates = exact_object(value, "#{label} gates", fields)
+    fields.each do |field|
+      local_bundle_gate = local_bundle_kind && !external.include?(field)
+      milestone_local_gate = milestone_local[field]
+      gate_fields = %w[status verification command report_sha256]
+      gate_fields += %w[report_kind report_gate] if local_bundle_gate
+      gate_fields << "report" if milestone_local_gate
+      gate = exact_object(
+        gates[field],
+        "#{label} gate #{field}",
+        gate_fields
+      )
+      errors << "#{label} gate #{field} must pass" unless gate["status"] == "passed"
+      expected_verification = external.include?(field) ? "operator_reviewed_external" : "automated_local"
+      errors << "#{label} gate #{field} verification must be #{expected_verification}" unless
+        gate["verification"] == expected_verification
+      errors << "#{label} gate #{field} needs a redacted command" unless nonempty_string?(gate["command"])
+      errors << "#{label} gate #{field} needs a report SHA-256" unless
+        gate["report_sha256"].is_a?(String) && SHA256.match?(gate["report_sha256"])
+      if external.include?(field) && external_report_sha256
+        errors << "#{label} external gate #{field} must bind the private host report" unless
+          gate["report_sha256"] == external_report_sha256
+      end
+      if local_bundle_gate
+        expected_argv = EXPECTED_FINAL_LOCAL_GATE_COMMANDS[field]
+        errors << "#{label} gate #{field} has no fixed local command contract" unless expected_argv
+        errors << "#{label} gate #{field} must bind accepted #{local_bundle_kind} evidence" unless
+          gate["report_sha256"] == @indexed.dig(local_bundle_kind, "sha256")
+        errors << "#{label} gate #{field} report kind must be #{local_bundle_kind}" unless
+          gate["report_kind"] == local_bundle_kind
+        errors << "#{label} gate #{field} report gate drifted" unless gate["report_gate"] == field
+        if expected_argv
+          expected_command = HitchFinalLocalGates.command_label(expected_argv)
+          errors << "#{label} gate #{field} command drifted from the local-gate bundle" unless
+            gate["command"] == expected_command
+        end
+      end
+      if milestone_local_gate
+        validate_milestone_local_gate(
+          gate,
+          label:,
+          field:,
+          contract: milestone_local_gate,
+          checkpoint:,
+          approval_at:,
+          evidence_verified_at:,
+          forbidden_report_sha256: external_report_sha256
+        )
+      end
+      linked_kind = linked_evidence[field]
+      next unless linked_kind
+
+      errors << "#{label} gate #{field} must bind accepted #{linked_kind} evidence" unless
+        gate["report_sha256"] == @indexed.dig(linked_kind, "sha256")
+    end
+  end
+
+  def validate_milestone_local_gate(
+    gate,
+    label:,
+    field:,
+    contract:,
+    checkpoint:,
+    approval_at:,
+    evidence_verified_at:,
+    forbidden_report_sha256:
+  )
+    expected_command = contract.fetch("command")
+    errors << "#{label} gate #{field} command drifted" unless gate["command"] == expected_command
+    report = exact_object(
+      gate["report"],
+      "#{label} gate #{field} report",
+      %w[
+        schema milestone gate status started_at completed_at command candidate
+        command_output_sha256 structured_report_sha256
+      ]
+    )
+    errors << "#{label} gate #{field} report schema drifted" unless
+      report["schema"] == MILESTONE_LOCAL_GATE_SCHEMA
+    errors << "#{label} gate #{field} report milestone drifted" unless report["milestone"] == label
+    errors << "#{label} gate #{field} report gate drifted" unless report["gate"] == field
+    errors << "#{label} gate #{field} report must pass" unless report["status"] == "passed"
+    errors << "#{label} gate #{field} report command drifted" unless report["command"] == expected_command
+    errors << "#{label} gate #{field} report needs an ISO-8601 start" unless iso8601?(report["started_at"])
+    errors << "#{label} gate #{field} report needs an ISO-8601 completion" unless iso8601?(report["completed_at"])
+    require_not_before(report["started_at"], approval_at, "#{label} gate #{field} started before host approval")
+    require_not_before(report["completed_at"], report["started_at"], "#{label} gate #{field} completed before it started")
+    require_not_before(
+      evidence_verified_at,
+      report["completed_at"],
+      "#{label} evidence verified before gate #{field} completed"
+    )
+    errors << "#{label} gate #{field} output needs a SHA-256 pin" unless
+      report["command_output_sha256"].is_a?(String) && SHA256.match?(report["command_output_sha256"])
+    if contract.fetch("structured_report")
+      errors << "#{label} gate #{field} needs the package report SHA-256" unless
+        report["structured_report_sha256"].is_a?(String) && SHA256.match?(report["structured_report_sha256"])
+    else
+      errors << "#{label} gate #{field} must not invent a structured report" unless
+        report["structured_report_sha256"].nil?
+    end
+    candidate = exact_object(
+      report["candidate"],
+      "#{label} gate #{field} report candidate",
+      %w[version artifact sha256 source_commit source_tree clean_worktree]
+    )
+    expected_candidate = checkpoint.to_h.slice(
+      "version", "artifact", "sha256", "source_commit", "source_tree"
+    ).merge("clean_worktree" => true)
+    errors << "#{label} gate #{field} report did not run against the accepted checkpoint" unless
+      candidate == expected_candidate
+    expected_sha256 = Digest::SHA256.hexdigest("#{JSON.pretty_generate(report)}\n")
+    errors << "#{label} gate #{field} report SHA-256 is not derived from its generated report" unless
+      gate["report_sha256"] == expected_sha256
+    errors << "#{label} gate #{field} report must differ from the private host report" if
+      gate["report_sha256"] == forbidden_report_sha256
+  end
+
+  def validate_m7(value)
+    evidence = validate_base_evidence(
+      value,
+      "independent",
+      %w[
+        schema milestone status verified_at approval provenance input host policy_mapping route isolation
+        friction gates checkpoint redaction
+      ]
+    )
+    approval = validate_approval(evidence["approval"], "M7")
+    provenance = exact_object(
+      evidence["provenance"],
+      "M7 provenance",
+      %w[class host basis substitution_approved descended_from]
+    )
+    errors << "M7 provenance must be independent" unless provenance["class"] == "independent"
+    errors << "M7 provenance needs a named host" unless nonempty_string?(provenance["host"])
+    errors << "M7 provenance basis drifted" unless
+      %w[stash_independent_root approved_independent_substitute].include?(provenance["basis"])
+    expected_substitution = provenance["basis"] == "approved_independent_substitute"
+    errors << "M7 substitution approval does not match its provenance basis" unless
+      provenance["substitution_approved"] == expected_substitution
+    ancestors = exact_object(
+      provenance["descended_from"],
+      "M7 provenance ancestry",
+      %w[skillit kaffe_karma perfect_roofing]
+    )
+    ancestors.each { |name, descended| errors << "M7 host may not descend from #{name}" unless descended == false }
+
+    input = exact_object(evidence["input"], "M7 input", %w[version kind artifact sha256])
+    m6_checkpoint = @evidence.dig("copied_lineage", "checkpoint") || {}
+    errors << "M7 input version must be 0.2.0.rc1" unless input["version"] == "0.2.0.rc1"
+    errors << "M7 input kind must be accepted_rc1_artifact" unless input["kind"] == "accepted_rc1_artifact"
+    errors << "M7 input must use the exact accepted M6 checkpoint bytes" unless
+      input["artifact"] == m6_checkpoint["artifact"] && input["sha256"] == m6_checkpoint["sha256"]
+
+    host = validate_host(evidence["host"], "M7")
+    errors << "M7 provenance and host identity differ" unless provenance["host"] == host["name"]
+    forbidden_host_names = %w[skillit] + [ "kaffe karma", "perfect roofing" ]
+    errors << "M7 host identity contradicts its independent ancestry declaration" if
+      forbidden_host_names.any? { |name| normalized_host_name(host["name"]).include?(name) }
+    errors << "M7 approval does not bind the adopted host" unless
+      approval["host_identity_sha256"] == host["identity_sha256"]
+    errors << "M7 approval does not bind the installed input artifact" unless
+      approval["input_artifact_sha256"] == input["sha256"]
+    errors << "M7 host did not install the accepted input artifact" unless
+      host["installed_artifact"] == input["artifact"] && host["installed_artifact_sha256"] == input["sha256"]
+    copied_host = @evidence.dig("copied_lineage", "host") || {}
+    errors << "M7 host must differ from the copied-lineage host" if
+      host["identity_sha256"] == copied_host["identity_sha256"] ||
+        normalized_host_name(host["name"]) == normalized_host_name(copied_host["name"])
+    errors << "M7 private report must differ from the copied-lineage report" if
+      host["private_report_sha256"] == copied_host["private_report_sha256"]
+    validate_m7_policy(evidence["policy_mapping"])
+    validate_route(evidence["route"], "M7")
+    isolation = exact_object(evidence["isolation"], "M7 isolation", %w[tool principal reload])
+    isolation.each { |field, outcome| errors << "M7 isolation #{field} must pass" unless outcome == "passed" }
+    checkpoint = validate_checkpoint(evidence["checkpoint"], "M7", "0.2.0.rc2")
+    validate_evidence_gates(
+      evidence["gates"],
+      "M7",
+      %w[host_ci mcp_smoke isolation mutation_mcp],
+      external: %w[host_ci mcp_smoke isolation],
+      external_report_sha256: host["private_report_sha256"],
+      milestone_local: MILESTONE_LOCAL_GATES.fetch("M7"),
+      checkpoint:,
+      approval_at: approval["approved_at"],
+      evidence_verified_at: evidence["verified_at"]
+    )
+    validate_m7_friction(
+      evidence["friction"],
+      checkpoint,
+      host:,
+      evidence_verified_at: evidence["verified_at"],
+      approval_at: evidence.dig("approval", "approved_at")
+    )
+    validate_redaction(evidence["redaction"], "M7")
+  end
+
+  def validate_m7_policy(value)
+    policy = exact_object(
+      value,
+      "M7 policy mapping",
+      %w[visibility_gate record_gate pundit_adapter_required host_policy_weakened business_policy_imported]
+    )
+    errors << "M7 visibility policy must map to available_to" unless policy["visibility_gate"] == "available_to"
+    errors << "M7 record policy must map to authorize" unless policy["record_gate"] == "authorize"
+    errors << "M7 must not require a Pundit adapter" unless policy["pundit_adapter_required"] == false
+    errors << "M7 must not weaken host policy" unless policy["host_policy_weakened"] == false
+    errors << "M7 must not import business policy" unless policy["business_policy_imported"] == false
+  end
+
+  def validate_m7_friction(value, checkpoint, host:, evidence_verified_at:, approval_at:)
+    friction = exact_object(
+      value,
+      "M7 friction",
+      %w[items framework_changed framework_change_proofs m6_rerun m7_rerun]
+    )
+    items = validate_friction_items(friction["items"], "M7")
+    framework_tests = framework_test_paths(items)
+    m6_checkpoint = @evidence.dig("copied_lineage", "checkpoint") || {}
+    changed_paths = meaningful_framework_paths(
+      m6_checkpoint["source_commit"],
+      checkpoint["source_commit"],
+      "M7 source delta",
+      include_public_api: true,
+      transition: VERSION_TRANSITIONS.fetch("M7")
+    )
+    framework_changed = changed_paths.any?
+    validate_framework_change_declaration(
+      friction,
+      "M7",
+      framework_tests:,
+      framework_changed:
+    )
+    validate_framework_proofs(
+      friction["framework_change_proofs"],
+      framework_tests,
+      checkpoint,
+      milestone: "M7",
+      input_commit: m6_checkpoint["source_commit"]
+    )
+
+    m6_host = @evidence.dig("copied_lineage", "host") || {}
+    prior_m6_rerun = @evidence.dig("copied_lineage", "friction", "output_rerun") || {}
+    m6_rerun = validate_output_rerun(
+      friction["m6_rerun"],
+      label: "M7 copied-host rerun",
+      required: framework_changed,
+      host: m6_host["name"],
+      checkpoint:,
+      evidence_verified_at:,
+      approval_at: @evidence.dig("copied_lineage", "approval", "approved_at"),
+      forbidden_report_sha256s: [ m6_host["private_report_sha256"], prior_m6_rerun["report_sha256"] ]
+    )
+    m7_rerun = validate_output_rerun(
+      friction["m7_rerun"],
+      label: "M7 independent-host rerun",
+      required: framework_changed,
+      host: host["name"],
+      checkpoint:,
+      evidence_verified_at:,
+      approval_at:,
+      forbidden_report_sha256s: [ host["private_report_sha256"] ]
+    )
+    if framework_changed && m6_rerun["report_sha256"] == m7_rerun["report_sha256"]
+      errors << "M7 copied and independent reruns need distinct private reports"
+    end
+  end
+
+  def validate_framework_proofs(value, framework_tests, checkpoint, milestone:, input_commit:)
+    proofs = exact_array(value, "#{milestone} framework change proofs").map.with_index(1) do |entry, position|
+      exact_object(
+        entry,
+        "#{milestone} framework change proof #{position}",
+        %w[
+          test command before_source_commit before_source_tree before_status before_output_sha256 before_test_sha256
+          after_source_commit after_source_tree after_status after_output_sha256 after_test_sha256
+        ]
+      )
+    end
+    errors << "#{milestone} framework change proofs must match every framework friction test" unless
+      proofs.filter_map { |proof| proof["test"] }.sort == framework_tests.sort
+    return if proofs.empty?
+
+    proofs.each_with_index do |proof, offset|
+      label = "#{milestone} framework change proof #{offset + 1}"
+      test_path = proof["test"]
+      errors << "#{label} command must run only its named Hitch test" unless
+        proof["command"] == "bin/ci-test #{test_path}"
+      errors << "#{label} before status must be failed" unless proof["before_status"] == "failed"
+      errors << "#{label} after status must be passed" unless proof["after_status"] == "passed"
+      %w[before_output_sha256 before_test_sha256 after_output_sha256 after_test_sha256].each do |field|
+        errors << "#{label} #{field} needs a SHA-256 pin" unless proof[field].is_a?(String) && SHA256.match?(proof[field])
+      end
+      %w[before_source_commit before_source_tree after_source_commit after_source_tree].each do |field|
+        errors << "#{label} #{field} must be 40-hex" unless proof[field].is_a?(String) && COMMIT.match?(proof[field])
+      end
+      errors << "#{label} after source must be the #{milestone} checkpoint" unless
+        proof["after_source_commit"] == checkpoint["source_commit"] &&
+          proof["after_source_tree"] == checkpoint["source_tree"]
+      errors << "#{label} failing-test source must descend from the milestone input" unless
+        git_ancestor?(input_commit, proof["before_source_commit"])
+      errors << "#{label} fix must descend from its failing-test source" unless
+        git_ancestor?(proof["before_source_commit"], proof["after_source_commit"], strict: true)
+      before_tree = git_tree(proof["before_source_commit"], "#{label} before source")
+      after_tree = git_tree(proof["after_source_commit"], "#{label} after source")
+      errors << "#{label} before source tree drifted" unless proof["before_source_tree"] == before_tree
+      errors << "#{label} after source tree drifted" unless proof["after_source_tree"] == after_tree
+      before_test_sha = git_file_sha(proof["before_source_commit"], test_path, "#{label} before test")
+      after_test_sha = git_file_sha(proof["after_source_commit"], test_path, "#{label} after test")
+      errors << "#{label} before test SHA drifted" unless proof["before_test_sha256"] == before_test_sha
+      errors << "#{label} after test SHA drifted" unless proof["after_test_sha256"] == after_test_sha
+      errors << "#{label} regression test changed while fixing the framework" unless
+        before_test_sha && after_test_sha && before_test_sha == after_test_sha
+      errors << "#{label} test must be introduced or changed before the framework fix" unless
+        git_changed_paths(input_commit, proof["before_source_commit"], test_path).include?(test_path)
+      transition = VERSION_TRANSITIONS.fetch(milestone)
+      pretest_framework_paths = meaningful_framework_paths(
+        input_commit,
+        proof["before_source_commit"],
+        "#{label} pre-test source delta",
+        transition:
+      )
+      errors << "#{label} framework implementation changed before the failing test" if
+        pretest_framework_paths.any?
+      framework_paths = meaningful_framework_paths(
+        proof["before_source_commit"],
+        proof["after_source_commit"],
+        "#{label} fix source delta",
+        transition:
+      )
+      errors << "#{label} fix has no framework source change after the failing test" if framework_paths.empty?
+    end
+  end
+
+  def framework_test_paths(items)
+    items.filter_map do |item|
+      item["framework_test"] if item.is_a?(Hash) && item["disposition"] == "framework_change"
+    end
+  end
+
+  def meaningful_framework_paths(earlier, later, label, transition:, include_public_api: false)
+    pathspecs = FRAMEWORK_SOURCE_PATHS.dup
+    pathspecs << PUBLIC_API_PATH if include_public_api
+    changed_paths = git_changed_paths(earlier, later, *pathspecs, label:)
+    return changed_paths unless changed_paths.include?(VERSION_PATH)
+
+    from_version, to_version = transition
+    if mechanical_version_transition?(
+      earlier,
+      later,
+      from_version:,
+      to_version:,
+      label:
+    )
+      changed_paths - [ VERSION_PATH ]
+    else
+      changed_paths
+    end
+  end
+
+  def mechanical_version_transition?(earlier, later, from_version:, to_version:, label:)
+    before = git_file_contents(earlier, VERSION_PATH, "#{label} input version file")
+    after = git_file_contents(later, VERSION_PATH, "#{label} output version file")
+    return false unless before && after
+
+    normalized_before = normalize_version_source(before, from_version)
+    normalized_after = normalize_version_source(after, to_version)
+    valid = normalized_before && normalized_after && normalized_before == normalized_after
+    unless valid
+      errors << "#{label} version file may change only the exact VERSION literal from #{from_version} to #{to_version}"
+    end
+    valid
+  end
+
+  def normalize_version_source(source, expected_version)
+    matches = source.to_enum(:scan, VERSION_ASSIGNMENT).map { Regexp.last_match.dup }
+    return nil unless matches.one?
+
+    match = matches.first
+    return nil unless match[:version] == expected_version
+
+    source[0...match.begin(:version)] + "<HITCH_VERSION>" + source[match.end(:version)..]
+  end
+
+  def validate_framework_change_declaration(friction, milestone, framework_tests:, framework_changed:)
+    declared = friction["framework_changed"]
+    errors << "#{milestone} friction framework_changed must be boolean" unless [ true, false ].include?(declared)
+    errors << "#{milestone} framework_changed must match its friction items" unless
+      declared == framework_tests.any?
+    errors << "#{milestone} framework_changed must match the checkpoint source delta" unless
+      declared == framework_changed
+  end
+
+  def validate_output_rerun(
+    value,
+    label:,
+    required:,
+    host:,
+    checkpoint:,
+    evidence_verified_at:,
+    approval_at:,
+    forbidden_report_sha256s:
+  )
+    rerun = exact_object(value, label, OUTPUT_RERUN_FIELDS)
+    unless required
+      expected = OUTPUT_RERUN_FIELDS.to_h { |field| [ field, field == "status" ? "not_applicable" : nil ] }
+      errors << "#{label} must be exactly not_applicable without a framework change" unless rerun == expected
+      return rerun
+    end
+
+    errors << "#{label} must pass" unless rerun["status"] == "passed"
+    errors << "#{label} host drifted" unless rerun["host"] == host
+    errors << "#{label} needs a redacted command" unless nonempty_string?(rerun["command"])
+    errors << "#{label} must bind the output checkpoint source" unless
+      rerun["source_commit"] == checkpoint["source_commit"] &&
+        rerun["source_tree"] == checkpoint["source_tree"]
+    errors << "#{label} must bind the output checkpoint artifact" unless
+      rerun["artifact_sha256"] == checkpoint["sha256"]
+    errors << "#{label} needs an ISO-8601 verification time" unless iso8601?(rerun["verified_at"])
+    errors << "#{label} needs a private report SHA-256" unless
+      rerun["report_sha256"].is_a?(String) && SHA256.match?(rerun["report_sha256"])
+    if forbidden_report_sha256s.compact.include?(rerun["report_sha256"])
+      errors << "#{label} must use a fresh private report"
+    end
+    require_not_before(rerun["verified_at"], approval_at, "#{label} completion before host approval")
+    require_not_before(
+      rerun["verified_at"],
+      git_commit_time(checkpoint["source_commit"], "#{label} output checkpoint"),
+      "#{label} completion before output checkpoint source"
+    )
+    require_not_before(evidence_verified_at, rerun["verified_at"], "#{label} verification before rerun completion")
+    rerun
+  end
+
+  def git_ancestor?(earlier, later, strict: false)
+    return false unless earlier.is_a?(String) && COMMIT.match?(earlier)
+    return false unless later.is_a?(String) && COMMIT.match?(later)
+    return false if strict && earlier == later
+
+    _output, status = Open3.capture2e("git", "merge-base", "--is-ancestor", earlier, later, chdir: @root)
+    status.success?
+  rescue SystemCallError
+    false
+  end
+
+  def git_tree(commit, label)
+    return nil unless commit.is_a?(String) && COMMIT.match?(commit)
+
+    output, status = Open3.capture2e("git", "rev-parse", "#{commit}^{tree}", chdir: @root)
+    unless status.success? && COMMIT.match?(output.strip)
+      errors << "#{label} tree could not be resolved"
+      return nil
+    end
+    output.strip
+  rescue SystemCallError => error
+    errors << "#{label} tree could not be resolved: #{error.class}"
+    nil
+  end
+
+  def git_commit_time(commit, label)
+    return nil unless commit.is_a?(String) && COMMIT.match?(commit)
+
+    output, status = Open3.capture2e(
+      "git", "show", "--no-patch", "--format=%cI", commit,
+      chdir: @root
+    )
+    unless status.success? && iso8601?(output.strip)
+      errors << "#{label} commit time could not be resolved"
+      return nil
+    end
+    output.strip
+  rescue SystemCallError => error
+    errors << "#{label} commit time could not be resolved: #{error.class}"
+    nil
+  end
+
+  def git_changed_paths(earlier, later, *pathspecs, label: "source delta")
+    unless earlier.is_a?(String) && COMMIT.match?(earlier) &&
+        later.is_a?(String) && COMMIT.match?(later)
+      errors << "#{label} commits must be 40-hex"
+      return []
+    end
+
+    output, status = Open3.capture2e(
+      "git", "diff", "--name-only", earlier, later, "--", *pathspecs,
+      chdir: @root
+    )
+    return output.lines.map(&:strip).reject(&:empty?) if status.success?
+
+    errors << "#{label} could not be resolved"
+    []
+  rescue SystemCallError => error
+    errors << "#{label} could not be resolved: #{error.class}"
+    []
+  end
+
+  def validate_product_clients(value)
+    evidence = validate_base_evidence(
+      value,
+      "product_clients",
+      %w[schema milestone status verified_at approval input clients redaction]
+    )
+    approval = exact_object(evidence["approval"], "M8 product approval", %w[authority status approved_at])
+    errors << "M8 product approval authority must be Tyler Klose" unless approval["authority"] == "Tyler Klose"
+    errors << "M8 product smokes require explicit approval" unless approval["status"] == "approved"
+    errors << "M8 product approval needs an ISO-8601 approved_at" unless iso8601?(approval["approved_at"])
+    input = exact_object(evidence["input"], "M8 product input", %w[version artifact sha256])
+    errors << "M8 product input version must be #{RELEASE}" unless input["version"] == RELEASE
+    errors << "M8 product artifact name drifted" unless input["artifact"] == "hitch-rails-#{RELEASE}.gem"
+    errors << "M8 product artifact needs a SHA-256 pin" unless input["sha256"].is_a?(String) && SHA256.match?(input["sha256"])
+
+    clients = exact_array(evidence["clients"], "M8 product clients")
+    clients.each_with_index do |client, offset|
+      client = exact_object(
+        client,
+        "M8 product client #{offset + 1}",
+        %w[
+          name version status started_at completed_at command target checks expected_tool
+          expected_result_sha256 side_effects report_sha256
+        ]
+      )
+      errors << "M8 product client #{offset + 1} must pass" unless client["status"] == "passed"
+      errors << "M8 product client #{offset + 1} needs an ISO-8601 started_at" unless
+        iso8601?(client["started_at"])
+      errors << "M8 product client #{offset + 1} needs an ISO-8601 completed_at" unless
+        iso8601?(client["completed_at"])
+      require_not_before(
+        client["started_at"], approval["approved_at"],
+        "M8 product client #{offset + 1} started before explicit approval"
+      )
+      require_not_before(
+        client["completed_at"], client["started_at"],
+        "M8 product client #{offset + 1} completed before it started"
+      )
+      require_not_before(
+        evidence["verified_at"], client["completed_at"],
+        "M8 product-client verification before client #{offset + 1} completed"
+      )
+      errors << "M8 product client #{offset + 1} needs a redacted command" unless nonempty_string?(client["command"])
+      target = exact_object(
+        client["target"],
+        "M8 product client #{offset + 1} target",
+        %w[kind resource_uri artifact_sha256]
+      )
+      errors << "M8 product client #{offset + 1} must use a disposable local host" unless
+        target["kind"] == "disposable_local_host"
+      errors << "M8 product client #{offset + 1} resource URI must be loopback /mcp" unless
+        loopback_mcp_uri?(target["resource_uri"])
+      errors << "M8 product client #{offset + 1} target artifact differs from the approved input" unless
+        target["artifact_sha256"] == input["sha256"]
+      checks = exact_object(
+        client["checks"],
+        "M8 product client #{offset + 1} checks",
+        EXPECTED_PRODUCT_CHECKS.keys
+      )
+      errors << "M8 product client #{offset + 1} did not prove the complete MCP smoke" unless
+        checks == EXPECTED_PRODUCT_CHECKS
+      errors << "M8 product client #{offset + 1} needs the called tool name" unless
+        nonempty_string?(client["expected_tool"])
+      errors << "M8 product client #{offset + 1} result needs a SHA-256 pin" unless
+        client["expected_result_sha256"].is_a?(String) && SHA256.match?(client["expected_result_sha256"])
+      side_effects = exact_object(
+        client["side_effects"],
+        "M8 product client #{offset + 1} side effects",
+        %w[disposable_data_only production_mutations]
+      )
+      errors << "M8 product client #{offset + 1} may use only disposable data" unless
+        side_effects["disposable_data_only"] == true
+      errors << "M8 product client #{offset + 1} may not mutate production" unless
+        side_effects["production_mutations"] == false
+      errors << "M8 product client #{offset + 1} report needs a SHA-256 pin" unless
+        client["report_sha256"].is_a?(String) && SHA256.match?(client["report_sha256"])
+    end
+    identities = clients.filter_map do |client|
+      client.slice("name", "version") if client.is_a?(Hash)
+    end
+    errors << "M8 product clients must use the exact roadmap-pinned versions" unless
+      identities == EXPECTED_PRODUCT_CLIENTS
+    report_sha256s = clients.filter_map { |client| client["report_sha256"] if client.is_a?(Hash) }
+    errors << "M8 product-client reports must be distinct" unless
+      report_sha256s.length == EXPECTED_PRODUCT_CLIENTS.length && report_sha256s.uniq.length == report_sha256s.length
+    validate_redaction(evidence["redaction"], "M8 product")
+  end
+
+  def validate_release_candidate(value, label, clean_worktree: false)
+    fields = %w[version artifact sha256 source_commit source_tree]
+    fields << "clean_worktree" if clean_worktree
+    candidate = exact_object(value, label, fields)
+    errors << "#{label} version must be #{RELEASE}" unless candidate["version"] == RELEASE
+    errors << "#{label} artifact name drifted" unless candidate["artifact"] == "hitch-rails-#{RELEASE}.gem"
+    errors << "#{label} artifact needs a SHA-256 pin" unless
+      candidate["sha256"].is_a?(String) && SHA256.match?(candidate["sha256"])
+    errors << "#{label} source commit must be 40-hex" unless
+      candidate["source_commit"].is_a?(String) && COMMIT.match?(candidate["source_commit"])
+    errors << "#{label} source tree must be 40-hex" unless
+      candidate["source_tree"].is_a?(String) && COMMIT.match?(candidate["source_tree"])
+    if clean_worktree
+      errors << "#{label} must record a clean worktree" unless candidate["clean_worktree"] == true
+    end
+    candidate
+  end
+
+  def validate_hosted_matrix(value)
+    evidence = validate_base_evidence(
+      value,
+      "hosted_matrix",
+      %w[schema milestone status verified_at approval candidate provider workflow lanes redaction]
+    )
+    candidate = validate_release_candidate(evidence["candidate"], "M8 hosted matrix candidate")
+    validate_source_bound_artifact(candidate, "M8 hosted matrix candidate", RELEASE)
+    approval = exact_object(
+      evidence["approval"],
+      "M8 hosted matrix approval",
+      %w[reviewed_by role status reviewed_at]
+    )
+    errors << "M8 hosted matrix approval needs a named reviewer" unless nonempty_string?(approval["reviewed_by"])
+    errors << "M8 hosted matrix approval role must be release_maintainer" unless
+      approval["role"] == "release_maintainer"
+    errors << "M8 hosted matrix approval must be approved" unless approval["status"] == "approved"
+    errors << "M8 hosted matrix approval needs an ISO-8601 reviewed_at" unless iso8601?(approval["reviewed_at"])
+
+    provider = exact_object(
+      evidence["provider"],
+      "M8 hosted matrix provider",
+      %w[
+        name repository head_repository head_sha event run_id run_attempt run_url conclusion
+        started_at completed_at raw_report_sha256
+      ]
+    )
+    errors << "M8 hosted matrix provider must be GitHub Actions" unless provider["name"] == "GitHub Actions"
+    errors << "M8 hosted matrix repository drifted" unless provider["repository"] == HOSTED_REPOSITORY
+    errors << "M8 hosted matrix head repository drifted" unless provider["head_repository"] == HOSTED_REPOSITORY
+    errors << "M8 hosted matrix run did not execute the candidate commit" unless
+      provider["head_sha"] == candidate["source_commit"]
+    errors << "M8 hosted matrix event must be push" unless provider["event"] == "push"
+    errors << "M8 hosted matrix run needs a positive integer identifier" unless
+      provider["run_id"].is_a?(Integer) && provider["run_id"].positive?
+    errors << "M8 hosted matrix run needs a positive attempt" unless
+      provider["run_attempt"].is_a?(Integer) && provider["run_attempt"].positive?
+    expected_run_url = "https://github.com/#{HOSTED_REPOSITORY}/actions/runs/#{provider['run_id']}"
+    errors << "M8 hosted matrix run URL must bind the canonical repository and run id" unless
+      provider["run_url"] == expected_run_url
+    errors << "M8 hosted matrix run must succeed" unless provider["conclusion"] == "success"
+    errors << "M8 hosted matrix run needs an ISO-8601 started_at" unless iso8601?(provider["started_at"])
+    errors << "M8 hosted matrix run needs an ISO-8601 completed_at" unless iso8601?(provider["completed_at"])
+    errors << "M8 hosted matrix raw report needs a SHA-256 pin" unless
+      provider["raw_report_sha256"].is_a?(String) && SHA256.match?(provider["raw_report_sha256"])
+    require_not_before(provider["completed_at"], provider["started_at"], "hosted matrix completion before start")
+    require_not_before(approval["reviewed_at"], provider["completed_at"], "hosted matrix review before completion")
+    require_not_before(evidence["verified_at"], approval["reviewed_at"], "hosted matrix verification before approval")
+
+    workflow = exact_object(evidence["workflow"], "M8 hosted matrix workflow", %w[path sha256])
+    expected_workflow_path = ".github/workflows/ci.yml"
+    errors << "M8 hosted matrix workflow path drifted" unless workflow["path"] == expected_workflow_path
+    errors << "M8 hosted matrix workflow needs a SHA-256 pin" unless
+      workflow["sha256"].is_a?(String) && SHA256.match?(workflow["sha256"])
+    validate_hosted_workflow(candidate, workflow)
+
+    contract = load_yaml("docs/contracts/release_matrix.yml")
+    expected_lanes = exact_array(contract["lanes"], "release matrix contract lanes").map do |lane|
+      {
+        "name" => lane["name"],
+        "ruby" => lane["ruby"],
+        "job_name" => "Ruby #{lane['ruby']} / #{lane['rails'][/\d+\.\d+/]} / #{lane['adapter']}",
+        "conclusion" => "success"
+      }
+    end
+    lanes = exact_array(evidence["lanes"], "M8 hosted matrix lanes").map.with_index(1) do |lane, position|
+      lane = exact_object(
+        lane,
+        "M8 hosted matrix lane #{position}",
+        %w[name ruby job_id job_name job_url run_attempt conclusion started_at completed_at]
+      )
+      errors << "M8 hosted matrix lane #{position} needs a positive job id" unless
+        lane["job_id"].is_a?(Integer) && lane["job_id"].positive?
+      expected_job_url = "#{provider['run_url']}/job/#{lane['job_id']}"
+      errors << "M8 hosted matrix lane #{position} job URL drifted" unless lane["job_url"] == expected_job_url
+      errors << "M8 hosted matrix lane #{position} attempt differs from its run" unless
+        lane["run_attempt"] == provider["run_attempt"]
+      errors << "M8 hosted matrix lane #{position} needs an ISO-8601 started_at" unless iso8601?(lane["started_at"])
+      errors << "M8 hosted matrix lane #{position} needs an ISO-8601 completed_at" unless iso8601?(lane["completed_at"])
+      require_not_before(
+        lane["started_at"], provider["started_at"],
+        "hosted matrix lane #{position} started before its run"
+      )
+      require_not_before(
+        lane["completed_at"], lane["started_at"],
+        "hosted matrix lane #{position} completion before start"
+      )
+      require_not_before(
+        provider["completed_at"], lane["completed_at"],
+        "hosted matrix run completion before lane #{position} completion"
+      )
+      lane
+    end
+    lane_contract = lanes.map { |lane| lane.slice("name", "ruby", "job_name", "conclusion") }
+    errors << "M8 hosted matrix lanes must match every contracted lane" unless lane_contract == expected_lanes
+    job_ids = lanes.map { |lane| lane["job_id"] }
+    errors << "M8 hosted matrix lanes must use distinct jobs" unless job_ids.uniq.length == job_ids.length
+    validate_redaction(evidence["redaction"], "M8 hosted matrix")
+  end
+
+  def loopback_mcp_uri?(value)
+    return false unless value.is_a?(String)
+
+    uri = URI.parse(value)
+    uri.scheme == "http" && %w[127.0.0.1 localhost ::1].include?(uri.host) &&
+      uri.path == "/mcp" && uri.userinfo.nil? && uri.query.nil? && uri.fragment.nil?
+  rescue URI::InvalidURIError
+    false
+  end
+
+  def validate_hosted_workflow(candidate, workflow)
+    commit = candidate["source_commit"]
+    return unless commit.is_a?(String) && COMMIT.match?(commit)
+    return unless workflow["path"] == ".github/workflows/ci.yml"
+
+    bytes, status = Open3.capture2e("git", "show", "#{commit}:#{workflow.fetch('path')}", chdir: @root)
+    unless status.success?
+      errors << "M8 hosted matrix workflow is absent from the candidate source"
+      return
+    end
+    errors << "M8 hosted matrix workflow SHA differs from the candidate source" unless
+      workflow["sha256"] == Digest::SHA256.hexdigest(bytes)
+  rescue SystemCallError, KeyError => error
+    errors << "M8 hosted matrix workflow could not be verified: #{error.class}"
+  end
+
+  def validate_final_local_gates(value)
+    evidence = validate_base_evidence(
+      value,
+      "final_local_gates",
+      %w[schema milestone status verified_at candidate gates redaction]
+    )
+    candidate = validate_release_candidate(
+      evidence["candidate"],
+      "M8 final local-gates candidate",
+      clean_worktree: true
+    )
+    validate_source_bound_artifact(candidate, "M8 final local-gates candidate", RELEASE)
+    gates = exact_object(
+      evidence["gates"],
+      "M8 final local gates",
+      EXPECTED_FINAL_LOCAL_GATE_COMMANDS.keys
+    )
+    completed_times = []
+    EXPECTED_FINAL_LOCAL_GATE_COMMANDS.each do |name, expected_argv|
+      gate = exact_object(
+        gates[name],
+        "M8 final local gate #{name}",
+        %w[
+          argv status exit_statuses started_at completed_at command_output_sha256s
+          structured_report_sha256s output_sha256
+        ]
+      )
+      errors << "M8 final local gate #{name} argv drifted" unless gate["argv"] == expected_argv
+      errors << "M8 final local gate #{name} must pass" unless gate["status"] == "passed"
+      expected_statuses = Array.new(expected_argv.length, 0)
+      errors << "M8 final local gate #{name} exit statuses drifted" unless gate["exit_statuses"] == expected_statuses
+      errors << "M8 final local gate #{name} needs an ISO-8601 started_at" unless iso8601?(gate["started_at"])
+      errors << "M8 final local gate #{name} needs an ISO-8601 completed_at" unless iso8601?(gate["completed_at"])
+      command_output_sha256s = exact_array(
+        gate["command_output_sha256s"],
+        "M8 final local gate #{name} command output hashes"
+      )
+      errors << "M8 final local gate #{name} must retain one output hash per command" unless
+        command_output_sha256s.length == expected_argv.length
+      errors << "M8 final local gate #{name} has a malformed command output hash" unless
+        command_output_sha256s.all? { |digest| digest.is_a?(String) && SHA256.match?(digest) }
+      structured_report_sha256s = exact_array(
+        gate["structured_report_sha256s"],
+        "M8 final local gate #{name} structured report hashes"
+      )
+      expected_structured_reports = HitchFinalLocalGates::STRUCTURED_REPORT_GATES.key?(name) ? 1 : 0
+      errors << "M8 final local gate #{name} structured report count drifted" unless
+        structured_report_sha256s.length == expected_structured_reports
+      errors << "M8 final local gate #{name} has a malformed structured report hash" unless
+        structured_report_sha256s.all? { |digest| digest.is_a?(String) && SHA256.match?(digest) }
+      errors << "M8 final local gate #{name} output needs a SHA-256 pin" unless
+        gate["output_sha256"].is_a?(String) && SHA256.match?(gate["output_sha256"])
+      expected_output_sha256 = Digest::SHA256.hexdigest(JSON.generate(command_output_sha256s))
+      errors << "M8 final local gate #{name} aggregate output hash drifted" unless
+        gate["output_sha256"] == expected_output_sha256
+      require_not_before(gate["completed_at"], gate["started_at"], "final local gate #{name} completion before start")
+      completed_times << gate["completed_at"]
+    end
+    completed_times.each do |completed_at|
+      require_not_before(evidence["verified_at"], completed_at, "final local-gates verification before command completion")
+    end
+    validate_local_gate_redaction(evidence["redaction"])
+  end
+
+  def validate_final_check(value)
+    evidence = validate_base_evidence(
+      value,
+      "final_check",
+      %w[
+        schema milestone status verified_at approvals release prerequisites gates routes security blockers
+        conformance requirements public_api evidence_index
+      ]
+    )
+    approvals = exact_object(
+      evidence["approvals"],
+      "M8 final approvals",
+      %w[copied_lineage independent product_clients maintainer_review]
+    )
+    %w[copied_lineage independent].each do |field|
+      errors << "M8 final approval #{field} must be accepted" unless approvals[field] == "accepted"
+    end
+    errors << "M8 final product clients must be approved" unless approvals["product_clients"] == "approved"
+    maintainer_review = exact_object(
+      approvals["maintainer_review"],
+      "M8 final maintainer review",
+      %w[reviewed_by role status approved_at]
+    )
+    errors << "M8 final maintainer review needs a named reviewer" unless
+      nonempty_string?(maintainer_review["reviewed_by"])
+    errors << "M8 final maintainer review role must be release_maintainer" unless
+      maintainer_review["role"] == "release_maintainer"
+    errors << "M8 final maintainer review must be approved" unless maintainer_review["status"] == "approved"
+    errors << "M8 final maintainer review needs an ISO-8601 time" unless
+      iso8601?(maintainer_review["approved_at"])
+
+    release = exact_object(
+      evidence["release"],
+      "M8 final release",
+      %w[version artifact sha256 tag source_commit source_tree clean_worktree]
+    )
+    errors << "M8 final release version must be #{RELEASE}" unless release["version"] == RELEASE
+    errors << "M8 final artifact name drifted" unless release["artifact"] == "hitch-rails-#{RELEASE}.gem"
+    errors << "M8 final artifact needs a SHA-256 pin" unless release["sha256"].is_a?(String) && SHA256.match?(release["sha256"])
+    errors << "M8 final tag must be v#{RELEASE}" unless release["tag"] == "v#{RELEASE}"
+    errors << "M8 final source commit must be 40-hex" unless
+      release["source_commit"].is_a?(String) && COMMIT.match?(release["source_commit"])
+    errors << "M8 final source tree must be 40-hex" unless
+      release["source_tree"].is_a?(String) && COMMIT.match?(release["source_tree"])
+    errors << "M8 final source must record a clean worktree" unless release["clean_worktree"] == true
+    validate_source_bound_artifact(release, "M8 final", RELEASE)
+    product_input = @evidence.dig("product_clients", "input") || {}
+    errors << "M8 product smokes and final check must use the same artifact bytes" unless
+      product_input["artifact"] == release["artifact"] && product_input["sha256"] == release["sha256"]
+    %w[hosted_matrix final_local_gates].each do |kind|
+      candidate = @evidence.dig(kind, "candidate") || {}
+      errors << "M8 #{kind.tr('_', ' ')} and final check must use the same candidate" unless
+        candidate.slice("version", "artifact", "sha256", "source_commit", "source_tree") ==
+          release.slice("version", "artifact", "sha256", "source_commit", "source_tree")
+    end
+    validate_final_prerequisites(evidence["prerequisites"])
+
+    validate_evidence_gates(
+      evidence["gates"],
+      "M8 final",
+      %w[
+        full_ci all_matrix_lanes conformance package_apps automated_clients product_clients mutation_mcp
+        copied_adoption independent_adoption documentation
+      ],
+      external: %w[all_matrix_lanes product_clients copied_adoption independent_adoption],
+      linked_evidence: {
+        "all_matrix_lanes" => "hosted_matrix",
+        "product_clients" => "product_clients",
+        "copied_adoption" => "copied_lineage",
+        "independent_adoption" => "independent"
+      },
+      local_bundle_kind: "final_local_gates"
+    )
+    routes = exact_object(evidence["routes"], "M8 final routes", %w[legacy_routes_absent dual_route])
+    errors << "M8 final must remove legacy routes" unless routes["legacy_routes_absent"] == true
+    errors << "M8 final must not retain a dual route" unless routes["dual_route"] == false
+    security = exact_object(evidence["security"], "M8 final security", %w[owned_controls unowned_controls])
+    errors << "M8 final security controls must all be owned" unless security["owned_controls"] == true
+    errors << "M8 final may not retain unowned security controls" unless security["unowned_controls"] == []
+    errors << "M8 final may not retain unresolved blockers" unless evidence["blockers"] == []
+    validate_final_conformance(evidence["conformance"])
+    requirements = exact_object(
+      evidence["requirements"],
+      "M8 final requirements",
+      %w[hidden_database_requirements hidden_client_requirements]
+    )
+    requirements.each do |field, hidden|
+      errors << "M8 final #{field} must be empty" unless hidden == []
+    end
+    public_api = exact_object(evidence["public_api"], "M8 final public API", %w[undocumented_surfaces])
+    errors << "M8 final may not retain undocumented public API" unless public_api["undocumented_surfaces"] == []
+    validate_final_source_delta(release)
+    errors << "M8 final evidence index path drifted" unless evidence["evidence_index"] == INDEX_PATH
+  end
+
+  def validate_final_source_delta(release)
+    rc2_commit = @evidence.dig("independent", "checkpoint", "source_commit")
+    final_commit = release["source_commit"]
+    runtime_paths = meaningful_framework_paths(
+      rc2_commit,
+      final_commit,
+      "M8 post-adoption runtime delta",
+      transition: VERSION_TRANSITIONS.fetch("M8")
+    )
+    if runtime_paths.any?
+      errors << "M8 final runtime changed after M7; repeat both adoptions before release"
+    end
+
+    rc2_api_sha = git_file_sha(rc2_commit, PUBLIC_API_PATH, "RC2 public API")
+    final_api_sha = git_file_sha(final_commit, PUBLIC_API_PATH, "final public API")
+    unless rc2_api_sha && final_api_sha && rc2_api_sha == final_api_sha
+      errors << "M8 final public API changed after M7; repeat its owning milestones before release"
+    end
+  end
+
+  def validate_final_prerequisites(value)
+    prerequisites = exact_array(value, "M8 final prerequisites").map.with_index(1) do |entry, position|
+      exact_object(entry, "M8 final prerequisite #{position}", %w[kind path sha256])
+    end
+    expected = FINAL_PREREQUISITE_KINDS.map do |kind|
+      record = @indexed[kind] || {}
+      { "kind" => kind, "path" => record["path"], "sha256" => record["sha256"] }
+    end
+    errors << "M8 final prerequisites must pin every accepted predecessor record" unless prerequisites == expected
+  end
+
+  def validate_final_conformance(value)
+    conformance = exact_object(
+      value,
+      "M8 final conformance",
+      %w[unexpected_failures unexplained_skips stale_baseline_entries untestable_capability_probes capability_gated_not_applicable exclusions]
+    )
+    %w[unexpected_failures unexplained_skips stale_baseline_entries].each do |field|
+      errors << "M8 final conformance #{field} must be empty" unless conformance[field] == []
+    end
+    errors << "M8 final must retain the two documented untestable probes" unless
+      conformance["untestable_capability_probes"] == EXPECTED_PROBES
+    errors << "M8 final capability-gated rows drifted" unless
+      conformance["capability_gated_not_applicable"] == EXPECTED_CAPABILITY_SKIPS
+    errors << "M8 final conformance exclusions drifted" unless conformance["exclusions"] == EXPECTED_EXCLUSIONS
+  end
+
+  def validate_publication_authority(value)
+    evidence = validate_base_evidence(
+      value,
+      "publication_authority",
+      %w[schema milestone status verified_at authority candidate final_check]
+    )
+    authority = exact_object(
+      evidence["authority"],
+      "M8 publication authority",
+      %w[authorized_by role status approved_at scope]
+    )
+    errors << "M8 publication authority must be Tyler Klose" unless authority["authorized_by"] == "Tyler Klose"
+    errors << "M8 publication authority role must be release_authority" unless
+      authority["role"] == "release_authority"
+    errors << "M8 publication authority must be authorized" unless authority["status"] == "authorized"
+    errors << "M8 publication authority needs an ISO-8601 approval time" unless iso8601?(authority["approved_at"])
+    errors << "M8 publication authority scope drifted" unless
+      authority["scope"] == "create annotated v0.2.0 tag and publish hitch-rails 0.2.0 to RubyGems"
+
+    candidate = exact_object(
+      evidence["candidate"],
+      "M8 publication candidate",
+      %w[version artifact sha256 source_commit source_tree tag]
+    )
+    final_release = @evidence.dig("final_check", "release") || {}
+    expected_candidate = final_release.slice(
+      "version", "artifact", "sha256", "source_commit", "source_tree", "tag"
+    )
+    errors << "M8 publication authority candidate differs from the accepted final check" unless
+      candidate == expected_candidate
+
+    final_check = exact_object(
+      evidence["final_check"],
+      "M8 publication authority final check",
+      %w[path sha256]
+    )
+    final_record = @indexed["final_check"] || {}
+    errors << "M8 publication authority final-check path drifted" unless
+      final_check["path"] == final_record["path"]
+    errors << "M8 publication authority final-check SHA drifted" unless
+      final_check["sha256"] == final_record["sha256"]
+  end
+
+  def validate_downloaded_gem(value)
+    evidence = validate_base_evidence(
+      value,
+      "downloaded_gem",
+      %w[schema milestone status verified_at publication_authority_sha256 release rubygems repository checks],
+      status: "verified_published_artifact"
+    )
+    errors << "downloaded gem release must be #{RELEASE}" unless evidence["release"] == RELEASE
+    errors << "downloaded gem status must be verified_published_artifact" unless
+      evidence["status"] == "verified_published_artifact"
+    rubygems = exact_object(evidence["rubygems"], "downloaded gem RubyGems", %w[artifact sha256 files])
+    errors << "downloaded gem artifact name drifted" unless rubygems["artifact"] == "hitch-rails-#{RELEASE}.gem"
+    errors << "downloaded gem needs a SHA-256 pin" unless rubygems["sha256"].is_a?(String) && SHA256.match?(rubygems["sha256"])
+    errors << "downloaded gem file count must be positive" unless rubygems["files"].is_a?(Integer) && rubygems["files"].positive?
+    repository = exact_object(
+      evidence["repository"],
+      "downloaded gem repository",
+      %w[
+        tag tag_type tagger tagged_at annotation target_commit target_tree
+        remote_url remote_tag_object remote_peeled_commit
+      ]
+    )
+    errors << "downloaded gem tag must be v#{RELEASE}" unless repository["tag"] == "v#{RELEASE}"
+    errors << "downloaded gem tag must be annotated" unless repository["tag_type"] == "tag"
+    errors << "downloaded gem needs a tagger" unless nonempty_string?(repository["tagger"])
+    errors << "downloaded gem needs an ISO-8601 tag time" unless iso8601?(repository["tagged_at"])
+    errors << "downloaded gem needs a tag annotation" unless nonempty_string?(repository["annotation"])
+    errors << "downloaded gem tag target commit must be 40-hex" unless
+      repository["target_commit"].is_a?(String) && COMMIT.match?(repository["target_commit"])
+    errors << "downloaded gem tag target tree must be 40-hex" unless
+      repository["target_tree"].is_a?(String) && COMMIT.match?(repository["target_tree"])
+    errors << "downloaded gem remote URL must be the canonical repository" unless
+      repository["remote_url"] == "https://github.com/#{HOSTED_REPOSITORY}.git"
+    errors << "downloaded gem remote tag object must be 40-hex" unless
+      repository["remote_tag_object"].is_a?(String) && COMMIT.match?(repository["remote_tag_object"])
+    errors << "downloaded gem remote peeled commit must be 40-hex" unless
+      repository["remote_peeled_commit"].is_a?(String) && COMMIT.match?(repository["remote_peeled_commit"])
+    errors << "downloaded gem remote tag must be annotated" if
+      repository["remote_tag_object"] == repository["remote_peeled_commit"]
+    errors << "downloaded gem remote peeled target differs from the local tag" unless
+      repository["remote_peeled_commit"] == repository["target_commit"]
+    checks = exact_object(
+      evidence["checks"],
+      "downloaded gem checks",
+      %w[version manifest forbidden_paths file_checksums readme changelog security upgrading public_api]
+    )
+    expected_checks = {
+      "version" => "match",
+      "manifest" => "match",
+      "forbidden_paths" => "absent",
+      "file_checksums" => "match",
+      "readme" => "match",
+      "changelog" => "match",
+      "security" => "match",
+      "upgrading" => "match",
+      "public_api" => "match"
+    }
+    errors << "downloaded gem checks drifted" unless checks == expected_checks
+    final_release = @evidence.dig("final_check", "release") || {}
+    errors << "downloaded RubyGems bytes differ from the accepted final artifact" unless
+      rubygems["artifact"] == final_release["artifact"] && rubygems["sha256"] == final_release["sha256"]
+    errors << "downloaded RubyGems tag differs from the accepted final tag" unless repository["tag"] == final_release["tag"]
+    errors << "downloaded RubyGems tag target differs from the accepted final source" unless
+      repository["target_commit"] == final_release["source_commit"] &&
+        repository["target_tree"] == final_release["source_tree"]
+    authority_record = @indexed["publication_authority"] || {}
+    errors << "downloaded gem publication authority SHA drifted" unless
+      evidence["publication_authority_sha256"] == authority_record["sha256"]
+  end
+
+  def accepted?(kind)
+    @indexed.dig(kind, "status") == "accepted"
+  end
+
+  def validate_order
+    errors << "M7 evidence cannot be accepted before M6" if accepted?("independent") && !accepted?("copied_lineage")
+    m8_preflight = %w[product_clients hosted_matrix final_local_gates final_check].any? { |kind| accepted?(kind) }
+    errors << "M8 preflight evidence cannot be accepted before M7" if m8_preflight && !accepted?("independent")
+    %w[hosted_matrix final_local_gates].each do |kind|
+      errors << "#{kind} evidence cannot be accepted before product clients" if
+        accepted?(kind) && !accepted?("product_clients")
+    end
+    if accepted?("final_check")
+      errors << "final-check evidence cannot be accepted before hosted matrix evidence" unless accepted?("hosted_matrix")
+      errors << "final-check evidence cannot be accepted before final local-gates evidence" unless accepted?("final_local_gates")
+    end
+    errors << "publication authority cannot be accepted before final-check evidence" if
+      accepted?("publication_authority") && !accepted?("final_check")
+    errors << "downloaded gem evidence cannot be accepted before publication authority" if
+      accepted?("downloaded_gem") && !accepted?("publication_authority")
+    validate_release_ancestry
+    validate_time_order
+  end
+
+  def validate_release_ancestry
+    checkpoints = [
+      [
+        @decision&.dig("checkpoint", "source", "commit"),
+        @evidence.dig("copied_lineage", "checkpoint", "source_commit"),
+        "M6 source must strictly descend from the accepted pre4 source"
+      ],
+      [
+        @evidence.dig("copied_lineage", "checkpoint", "source_commit"),
+        @evidence.dig("independent", "checkpoint", "source_commit"),
+        "M7 source must strictly descend from M6"
+      ],
+      [
+        @evidence.dig("independent", "checkpoint", "source_commit"),
+        @evidence.dig("final_check", "release", "source_commit"),
+        "final source must strictly descend from M7"
+      ]
+    ]
+    checkpoints.each do |earlier, later, label|
+      next unless earlier.is_a?(String) && COMMIT.match?(earlier)
+      next unless later.is_a?(String) && COMMIT.match?(later)
+
+      errors << label unless git_ancestor?(earlier, later, strict: true)
+    end
+  end
+
+  def validate_time_order
+    %w[copied_lineage independent].each do |kind|
+      evidence = @evidence[kind]
+      next unless evidence.is_a?(Hash)
+
+      require_not_before(
+        evidence["verified_at"], evidence.dig("approval", "approved_at"),
+        "#{kind} verification before its approval"
+      )
+    end
+
+    product = @evidence["product_clients"]
+    if product.is_a?(Hash)
+      require_not_before(
+        product["verified_at"], product.dig("approval", "approved_at"),
+        "product-client verification before its approval"
+      )
+      hosted = @evidence["hosted_matrix"]
+      if hosted.is_a?(Hash)
+        require_not_before(
+          hosted.dig("provider", "started_at"),
+          product["verified_at"],
+          "hosted matrix run started before product-client acceptance"
+        )
+      end
+      local_gates = @evidence.dig("final_local_gates", "gates")
+      if local_gates.is_a?(Hash)
+        EXPECTED_FINAL_LOCAL_GATE_COMMANDS.each_key do |name|
+          require_not_before(
+            local_gates.dig(name, "started_at"),
+            product["verified_at"],
+            "final local gate #{name} started before product-client acceptance"
+          )
+        end
+      end
+    end
+
+    require_evidence_after("independent", "copied_lineage", "M7 verification before M6")
+    require_evidence_after("product_clients", "independent", "product-client verification before M7")
+    require_evidence_after("hosted_matrix", "product_clients", "hosted-matrix verification before product clients")
+    require_evidence_after("final_local_gates", "product_clients", "final local-gates verification before product clients")
+    require_evidence_after("final_check", "copied_lineage", "final verification before M6")
+    require_evidence_after("final_check", "independent", "final verification before M7")
+    require_evidence_after("final_check", "product_clients", "final verification before product clients")
+    require_evidence_after("final_check", "hosted_matrix", "final verification before hosted matrix")
+    require_evidence_after("final_check", "final_local_gates", "final verification before local gates")
+
+    final = @evidence["final_check"]
+    if final.is_a?(Hash)
+      maintainer_approved_at = final.dig("approvals", "maintainer_review", "approved_at")
+      FINAL_PREREQUISITE_KINDS.each do |kind|
+        authority_kind, completion_field = PREREQUISITE_COMPLETION_AUTHORITIES.fetch(kind)
+        authority = @evidence[authority_kind]
+        completion_value = authority&.fetch(completion_field, nil)
+        completion_time = parsed_prerequisite_completion(completion_field, completion_value)
+        unless completion_time
+          errors <<
+            "final prerequisite #{kind} requires parseable " \
+            "#{authority_kind}.#{completion_field} completion value"
+          next
+        end
+
+        completion_label = completion_field == "verified_at" ? "verification" : completion_field
+
+        require_not_before(
+          maintainer_approved_at,
+          completion_time.iso8601,
+          "final maintainer approval before #{kind} #{completion_label}"
+        )
+      end
+      require_not_before(
+        final["verified_at"], maintainer_approved_at,
+        "final verification before maintainer approval"
+      )
+    end
+
+    authority = @evidence["publication_authority"]
+    if authority.is_a?(Hash)
+      require_not_before(
+        authority.dig("authority", "approved_at"), final&.fetch("verified_at", nil),
+        "publication authority before final verification"
+      )
+      require_not_before(
+        authority["verified_at"], authority.dig("authority", "approved_at"),
+        "publication-authority verification before approval"
+      )
+    end
+
+    downloaded = @evidence["downloaded_gem"]
+    return unless downloaded.is_a?(Hash)
+
+    require_not_before(
+      downloaded.dig("repository", "tagged_at"), authority&.dig("authority", "approved_at"),
+      "release tag before publication authority"
+    )
+    require_not_before(
+      downloaded["verified_at"], downloaded.dig("repository", "tagged_at"),
+      "download verification before the release tag"
+    )
+    require_not_before(
+      downloaded["verified_at"], authority&.fetch("verified_at", nil),
+      "download verification before publication-authority verification"
+    )
+  end
+
+  def require_evidence_after(later_kind, earlier_kind, label)
+    later = @evidence[later_kind]
+    earlier = @evidence[earlier_kind]
+    return unless later.is_a?(Hash) && earlier.is_a?(Hash)
+
+    require_not_before(later["verified_at"], earlier["verified_at"], label)
+  end
+
+  def validate_requested_gate
+    case @mode
+    when :current
+      nil
+    when :through
+      requirements = case @value
+      when "M6" then EXPECTED_REQUIREMENTS.fetch("0.2.0.rc1")
+      when "M7" then EXPECTED_REQUIREMENTS.fetch("0.2.0.rc2")
+      when "M8"
+        validate_public_policy(RELEASE)
+        EXPECTED_COMPLETION
+      end
+      require_accepted(requirements, "#{@value} acceptance")
+    when :preflight
+      validate_public_policy(@value)
+      require_accepted(EXPECTED_REQUIREMENTS.fetch(@value), "#{@value} public preflight")
+    when :ready_for_authority
+      validate_public_policy(@value)
+      require_accepted(EXPECTED_READINESS, "#{@value} authority readiness")
+      if accepted?("publication_authority") || accepted?("downloaded_gem")
+        errors << "#{@value} already has publication authority; use --preflight or --complete"
+      end
+    when :complete
+      validate_public_policy(@value)
+      require_accepted(EXPECTED_COMPLETION, "#{@value} post-publication completion")
+    end
+  end
+
+  def validate_public_policy(version)
+    return if EXPECTED_PUBLIC_POLICY.fetch("public_versions").include?(version)
+
+    if @decision&.fetch("decision", nil) == "deferred_to_final"
+      errors << "M5.4 deferred public RubyGems publication until #{RELEASE}; #{version} is internal-only"
+    else
+      errors << "#{version} is not allowed by the recorded M5.4 publication decision"
+    end
+  end
+
+  def require_accepted(kinds, label)
+    pending = kinds.reject { |kind| accepted?(kind) }
+    return if pending.empty?
+
+    paths = pending.map { |kind| EXPECTED_FUTURE_RECORDS.fetch(kind).fetch("path") }
+    errors << "#{label} is missing accepted evidence: #{paths.join(', ')}"
+  end
+end
+
+if $PROGRAM_NAME == __FILE__
+  options = parse_options(ARGV)
+  verifier = ReleaseEvidenceVerifier.new(options)
+  errors = verifier.verify
+  if errors.any?
+    warn errors.join("\n")
+    exit 1
+  end
+
+  puts verifier.summary
+end

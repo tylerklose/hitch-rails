@@ -1,0 +1,201 @@
+{
+  "schema": "hitch.m6-copied-lineage-adoption.v1",
+  "milestone": "M6",
+  "status": "<string:accepted>",
+  "verified_at": "<timestamp:verification time>",
+  "approval": {
+    "authority": "<string:Tyler Klose>",
+    "status": "<string:approved>",
+    "approved_at": "<timestamp:approval time>",
+    "repository_access": "<boolean:repository access granted>",
+    "deployment_access": "<boolean:deployment access granted>",
+    "host_identity_sha256": "<sha256:approval-bound private repository identity>",
+    "input_artifact_sha256": "<sha256:approved pre4 input artifact>",
+    "scope": "<string:adopt Hitch in approved copied-lineage host and deploy>"
+  },
+  "provenance": {
+    "class": "<string:copied_lineage>",
+    "host": "<string:approved redacted host name>",
+    "basis": "<string:skillit_root or approved_lineage_substitute>",
+    "substitution_approved": "<boolean:substitution approval matches basis>",
+    "target_is_skillit": false,
+    "skillit_repository_changed": false
+  },
+  "input": {
+    "version": "<string:0.2.0.pre.4>",
+    "kind": "<string:accepted artifact kind from M5.4>",
+    "artifact": "<string:hitch-rails-0.2.0.pre.4.gem>",
+    "sha256": "<sha256:accepted pre4 artifact>"
+  },
+  "host": {
+    "name": "<string:approved redacted host name>",
+    "identity_sha256": "<sha256:approval-bound private repository identity>",
+    "commit": "<commit:host source commit>",
+    "tree": "<commit:host source tree>",
+    "clean_worktree": true,
+    "installed_artifact": "<string:hitch-rails-0.2.0.pre.4.gem>",
+    "installed_artifact_sha256": "<sha256:accepted pre4 artifact>",
+    "private_report_sha256": "<sha256:redacted private host report>"
+  },
+  "route": {
+    "preview": "<string:passed>",
+    "canonical_path": "<string:/mcp>",
+    "cutover": "<string:atomic>",
+    "legacy_dispatch_removed": true,
+    "dual_route": false,
+    "rollback": "<string:verified>",
+    "sdk_upgraded_behind_legacy_endpoint": true
+  },
+  "parity": {
+    "tool_names": "<string:preserved or documented_migration>",
+    "schemas": "<string:preserved or documented_migration>",
+    "authentication": "<string:preserved or documented_migration>",
+    "audit_meaning": "<string:preserved or documented_migration>",
+    "business_policy_imported": false,
+    "migration_evidence_sha256": "<nullable-string:migration SHA or null>"
+  },
+  "benchmark": {
+    "same_host": true,
+    "same_data": true,
+    "warmed": true,
+    "concurrency": 16,
+    "runs": 5,
+    "operations": [
+      {
+        "name": "tools/list",
+        "old_runs": [
+          { "requests": 1000, "errors": 0, "p95_ms": "<number:positive p95 milliseconds>" },
+          { "requests": 1000, "errors": 0, "p95_ms": "<number:positive p95 milliseconds>" },
+          { "requests": 1000, "errors": 0, "p95_ms": "<number:positive p95 milliseconds>" },
+          { "requests": 1000, "errors": 0, "p95_ms": "<number:positive p95 milliseconds>" },
+          { "requests": 1000, "errors": 0, "p95_ms": "<number:positive p95 milliseconds>" }
+        ],
+        "new_runs": [
+          { "requests": 1000, "errors": 0, "p95_ms": "<number:positive p95 milliseconds>" },
+          { "requests": 1000, "errors": 0, "p95_ms": "<number:positive p95 milliseconds>" },
+          { "requests": 1000, "errors": 0, "p95_ms": "<number:positive p95 milliseconds>" },
+          { "requests": 1000, "errors": 0, "p95_ms": "<number:positive p95 milliseconds>" },
+          { "requests": 1000, "errors": 0, "p95_ms": "<number:positive p95 milliseconds>" }
+        ],
+        "old_median_p95_ms": "<number:derived median p95>",
+        "new_median_p95_ms": "<number:derived median p95>",
+        "regression_percent": "<number:derived regression percent>",
+        "accepted_performance_issue": "<boolean:accepted issue exists>",
+        "accepted_issue": "<nullable-string:issue reference or null>"
+      },
+      {
+        "name": "tools/call",
+        "old_runs": [
+          { "requests": 1000, "errors": 0, "p95_ms": "<number:positive p95 milliseconds>" },
+          { "requests": 1000, "errors": 0, "p95_ms": "<number:positive p95 milliseconds>" },
+          { "requests": 1000, "errors": 0, "p95_ms": "<number:positive p95 milliseconds>" },
+          { "requests": 1000, "errors": 0, "p95_ms": "<number:positive p95 milliseconds>" },
+          { "requests": 1000, "errors": 0, "p95_ms": "<number:positive p95 milliseconds>" }
+        ],
+        "new_runs": [
+          { "requests": 1000, "errors": 0, "p95_ms": "<number:positive p95 milliseconds>" },
+          { "requests": 1000, "errors": 0, "p95_ms": "<number:positive p95 milliseconds>" },
+          { "requests": 1000, "errors": 0, "p95_ms": "<number:positive p95 milliseconds>" },
+          { "requests": 1000, "errors": 0, "p95_ms": "<number:positive p95 milliseconds>" },
+          { "requests": 1000, "errors": 0, "p95_ms": "<number:positive p95 milliseconds>" }
+        ],
+        "old_median_p95_ms": "<number:derived median p95>",
+        "new_median_p95_ms": "<number:derived median p95>",
+        "regression_percent": "<number:derived regression percent>",
+        "accepted_performance_issue": "<boolean:accepted issue exists>",
+        "accepted_issue": "<nullable-string:issue reference or null>"
+      }
+    ]
+  },
+  "friction": {
+    "items": [
+      {
+        "description": "<string:friction description>",
+        "disposition": "<string:host_specific framework_change or documented_limitation>",
+        "framework_test": "<nullable-string:test path for framework changes or null>"
+      }
+    ],
+    "public_api": {
+      "path": "docs/contracts/mcp_public_api.yml",
+      "input_source_commit": "<commit:accepted pre4 source commit>",
+      "input_sha256": "<sha256:public API manifest at accepted pre4 source>",
+      "checkpoint_source_commit": "<commit:RC1 checkpoint source commit>",
+      "checkpoint_sha256": "<sha256:public API manifest at RC1 checkpoint>",
+      "unchanged": false,
+      "documentation_errata": ["endpoint_registry_prepare_cycle"]
+    },
+    "framework_changed": "<boolean:derived from meaningful pre4 to RC1 source delta>",
+    "framework_change_proofs": [
+      {
+        "test": "<path:named Hitch regression test>",
+        "command": "<command:bin/ci-test followed by the test path>",
+        "before_source_commit": "<commit:source containing failing regression test before fix>",
+        "before_source_tree": "<commit:tree containing failing regression test before fix>",
+        "before_status": "<string:failed>",
+        "before_output_sha256": "<sha256:redacted failing test output>",
+        "before_test_sha256": "<sha256:regression test blob before fix>",
+        "after_source_commit": "<commit:RC1 checkpoint source after fix>",
+        "after_source_tree": "<commit:RC1 checkpoint tree after fix>",
+        "after_status": "<string:passed>",
+        "after_output_sha256": "<sha256:redacted passing test output>",
+        "after_test_sha256": "<sha256:unchanged regression test blob after fix>"
+      }
+    ],
+    "output_rerun": {
+      "status": "<string:passed or not_applicable>",
+      "host": "<nullable-string:copied host name or null>",
+      "command": "<nullable-command:redacted output-checkpoint rerun or null>",
+      "source_commit": "<nullable-commit:RC1 source or null>",
+      "source_tree": "<nullable-commit:RC1 tree or null>",
+      "artifact_sha256": "<nullable-sha256:RC1 artifact or null>",
+      "verified_at": "<nullable-timestamp:rerun completion or null>",
+      "report_sha256": "<nullable-sha256:fresh private rerun report or null>"
+    }
+  },
+  "gates": {
+    "sdk_upgrade": { "status": "<string:passed>", "verification": "<string:operator_reviewed_external>", "command": "<command:redacted host command>", "report_sha256": "<sha256:private host report>" },
+    "host_ci": { "status": "<string:passed>", "verification": "<string:operator_reviewed_external>", "command": "<command:redacted host command>", "report_sha256": "<sha256:private host report>" },
+    "mcp_smoke": { "status": "<string:passed>", "verification": "<string:operator_reviewed_external>", "command": "<command:redacted host command>", "report_sha256": "<sha256:private host report>" },
+    "isolation": { "status": "<string:passed>", "verification": "<string:operator_reviewed_external>", "command": "<command:redacted host command>", "report_sha256": "<sha256:private host report>" },
+    "doctor": { "status": "<string:passed>", "verification": "<string:operator_reviewed_external>", "command": "<command:redacted host command>", "report_sha256": "<sha256:private host report>" },
+    "package_smoke": {
+      "status": "<string:passed>",
+      "verification": "<string:automated_local>",
+      "command": "<command:bin/package-smoke>",
+      "report_sha256": "<sha256:generated milestone local gate report>",
+      "report": {
+        "schema": "<string:hitch.milestone-local-gate.v1>",
+        "milestone": "<string:M6>",
+        "gate": "<string:package_smoke>",
+        "status": "<string:passed>",
+        "started_at": "<timestamp:gate start time>",
+        "completed_at": "<timestamp:gate completion time>",
+        "command": "<command:bin/package-smoke>",
+        "candidate": {
+          "version": "<string:0.2.0.rc1>",
+          "artifact": "<string:hitch-rails-0.2.0.rc1.gem>",
+          "sha256": "<sha256:RC1 artifact>",
+          "source_commit": "<commit:RC1 source commit>",
+          "source_tree": "<commit:RC1 source tree>",
+          "clean_worktree": true
+        },
+        "command_output_sha256": "<sha256:package-smoke output>",
+        "structured_report_sha256": "<sha256:package-smoke structured report>"
+      }
+    }
+  },
+  "checkpoint": {
+    "version": "<string:0.2.0.rc1>",
+    "status": "<string:accepted_internal_checkpoint>",
+    "source_commit": "<commit:Hitch checkpoint commit>",
+    "source_tree": "<commit:Hitch checkpoint tree>",
+    "artifact": "<string:hitch-rails-0.2.0.rc1.gem>",
+    "sha256": "<sha256:rebuilt checkpoint gem>"
+  },
+  "redaction": {
+    "contains_credentials": false,
+    "contains_private_logs": false,
+    "contains_customer_data": false,
+    "contains_private_repository_paths": false
+  }
+}

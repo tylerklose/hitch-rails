@@ -166,6 +166,16 @@ class ReleasePolicyTest < ActiveSupport::TestCase
     assert_includes stderr, "M0.5 must own 0.1.0 as internal_only"
   end
 
+  test "requires a mutable M7 development identity distinct from RC2" do
+    path = File.join(@root, "docs/work_packets/index.yml")
+    File.write(path, File.read(path).sub("development_version: 0.2.0.rc2.dev", "development_version: 0.2.0.rc2"))
+
+    _stdout, stderr, status = run_verifier
+
+    assert_not status.success?
+    assert_includes stderr, "M7 must own mutable development identity 0.2.0.rc2.dev"
+  end
+
   test "rejects an installable gem in public checkpoint CI" do
     write(".github/workflows/ci.yml", <<~YAML)
       jobs:
@@ -251,11 +261,11 @@ class ReleasePolicyTest < ActiveSupport::TestCase
           artifact: { version: 0.2.0.pre.3, distribution: internal_only, verifier: bin/package-smoke }
         M5.4:
           creates_commands: [bin/release-check]
-          artifact: { version: 0.2.0.pre.4, distribution: public_optional, verifier: bin/package-smoke, public_verifier: bin/release-check }
+          artifact: { version: 0.2.0.pre.4, development_version: 0.2.0.pre.4.dev, distribution: public_optional, verifier: bin/package-smoke, public_verifier: bin/release-check }
         M6:
-          artifact: { version: 0.2.0.rc1, distribution: public_if_pre4_published, verifier: bin/package-smoke, public_verifier: bin/release-check }
+          artifact: { version: 0.2.0.rc1, development_version: 0.2.0.rc1.dev, distribution: public_if_pre4_published, verifier: bin/package-smoke, public_verifier: bin/release-check }
         M7:
-          artifact: { version: 0.2.0.rc2, distribution: public_if_pre4_published, verifier: bin/package-smoke, public_verifier: bin/release-check }
+          artifact: { version: 0.2.0.rc2, development_version: 0.2.0.rc2.dev, distribution: public_if_pre4_published, verifier: bin/package-smoke, public_verifier: bin/release-check }
         M8:
           artifact: { version: 0.2.0, distribution: public_required, verifier: bin/package-smoke, public_verifier: bin/release-check }
     YAML

@@ -3,7 +3,7 @@ contract:
   protocol_version: "2026-07-28"
   roadmap:
     path: ROADMAP.md
-    sha256: 91a118def8caefcad47488234f32a5a1f5a10084ff7a999dd7b099201bc3d11e
+    sha256: 9518c0678ce2ecb03b873a7d4ac5332c7d740c4413c43c375cf40aa4680ae024
   lattice_schema:
     path: test/lattice/mcp_tool_authorization.json
     sha256: 70aec37011d2be7a1b7ed8e72118cd7d4c2305848b645c6745cdf1ba385710e7
@@ -13,6 +13,15 @@ contract:
     seed: 42
     exhaustive_strength: 8
     expected_rows: 12
+  release_lattice_schema:
+    path: test/lattice/release_evidence.json
+    sha256: 5deefe22a221358e3d9e078448f190f2c095c00bedc78eeafa6996dcdbffcfd0
+  release_lattice_scenarios:
+    path: test/lattice/release_evidence_scenarios.json
+    sha256: a02e3317c7c96444f1c520116c6246a90b4ffec52dd57fc2cdd6d0f47764dfed
+    seed: 42
+    exhaustive_strength: 9
+    expected_rows: 60
 ruby_sdk:
   gem: mcp
   requirement: ">= 1.1.0, < 2"
@@ -49,10 +58,10 @@ automated_clients:
     version: 8.0.2
   harness:
     path: test/checkpoint/automated_clients.rb
-    sha256: 553fd9d95ea83d2f097d25abe2df1525fd975ede67df14bb6bf8b2a17efbdf3b
+    sha256: db0cfd69c0aa307a49f29f1af73a5080250799225c4a479b3ac1149284976ea4
   redis_service:
     path: test/checkpoint/pinned_redis.rb
-    sha256: 197e57b49c785b0ce1a8eecba41531206fc8c46089d5577a7d61c643ef803bae
+    sha256: 62518270085125bb20c3299504982ab6f8d2a79cde4c378d9ce4c139f9ff3523
   matrix:
     schema:
       path: test/lattice/m5_automated_clients.json

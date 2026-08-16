@@ -88,26 +88,8 @@ class MCPRateLimitTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "Redis connection failure is 503 before body registry SDK or host work" do
-    configuration = Hitch.configuration.mcp
-    configuration.rate_limit_redis_url = "redis://127.0.0.1:1/0"
-    configuration.__send__(:prepare_rate_store!)
-    McpController.reset_wire_metrics!
-    input = NonRewindableInput.new(request_body(method: "tools/call", name: "hitch.echo"))
-
-    failed = call_app_with_input(
-      path: "/mcp",
-      input:,
-      content_type: "application/json",
-      host: "dummy.test",
-      headers: request_headers(token: @token, method: "tools/call", name: "hitch.echo")
-    )
-
-    assert_equal 503, failed.status
-    assert_nil failed.headers["retry-after"]
-    assert_equal 0, input.bytes_read
-    assert_equal({ body_parses: 0, registry: 0, sdk: 0, host: 0 }, downstream_metrics)
-  end
+  # Store failure is 503 before any downstream work: see
+  # MCPRateLimitCacheStoreTest, which owns the store contract.
 
   private
 
@@ -121,7 +103,7 @@ class MCPRateLimitTest < ActionDispatch::IntegrationTest
       configuration.mcp.server_info = ->(_context) { { name: "hitch-rate", version: "0.2.0" } }
       configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
       configuration.mcp.request_limit = { to:, within: }
-      configuration.mcp.rate_limit_redis_url = nil
+      configuration.mcp.rate_limit_store = ActiveSupport::Cache::MemoryStore.new
       configuration.mcp.max_request_bytes = 8_192
     end
     Hitch.configuration.validate!
@@ -129,7 +111,6 @@ class MCPRateLimitTest < ActionDispatch::IntegrationTest
       :prepare_registry!,
       supported_scopes: Hitch.configuration.supported_scopes
     )
-    Hitch.configuration.mcp.__send__(:prepare_rate_store!)
   end
 
   def post_mcp(method:, token:, name: nil, arguments: {}, id: SecureRandom.hex(4))

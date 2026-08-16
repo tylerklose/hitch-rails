@@ -21,7 +21,7 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     "registry" => "populated",
     "hosts" => "accepted",
     "origins" => "exact",
-    "redis" => "healthy",
+    "rate_limit_store" => "shared",
     "package" => "complete",
     "legacy" => "absent"
   }.freeze
@@ -35,17 +35,17 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     "registry" => "invalid",
     "hosts" => "accepted",
     "origins" => "deny_default",
-    "redis" => "unreachable",
+    "rate_limit_store" => "unshared",
     "package" => "complete",
     "legacy" => "absent"
   }.freeze
 
   class FixtureSystem
-    attr_reader :redis_probe_calls
+    attr_reader :rate_limit_store_probe_calls
 
     def initialize(values)
       @values = values
-      @redis_probe_calls = 0
+      @rate_limit_store_probe_calls = 0
     end
 
     def versions
@@ -92,13 +92,21 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
         "resource_path" => "/mcp",
         "endpoint_indexes" => [ 2 ],
         "endpoint_all_verbs" => true,
+        "endpoint_reachable" => true,
+        "recognized_targets" => {
+          "post" => { "controller" => "mcp", "action" => "handle" },
+          "options" => { "controller" => "mcp", "action" => "handle" }
+        },
         "same_path_predecessor_indexes" => [],
         "engine_mount_indexes" => [ 3 ],
         "engine_mount_paths" => [ "/" ]
       }
       case values.fetch("route")
       when "missing" then facts["endpoint_indexes"] = []
-      when "shadowed" then facts["same_path_predecessor_indexes"] = [ 1 ]
+      when "shadowed"
+        facts["endpoint_reachable"] = false
+        facts["recognized_targets"]["post"] = { "controller" => "host_forms", "action" => "create" }
+        facts["same_path_predecessor_indexes"] = [ 1 ]
       when "after_engine"
         facts["endpoint_indexes"] = [ 3 ]
         facts["engine_mount_indexes"] = [ 2 ]
@@ -156,26 +164,20 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
       }
     end
 
-    def redis_url
-      return if values.fetch("redis") == "absent"
-
-      "redis://:redis-super-secret@redis.internal:6379/15"
-    end
-
-    def redis_target
-      "redis://redis.internal:6379/15"
-    end
-
-    def redis_probe
-      @redis_probe_calls += 1
+    def rate_limit_store_facts
+      @rate_limit_store_probe_calls += 1
       raise RuntimeError, "redis://:redis-super-secret@redis.internal:6379/15" if
-        values.fetch("redis") == "unreachable"
+        values.fetch("rate_limit_store") == "error"
 
-      if values.fetch("redis") == "non_atomic"
-        return { "connected" => true, "atomicity" => false, "expiry_ms" => -1, "cleanup" => false }
-      end
-
-      { "connected" => true, "atomicity" => true, "expiry_ms" => 4_999, "cleanup" => true }
+      unshared = values.fetch("rate_limit_store") != "shared"
+      counts = values.fetch("rate_limit_store") != "uncountable"
+      {
+        "store_class" => unshared ? "ActiveSupport::Cache::MemoryStore" : "SolidCache::Store",
+        "counts" => counts,
+        "returned" => counts ? [ 1, 2 ] : [ nil, nil ],
+        "unshared" => unshared,
+        "environment" => environment_name
+      }
     end
 
     def package_facts
@@ -203,8 +205,8 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
   end
 
   test "Lattice fixtures exercise all stable categories and actionable outcomes" do
-    assert_equal 27, SCENARIOS.length
-    assert_equal (1..27).to_a, SCENARIOS.map { |scenario| scenario.fetch("id") }
+    assert_equal 28, SCENARIOS.length
+    assert_equal (1..28).to_a, SCENARIOS.map { |scenario| scenario.fetch("id") }
     seen = Set.new
 
     SCENARIOS.each do |scenario|
@@ -214,7 +216,7 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
       assert_equal report.checks.any? { |check| check.status == "fail" }, report.failure?, scenario_label(scenario)
       assert_equal expected_overall(report), report.status, scenario_label(scenario)
       report.checks.each { |check| seen << [ check.id, check.status, check.code ] }
-      assert_operator system.redis_probe_calls, :<=, 1, scenario_label(scenario)
+      assert_operator system.rate_limit_store_probe_calls, :<=, 1, scenario_label(scenario)
 
       rendered = Doctor.render(report, format: "json")
       refute_includes rendered, "redis-super-secret", scenario_label(scenario)
@@ -229,17 +231,15 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     full_report = Doctor.call(system: FixtureSystem.new(HEALTHY_FULL))
     assert_equal "ok", full_report.status
     assert_equal false, full_report.failure?
-    redis_codes = %w[redis_connectivity redis_atomicity_expiry].map do |id|
-      full_report.checks.find { |check| check.id == id }.code
-    end
-    assert_equal [ "connected", "verified" ], redis_codes
+    assert_equal "shared",
+      full_report.checks.find { |check| check.id == "rate_limit_store" }.code
 
     auth_report = Doctor.call(system: FixtureSystem.new(HEALTHY_AUTH_ONLY))
     assert_equal "ok", auth_report.status
-    skipped_codes = %w[route_order registry redis_connectivity redis_atomicity_expiry].map do |id|
+    skipped_codes = %w[route_order registry rate_limit_store].map do |id|
       auth_report.checks.find { |check| check.id == id }.code
     end
-    assert_equal Array.new(4, "runtime_disabled"), skipped_codes
+    assert_equal Array.new(3, "runtime_disabled"), skipped_codes
   end
 
   test "human and JSON rendering are deterministic frozen public shapes" do
@@ -249,7 +249,7 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
 
     assert_equal "Hitch doctor v1: OK", human.lines.first.chomp
     assert_includes human, "PASS versions"
-    assert_includes human, "Summary: pass=12 warn=0 fail=0 skip=0"
+    assert_includes human, "Summary: pass=11 warn=0 fail=0 skip=0"
     assert_equal [ "schema", "status", "checks" ], machine.keys
     assert_equal "hitch.doctor.v1", machine.fetch("schema")
     assert_equal Doctor::CHECK_IDS, machine.fetch("checks").map { |check| check.fetch("id") }
@@ -276,40 +276,68 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     end
   end
 
-  test "real Redis probe uses an isolated expiring key and always removes it" do
-    system_class = Doctor.const_get(:System, false)
-    system = system_class.new
+  test "real admission-store probe uses an isolated expiring key and always removes it" do
+    system = Doctor.const_get(:System, false).new
     calls = []
-    client = Object.new
-    client.define_singleton_method(:ping) { calls << [ :ping ]; "PONG" }
-    client.define_singleton_method(:eval) do |script, keys, arguments|
-      calls << [ :eval, script, keys, arguments ]
-      [ 1, 2, 4_999, 1 ]
-    end
-    client.define_singleton_method(:del) { |key| calls << [ :del, key ]; 0 }
-    client.define_singleton_method(:close) { calls << [ :close ]; nil }
-    redis_url = "redis://:redis-super-secret@redis.internal/15"
-    Hitch.configuration.mcp.rate_limit_redis_url = redis_url
-    assert_equal "redis://redis.internal:6379/15", system.redis_target
+    store = Class.new(ActiveSupport::Cache::Store) do
+      attr_reader :calls
 
-    replacement = lambda do |**options|
-      calls << [ :new, options ]
-      client
-    end
-    stub_class_method(Redis, :new, replacement) do
-      result = system.redis_probe
-      eval_call = calls.find { |call| call.first == :eval }
-      key = eval_call.fetch(2).fetch(0)
+      def initialize(calls)
+        super()
+        @calls = calls
+        @counts = Hash.new(0)
+      end
 
-      assert_equal redis_url, calls.find { |call| call.first == :new }.fetch(1).fetch(:url)
-      assert key.start_with?("hitch:doctor:v1:")
-      refute key.start_with?("hitch:mcp:rate-limit:v1:")
-      assert_equal [ 5_000 ], eval_call.fetch(3)
-      assert_equal [ true, true, 4_999, true ],
-        result.values_at("connected", "atomicity", "expiry_ms", "cleanup")
-      assert_includes calls, [ :del, key ]
-      assert_includes calls, [ :close ]
-    end
+      def increment(name, amount = 1, **options)
+        calls << [ :increment, name, amount, options[:expires_in] ]
+        @counts[name] += amount
+      end
+
+      def delete(name, options = nil)
+        calls << [ :delete, name ]
+        true
+      end
+    end.new(calls)
+    Hitch.configuration.mcp.rate_limit_store = store
+
+    facts = system.rate_limit_store_facts
+    key = calls.first.fetch(1)
+
+    assert key.start_with?("hitch:doctor:v1:")
+    refute key.start_with?("hitch:mcp:rate-limit:v1:")
+    assert_equal [ [ :increment, key, 1, 5 ], [ :increment, key, 1, 5 ] ], calls.first(2)
+    assert_equal [ :delete, key ], calls.last
+    assert facts.fetch("counts")
+    assert_equal [ 1, 2 ], facts.fetch("returned")
+    refute facts.fetch("unshared")
+  ensure
+    Hitch.reset_configuration!
+  end
+
+  test "an admission-store probe removes its key even when counting raises" do
+    system = Doctor.const_get(:System, false).new
+    calls = []
+    store = Class.new(ActiveSupport::Cache::Store) do
+      def initialize(calls)
+        super()
+        @calls = calls
+      end
+
+      def increment(name, amount = 1, **options)
+        @calls << [ :increment, name ]
+        raise Errno::ECONNREFUSED, "store gone"
+      end
+
+      def delete(name, options = nil)
+        @calls << [ :delete, name ]
+        true
+      end
+    end.new(calls)
+    Hitch.configuration.mcp.rate_limit_store = store
+
+    assert_raises(Errno::ECONNREFUSED) { system.rate_limit_store_facts }
+    assert_equal :delete, calls.last.first
+    assert_equal calls.first.fetch(1), calls.last.fetch(1)
   ensure
     Hitch.reset_configuration!
   end
@@ -324,12 +352,164 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     production = ActiveSupport::EnvironmentInquirer.new("production")
 
     stub_class_method(Rails, :env, -> { production }) do
-      assert_raises(Hitch::DynamicRegistrationRateLimit::Unavailable) do
-        system.validate_configuration!
-      end
+      error = assert_raises(ArgumentError) { system.validate_configuration! }
+      assert_includes error.message, "cannot count one caller's"
     end
   ensure
     Hitch.reset_configuration!
+  end
+
+  test "real configuration probe drives an explicit production DCR store, not just its class" do
+    system = Doctor.const_get(:System, false).new
+    Hitch.reset_configuration!
+    outage_store = Class.new(ActiveSupport::Cache::Store) do
+      def increment(_name, _amount = 1, **) = nil
+      def delete(_name, _options = nil) = true
+    end.new
+    Hitch.configure do |configuration|
+      configuration.resource_uri = "https://doctor.example/mcp"
+      configuration.dynamic_client_registration_enabled = true
+      configuration.dynamic_client_registration_rate_store = outage_store
+    end
+    production = ActiveSupport::EnvironmentInquirer.new("production")
+
+    stub_class_method(Rails, :env, -> { production }) do
+      error = assert_raises(Hitch::DynamicRegistrationRateLimit::Unavailable) do
+        system.validate_configuration!
+      end
+      assert_includes error.message, "cannot count registration attempts"
+    end
+  ensure
+    Hitch.reset_configuration!
+  end
+
+  test "a DCR store with neither increment nor delete still yields a report, not a crash" do
+    # Base Store raises NotImplementedError (a ScriptError) from both methods;
+    # the probe and its ensure-cleanup must each survive that.
+    system = Doctor.const_get(:System, false).new
+    Hitch.reset_configuration!
+    Hitch.configure do |configuration|
+      configuration.resource_uri = "https://doctor.example/mcp"
+      configuration.dynamic_client_registration_enabled = true
+      configuration.dynamic_client_registration_rate_store = ActiveSupport::Cache::Store.new
+    end
+    production = ActiveSupport::EnvironmentInquirer.new("production")
+
+    stub_class_method(Rails, :env, -> { production }) do
+      error = assert_raises(Hitch::DynamicRegistrationRateLimit::Unavailable) do
+        system.validate_configuration!
+      end
+      assert_includes error.message, "cannot count registration attempts"
+    end
+  ensure
+    Hitch.reset_configuration!
+  end
+
+  test "real route probe detects a dynamic predecessor that recognizes the MCP path" do
+    original_resource = Hitch.configuration.resource_uri
+    Hitch.configuration.resource_uri = "https://dummy.test/mcp"
+    Rails.application.routes.draw do
+      match "*path", to: "host_forms#create", via: :all
+      match "mcp", to: "mcp#handle", via: :all
+      mount Hitch::Engine => "/"
+    end
+
+    facts = Doctor.const_get(:System, false).new.route_facts
+
+    assert_equal [ 1 ], facts.fetch("endpoint_indexes")
+    assert_empty facts.fetch("same_path_predecessor_indexes")
+    assert_equal false, facts.fetch("endpoint_reachable")
+    assert_equal({ "controller" => "host_forms", "action" => "create" },
+      facts.dig("recognized_targets", "post"))
+    assert_equal({ "controller" => "host_forms", "action" => "create" },
+      facts.dig("recognized_targets", "options"))
+  ensure
+    Rails.application.reload_routes!
+    Hitch.configuration.resource_uri = original_resource
+  end
+
+  test "real route probe honors the canonical host when checking predecessors" do
+    original_resource = Hitch.configuration.resource_uri
+    Hitch.configuration.resource_uri = "https://doctor.example/mcp"
+    Rails.application.routes.draw do
+      constraints host: "doctor.example" do
+        match "*path", to: "host_forms#create", via: :all
+      end
+      match "mcp", to: "mcp#handle", via: :all
+      mount Hitch::Engine => "/"
+    end
+
+    facts = Doctor.const_get(:System, false).new.route_facts
+
+    assert_equal false, facts.fetch("endpoint_reachable")
+    assert_equal({ "controller" => "host_forms", "action" => "create" },
+      facts.dig("recognized_targets", "post"))
+  ensure
+    Rails.application.reload_routes!
+    Hitch.configuration.resource_uri = original_resource
+  end
+
+  test "real route probe checks non-POST methods that the endpoint must own" do
+    original_resource = Hitch.configuration.resource_uri
+    Hitch.configuration.resource_uri = "https://dummy.test/mcp"
+    Rails.application.routes.draw do
+      get "*path", to: "host_forms#create"
+      match "mcp", to: "mcp#handle", via: :all
+      mount Hitch::Engine => "/"
+    end
+
+    facts = Doctor.const_get(:System, false).new.route_facts
+
+    assert_equal false, facts.fetch("endpoint_reachable")
+    assert_equal({ "controller" => "host_forms", "action" => "create" },
+      facts.dig("recognized_targets", "get"))
+    assert_equal({ "controller" => "mcp", "action" => "handle" },
+      facts.dig("recognized_targets", "post"))
+  ensure
+    Rails.application.reload_routes!
+    Hitch.configuration.resource_uri = original_resource
+  end
+
+  test "real route probe checks every method Rails can recognize" do
+    original_resource = Hitch.configuration.resource_uri
+    Hitch.configuration.resource_uri = "https://dummy.test/mcp"
+    Rails.application.routes.draw do
+      match "*path", to: "host_forms#create", via: :trace
+      match "mcp", to: "mcp#handle", via: :all
+      mount Hitch::Engine => "/"
+    end
+
+    facts = Doctor.const_get(:System, false).new.route_facts
+
+    assert_equal ActionDispatch::Request::HTTP_METHODS.map(&:downcase), facts.fetch("recognized_targets").keys
+    assert_equal false, facts.fetch("endpoint_reachable")
+    assert_equal({ "controller" => "host_forms", "action" => "create" },
+      facts.dig("recognized_targets", "trace"))
+    assert_equal({ "controller" => "mcp", "action" => "handle" },
+      facts.dig("recognized_targets", "post"))
+  ensure
+    Rails.application.reload_routes!
+    Hitch.configuration.resource_uri = original_resource
+  end
+
+  test "route check fails when recognition is shadowed without an exact-path predecessor" do
+    system = FixtureSystem.new(HEALTHY_FULL)
+    shadowed = system.route_facts.merge(
+      "endpoint_reachable" => false,
+      "same_path_predecessor_indexes" => [],
+      "recognized_targets" => {
+        "post" => { "controller" => "host_forms", "action" => "create" },
+        "options" => { "controller" => "host_forms", "action" => "create" }
+      }
+    )
+
+    report = stub_class_method(system, :route_facts, -> { shadowed }) do
+      Doctor.call(system:)
+    end
+    check = report.checks.find { |candidate| candidate.id == "route_order" }
+
+    assert_equal "fail", check.status
+    assert_equal "shadowed", check.code
   end
 
   test "installed package fallback inspects disk when the loaded gemspec omits files" do
@@ -385,10 +565,10 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
       [ "registry", "warn", "empty" ],
       [ "hosts", "fail", "blocked" ],
       [ "origins", "warn", "insecure_http" ],
-      [ "redis_connectivity", "warn", "memory_nonproduction" ],
-      [ "redis_connectivity", "fail", "required_missing" ],
-      [ "redis_connectivity", "fail", "unavailable" ],
-      [ "redis_atomicity_expiry", "fail", "invalid" ],
+      [ "rate_limit_store", "warn", "unshared" ],
+      [ "rate_limit_store", "warn", "uncountable" ],
+      [ "rate_limit_store", "fail", "unshared" ],
+      [ "rate_limit_store", "fail", "uncountable" ],
       [ "package", "fail", "incomplete" ],
       [ "legacy_endpoint", "warn", "present_noncanonical" ],
       [ "legacy_endpoint", "fail", "canonical" ]

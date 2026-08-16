@@ -3,9 +3,10 @@
 require "test_helper"
 
 class Hitch::EngineTest < ActiveSupport::TestCase
-  class SharedRateStore
-    def shared? = true
-    def increment_with_expiry(**) = 1
+  # Stands in for a store shared across processes; MemoryStore and NullStore
+  # are refused in production.
+  class SharedRateStore < ActiveSupport::Cache::Store
+    def increment(name, amount = 1, **options) = 1
   end
 
   test "host filter_parameters extended with OAuth secrets" do
@@ -143,7 +144,7 @@ class Hitch::EngineTest < ActiveSupport::TestCase
     production = ActiveSupport::EnvironmentInquirer.new("production")
 
     stub_class_method(Rails, :env, -> { production }) do
-      assert_raises(Hitch::DynamicRegistrationRateLimit::Unavailable) do
+      assert_raises(ArgumentError) do
         dynamic_registration_initializer.run(Rails.application)
       end
     end

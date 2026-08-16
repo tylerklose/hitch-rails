@@ -42,12 +42,14 @@ over ordinary Rails code.
 
 An unfamiliar contributor can complete H0 through M5 using this repository,
 public specifications, and disposable local services. The Hitch release
-maintainer owns milestone acceptance, evidence review, dependency updates, the
-publish-or-defer decision at each eligible gate, and RubyGems publication.
+maintainer owns milestone acceptance, evidence review, dependency updates, and
+release execution. M5.4's publish-or-defer choice is already resolved to
+`deferred_to_final`; the internal RC train cannot reopen it.
 
 Tyler Klose owns access to the private copied-lineage and independent reference
-hosts, approval for their deployment changes, and approval for every paid or
-model-backed product-client smoke. A release manager may not enter M6 or M7, or
+hosts, approval for their deployment changes, approval for every paid or
+model-backed product-client smoke, and final `0.2.0` publication authority. A
+release manager may not enter M6 or M7, or
 run those product-client smokes, without that access and explicit approval. If
 a named private host is unavailable, Tyler may explicitly approve a substitute:
 M6 still needs a host from the copied lineage, while M7 needs a genuinely
@@ -59,10 +61,10 @@ Accordingly, the self-contained contributor handoff ends at M5 and
 handoff. Their packets can be prepared publicly, but their acceptance cannot be
 delegated around the access and approval boundary.
 
-## Red-team verdict on the current repository
+## Baseline red-team verdict at roadmap inception
 
-The existing code is a credible, tested OAuth substrate. It is not yet the
-framework described above.
+At the roadmap's 2026-08-01 starting point, the existing code was a credible,
+tested OAuth substrate. It was not yet the framework described above.
 
 Current verification on 2026-08-01:
 
@@ -134,11 +136,13 @@ These are decisions, not questions delegated to the implementer.
   the maintainer may instead defer all publication until final `0.2.0`.
 - Both support Ruby `>= 3.3, < 4.1`, Rails `>= 7.2, < 8.2`, SQLite, and
   PostgreSQL. MySQL is not claimed.
-- `0.2` additionally depends on `mcp >= 1.1.0, < 2` and `redis >= 5, < 7`.
-  It tests the minimum and latest 1.x SDK independently; production endpoint
-  rate limiting requires Redis.
+- `0.2` additionally depends on `mcp >= 1.1.0, < 2`. It tests the minimum and
+  latest 1.x SDK independently. Endpoint rate limiting uses the host's own
+  configured cache store and adds no runtime dependency.
 
-The minimum CI lanes are:
+The two `0.1` rows below are historical auth-checkpoint profiles. The four
+`0.2` rows are the exact executable release matrix; all four, not merely the
+declared version ranges, must pass M8.
 
 Ruby's supported release sequence moves from 3.4 to 4.0; there is no Ruby 3.5
 release. The upper lanes therefore exercise Ruby 4.0 and the gem bound is
@@ -331,9 +335,11 @@ match "/mcp", to: "mcp#handle", via: :all
 ```
 
 `via: :all` lets the endpoint return the required 405 instead of an unrelated
-Rails 404. The endpoint resolves the configured registry class by name on every
-request and creates a new verified request, context envelope, SDK server, and
-SDK adapter state. Nothing principal-specific is shared across requests.
+Rails 404. Every request reads the current immutable registry snapshot; Rails
+constantizes and validates the configured registry class during each
+`to_prepare` cycle. Every request also creates a new verified request, context
+envelope, SDK server, and SDK adapter state. Nothing principal-specific is
+shared across requests.
 
 The concern installs one outer request-observation callback, then Host/Origin,
 HTTP-method, bearer-authentication, and rate-limit callbacks in that order.
@@ -389,7 +395,8 @@ Hitch.configure do |config|
     principal.account
   }
   config.mcp.request_limit = { to: 120, within: 1.minute }
-  config.mcp.rate_limit_redis_url = ENV["HITCH_MCP_REDIS_URL"]
+  # Optional; defaults to config.action_controller.cache_store.
+  config.mcp.rate_limit_store = nil
   config.mcp.max_request_bytes = 1.megabyte
   config.mcp.max_result_bytes = 1.megabyte
 end
@@ -398,7 +405,8 @@ end
 `server_info` returns the documented scalar keys. `scope_resolver` returns one
 opaque host object or `nil`; Hitch assigns no tenant semantics. Missing resource,
 registry, server identity, scope resolver, request limit, or production
-host/origin/Redis requirements fails at boot with one actionable error.
+host/origin requirements, or a production admission store that cannot count
+across processes, fails at boot with one actionable error.
 
 ### Registry
 
@@ -524,7 +532,7 @@ unexpected validation message is normalized to a fixed generic response.
 | `Result.error` | Explicit host-approved safe message | 1 |
 | Unexpected exception or invalid/oversize result | Generic `isError: true` | 1 |
 | Scope resolver or availability raises | Generic `-32603`, no scope disclosure | 0 |
-| Rate store fails | HTTP 503, no protocol/host work | 0 |
+| Admission store fails | HTTP 503, no protocol/host work | 0 |
 
 Hitch never treats `ArgumentError`, `RecordInvalid`, or another host exception
 message as public. Unexpected failures report a sanitized wrapper through
@@ -539,21 +547,35 @@ authenticated endpoint-wide fixed-window limit, shared across discover/list/call
 for the validated principal and client. It intentionally does not promise per-tool
 quotas or distributed concurrency leases.
 
-The endpoint uses Rails' `ActionController::RateLimiting` callback semantics and
-a private `Hitch::MCP::RedisRateStore`. One Redis Lua script atomically increments
-the fixed-window key and assigns its expiry on first use; there is no split
-increment/expiry race. Keys are HMACs of validated principal type/id and client
-ID, so token rotation cannot reset quota and raw identifiers are absent. The
-quota intentionally spans every host scope and tool for that principal/client.
+Hitch counts through the host application's own `ActiveSupport::Cache` store,
+which is what Rails' `ActionController::RateLimiting` does. It adds no service
+to a deployment and declares no Redis dependency: a Rails 8 application on the
+Solid Cache default installs Hitch and reaches production unchanged. One
+`increment(key, 1, expires_in:)` advances the window; supported stores assign
+expiry on first write only, so there is no split increment/expiry race and no
+sliding window under sustained load. Keys are HMACs of validated principal
+type/id and client ID, so token rotation cannot reset quota and raw identifiers
+are absent. The quota intentionally spans every host scope and tool for that
+principal/client.
 
 A rejection is 429 with a conservative `Retry-After` equal to the configured
-window. Redis nil/errors are 503 and perform no registry/SDK/host work.
-Development/test may use a private `MemoryStore`; production requires
-`HITCH_MCP_REDIS_URL`. `hitch:doctor` pings Redis and executes an isolated
-atomicity/expiry probe. The release matrix pins a Redis server image/digest in
-the toolchain lock and exercises multiple processes. No other production store
-is claimed in `0.2`. Concurrency limits, leases, and host capacity remain later
-work.
+window. Store errors are 503 and perform no registry/SDK/host work.
+`config.mcp.rate_limit_store` accepts any store responding to `increment`, for
+hosts that want MCP admission kept out of their general cache; nil resolves to
+`config.action_controller.cache_store`. Production refuses a store that cannot
+count one principal's requests across the processes serving them —
+`:memory_store`, `:null_store`, and `:file_store`. Other environments do not
+enforce a limit when the store cannot count, matching Rails rather than failing
+every request. `hitch:doctor` drives the configured store with an isolated
+double-increment probe. The release matrix pins a Redis server image/digest in
+the toolchain lock and exercises multiple processes against `RedisCacheStore` as
+one supported backend.
+
+Counting is as accurate as the host's store, which is the right trade for a rate
+limit: Solid Cache on PostgreSQL can lose increments when a window key is first
+created (rails/solid_cache#297), Redis and Memcached are exact, and any cache
+store may evict a live counter. Concurrency limits, leases, and host capacity
+remain later work.
 
 ### Observation contract
 
@@ -666,16 +688,26 @@ is an operator-authored migration example, never an uninstall side effect.
 - M2 through M4 seal `0.2.0.pre.1` through `.pre.3` as internal checkpoints.
   Their acceptance and every downstream dependency are based on checkpoint
   evidence, never RubyGems availability.
-- M5 seals `0.2.0.pre.4`, the first useful end-to-end artifact and the earliest
-  public prerelease candidate. The maintainer records either `published_pre4`
-  or `deferred_to_final`. M5 acceptance does not require publication.
-- If M5 publication is deferred, M6 and M7 seal internal `0.2.0.rc1` and
-  `0.2.0.rc2` checkpoints and M8 makes `0.2.0` the first public release. If M5
-  is published, M6 and M7 may publish their release candidates after acceptance.
-  Every public publication still requires explicit maintainer approval.
+- M5 seals `0.2.0.pre.4`, the first useful end-to-end artifact. It was eligible
+  for public prerelease distribution, but the recorded decision is
+  `deferred_to_final`. That alternative remains historical audit context, not a
+  live branch in this train.
+- M6 and M7 seal internal `0.2.0.rc1` and `0.2.0.rc2` checkpoints. M8 makes
+  `0.2.0` the first public release after separate Tyler Klose publication
+  authority for the exact final candidate.
+- Every RC and final candidate records a full source commit, its exact tree, and
+  gem SHA-256. Acceptance reconstructs the gem from `git archive` of that commit
+  and rejects nonexistent, non-ancestral, tree-drifted, or byte-drifted claims.
+- Final readiness and permission to publish are distinct records. An accepted
+  final check does not authorize a tag or RubyGems upload; Tyler Klose, acting
+  as the named release authority, separately approves the exact version,
+  artifact, SHA-256, source
+  commit/tree, tag, and final-check digest.
 - Every published artifact has an immutable annotated tag and is downloaded
-  from RubyGems for byte/manifest verification. Published versions are never
-  rewritten; a bad public artifact is yanked and replaced by a forward version.
+  from RubyGems for byte/manifest verification. The peeled tag target must be
+  the authorized source commit/tree and the downloaded gem must match the
+  accepted final bytes. Published versions are never rewritten; a bad public
+  artifact is yanked and replaced by a forward version.
 - `Hitch::ServerEndpoint` remains functional and deprecated through `0.2`; it is
   not removed before 1.0.
 - Production never exposes legacy and new endpoints at two routes under one
@@ -832,14 +864,15 @@ non-leaking execution path. Seal internal `0.2.0.pre.3` checkpoint evidence.
 
 Ship final Tool call, frozen string-key arguments, argument policy, Result,
 Forbidden, pre-SDK result validation/cap, Rails error sanitization, authenticated
-fixed-window rate limiting, and both notifications.
+fixed-window rate limiting through the host's cache store, and both
+notifications.
 
 Exit gates execute every Lattice path plus the forced suites; prove schema before
-policy, zero host work on denial, safe errors, Redis Lua atomicity/expiry and
+policy, zero host work on denial, safe errors, first-write expiry and
 cross-process limits on both databases, fail-closed store errors, observer
 failure isolation, hostile global SDK callbacks, reload/concurrency isolation,
 and mutations removing audience/scope/availability/policy/output/redaction/
-context controls.
+context controls or reintroducing a Hitch-owned admission store.
 
 ### M5 — Rails golden path and operator experience
 
@@ -851,7 +884,6 @@ to publish this first eligible public prerelease or defer publication to final
 The exact fresh-app sequence is:
 
 ```sh
-export HITCH_MCP_REDIS_URL=redis://127.0.0.1:6379/15
 bin/rails generate hitch:install
 bin/rails db:migrate
 bin/rails generate hitch:mcp:install
@@ -868,10 +900,10 @@ overwrites a customized controller/route/initializer/registry, and offers an
 explicit `--controller-name` escape hatch for a naming collision. The tool
 generator never auto-registers a tool. `hitch:doctor` covers versions, config,
 resource/discovery coherence, route order, migrations/cutover marker, registry,
-hosts/origins, Redis connectivity/atomicity/expiry, legacy endpoint, and package
-contents. Development/test documentation may select the private memory store;
-every production example configures `HITCH_MCP_REDIS_URL` and states that Redis
-is an operational dependency.
+hosts/origins, admission-store capability, legacy endpoint, and package
+contents. Documentation states that admission counts through the application's
+configured cache store and that production requires one shared across
+processes.
 
 Exit gates use the built `.gem` in disposable SQLite and PostgreSQL apps; exact
 docs drive public auth, confidential creation/rotation, discover/list/call, and
@@ -882,37 +914,60 @@ TypeScript/Python SDK clients precede operator-approved Codex CLI
 are evidence, not evergreen compatibility claims. No paid/model-backed smoke
 runs without Tyler's explicit approval.
 
-M5 acceptance always records the exact internal checkpoint. If the maintainer
-chooses `published_pre4`, an annotated tag and downloaded RubyGems comparison are
-additional required evidence. If the choice is `deferred_to_final`, those rows
-are explicitly not applicable and the exact internal artifact feeds M6.
+M5 acceptance records the exact internal checkpoint. The historical
+`published_pre4` branch was not chosen: downloaded-public rows are explicitly
+not applicable, and the exact internal artifact feeds M6.
 
 ### M6 — Copied-lineage adoption and `0.2.0.rc1`
 
-**Depends on:** M5. **Outcome:** replace the Skillit-root mechanism without
-importing its business policy and seal `0.2.0.rc1`. Publish the RC only when M5
-opened the public prerelease train; otherwise retain it internally.
+**Depends on:** M5. **Outcome:** replace one mechanism descended from the
+Skillit-root copied lineage in an approved host, without importing its business
+policy, and seal internal `0.2.0.rc1`.
 
-This milestone is maintainer-owned and blocked until Tyler grants repository
-and deployment access. If Skillit is unavailable, only Tyler may approve a
-substitute proven to descend from the same copied lineage; the release record
-names it and preserves this gate's non-independent classification.
+This Hitch-only framework process does not enter or update Skillit. Adoption
+runs in a separate authorized process and remains blocked until Tyler grants
+repository and deployment access and approves the named copied-lineage host.
+The release record proves that host's lineage and preserves this gate's
+non-independent classification. The Hitch-only process does not read or mutate
+Skillit. An approval-bound opaque repository identity, exact installed pre.4
+artifact digest, and reviewed private report make contradictions and reuse
+visible without publishing private repository details.
 
-Upgrade Skillit's SDK behind the old endpoint first. Validate Hitch in an
-isolated preview, then atomically replace the canonical route. Preserve tool
-names/schemas/auth/audit meaning unless a migration says otherwise. Delete the
-duplicated dispatch path after cutover and keep the old route change revertible.
+The accepted pre.4 public-API manifest misstated registry reload timing as
+per-request constantization. M6 carries the one reviewed
+`endpoint_registry_prepare_cycle` documentation correction: per-request
+snapshot reads and per-prepare-cycle constantization. The evidence verifier
+permits exactly that semantic-preserving erratum and rejects every other
+manifest change; copied-lineage friction still cannot expand public API.
 
-Benchmark old versus new on the same host/data with 1,000 warmed list/call
-requests, concurrency 16, five runs. Error rate stays zero and median p95 may not
-regress more than 15% without an accepted performance issue. Record every
-override/friction point; copied-only friction does not expand public API.
+Upgrade the approved host's SDK behind its old endpoint first. Validate Hitch
+in an isolated preview, then atomically replace the canonical route. Preserve
+tool names/schemas/auth/audit meaning unless a migration says otherwise. Delete
+the duplicated dispatch path after cutover and keep the old route change
+revertible.
+
+Benchmark old versus new on the same host/data with 1,000 warmed requests for
+each of `tools/list` and `tools/call`, concurrency 16, across five runs. Each
+operation's error rate stays zero and its median p95 may not regress more than
+15% without an accepted performance issue. Record every override/friction
+point; copied-only friction does not expand public API.
+
+The acceptance rail requires RC1 to descend strictly from the accepted pre.4
+source and derives meaningful pre.4-to-RC1 framework and gemspec changes. The
+version file is mechanical only when normalizing the exact expected literal
+leaves all other bytes identical. If any meaningful change exists, the record
+includes an unchanged failing regression test committed before any framework or
+dependency implementation and a fresh copied-host rerun bound to the resulting
+RC1 source and artifact bytes; the initial pre.4 adoption report cannot stand
+in for that output rerun. `bin/prepare-release-artifact --checkpoint` stages
+accepted internal bytes without a tag or network action, and
+`bin/milestone-local-gate M6 package_smoke` generates the source-bound local
+gate report after source-stability postconditions pass.
 
 ### M7 — Independent adoption and `0.2.0.rc2`
 
 **Depends on:** M6. **Outcome:** pressure-test the API in Stash or another
-independent tools-only host and seal `0.2.0.rc2`. Publish the RC only when M5
-opened the public prerelease train; otherwise retain it internally.
+independent tools-only host and seal internal `0.2.0.rc2`.
 
 This milestone is maintainer-owned and blocked until Tyler grants repository
 and deployment access. If Stash is unavailable, only Tyler may approve a host
@@ -924,22 +979,97 @@ it is not required to adopt a Hitch-invented Pundit adapter. Friction becomes a
 failing Hitch acceptance test before a framework change. If adoption needs an
 incompatible redesign, return to M3/M4 and repeat both adoptions.
 
+The acceptance rail also derives RC1-to-RC2 framework, gemspec, and public-
+manifest changes and permits only the exact normalized version-literal
+transition. Any framework change requires a red test commit with no earlier
+milestone implementation plus fresh copied and independent host reruns against
+the exact RC2 source/artifact, with distinct reviewed reports; bare status
+claims are insufficient. The approval-bound independent host identity and
+initial private report must differ from M6's, and the host records the exact
+installed RC1 bytes. `bin/milestone-local-gate M7 mutation_mcp` produces the
+candidate-bound local mutation report; a free-form command plus an arbitrary
+digest is not evidence.
+
 ### M8 — Stabilization and `0.2.0`
 
 **Depends on:** M7. **Outcome:** one releasable artifact and one honest contract.
 
-This is a maintainer-owned release gate; Tyler supplies the adoption approvals
-and product-smoke authority, and the Hitch release maintainer owns the final
-evidence review and publication.
+This is a maintainer-owned release gate; Tyler supplies the adoption approvals,
+product-smoke authority, and separate final publication authority. The Hitch
+release maintainer owns final evidence review and executes publication only
+after that exact authority record is accepted.
 
 Ship final API/migration/security/release docs and an evidence index. Full CI,
 all matrix lanes, named conformance scenarios, both packaged apps, automated
 clients, approved product-client smokes, mutation gates, and both adoptions pass
 with no unexplained skip, unexpected failure, or stale/unreviewed baseline
 entry. The two documented untestable capability probes and capability-gated
-not-applicable rows remain visible in evidence. Verify the downloaded RubyGems
-artifact. No unresolved blocker, hidden database/client requirement,
-undocumented public API, dual route, or unowned security control remains.
+not-applicable rows remain visible in evidence. Rebuild the final gem from its
+recorded source commit/tree, bind the final check to every accepted prerequisite,
+then obtain separate authority for that exact candidate. Only then create the
+annotated tag, publish, and verify the downloaded RubyGems bytes and peeled tag
+target. No unresolved blocker, hidden database/client requirement, undocumented
+public API, dual route, or unowned security control remains.
+
+Final runtime and public-API bytes must match the independently adopted RC2
+except for the exact version-literal transition; normalizing that literal must
+leave the complete version file unchanged. Any substantive delta returns to RC2
+and repeats both adoptions. Hosted and local final gates begin only after
+product evidence is accepted. The named final maintainer review occurs only
+after every prerequisite evidence record's authoritative `verified_at`,
+`recorded_at`, or `verified_on` completion value. Field ownership is exact and
+fails closed for missing or malformed values; the deterministic work-packet
+graph uses its bound verification record's `verified_on` date only when that
+record pins the accepted graph path and SHA-256.
+
+`docs/contracts/release_evidence.yml` and
+`docs/evidence/0.2.0/index.json` are the executable M6-M8 ledger.
+Reviewed authoring aids live under `docs/evidence_templates/0.2.0/`;
+`bin/validate-release-evidence-draft --ready` rejects unresolved placeholders
+and malformed shapes, but only the main evidence verifier can accept claims.
+That verifier proves ledger consistency under protected, human-reviewed Hitch
+Git history as its trust root; it does not independently authenticate private
+commands or human approvals from JSON. Provider/live commands remain separate
+proof for GitHub, tags, and RubyGems.
+`bin/verify-release-evidence` validates the current accepted/pending index by
+default and rejects pruning or reclassifying any of the 24 accepted historical
+records. `--through M6|M7` requires the matching adoption checkpoint;
+`--ready-for-authority 0.2.0` requires the final candidate and all adoption and
+product evidence while requiring publication authority and downloaded bytes to
+remain pending; it prints the exact candidate and final-check digests for review.
+`--preflight VERSION` blocks public artifacts until the recorded M5 distribution
+decision and every prerequisite agree. Final preflight includes the separate
+publication-authority record. `--through M8` and verifier `--complete 0.2.0`
+validate the committed postpublication ledger. `bin/release-check --complete
+0.2.0` is the completion authority: it reruns the annotated-tag and RubyGems
+download checks, compares every immutable live field with the indexed
+downloaded-gem record, and then revalidates that record. The default rail keeps
+future adoption absent; it never turns a pending host milestone into a green
+aggregate.
+
+The generated release Lattice exhaustively checks all 60 valid lifecycle states
+across the nine-factor gate/evidence model, including the acyclic chain from M6
+through downloaded final bytes. Its claim is lifecycle ordering only. Direct
+adversarial regressions separately cover contradictory/reused host identity,
+reused private and product reports, generated milestone-local gate binding, and
+publication-authority semantics. Public prerelease preflight remains closed
+because M5.4 recorded `deferred_to_final`.
+
+`docs/contracts/release_matrix.yml` separately freezes the four declared 0.2
+Ruby/Rails/SDK/database rows. `bin/verify-release-matrix` reconciles those rows
+with exact Gemfiles, lockfiles, and hosted CI, while root `bin/ci` runs every
+profile. The two M5 packaged-app profiles remain product installation smokes;
+they are not a substitute for the four-lane release matrix.
+
+M8 accepts two additional candidate-bound reports before `final-check.json`.
+`hosted-matrix.json` pins the canonical repository, run and attempt, candidate
+head SHA, candidate workflow blob, and four distinct exact job conclusions.
+`bin/final-local-gates` rebuilds the same clean-source candidate and generates
+`final-local-gates.json` from the fixed CI, conformance, package-app,
+automated-client, mutation, and contract commands. It clears generic database
+authority, verifies the structured package/client reports identify the exact
+candidate bytes, and refuses a HEAD/tree change; final-check local gates bind
+that one indexed report rather than maintainer-entered hashes.
 
 ## Build packets and issue graph
 
@@ -977,16 +1107,16 @@ never rewritten.
 | M3.3 | M3.2 | availability, scopes, listing, integration support | `bin/ci-test test/integration/mcp_listing_test.rb`; isolation evidence | 3d/high | R1 |
 | M4.1 | M3.3 | final Tool call/argument policy | `bin/ci-test test/hitch/mcp/tool_test.rb`; denial mutations | 3d/high | R1 |
 | M4.2 | M4.1 | Result/output cap/error normalization | `bin/ci-test test/hitch/mcp/result_test.rb`; canary evidence | 3d/high | R1 |
-| M4.3 | M4.1 | authenticated rate limit/Redis Lua contract | `bin/ci-rate-limit`; cross-process evidence | 4d/high | R1 |
+| M4.3 | M4.1 | authenticated rate limit through the host cache store | `bin/ci-rate-limit`; cross-process evidence | 4d/high | R1 |
 | M4.4 | M4.2,M4.3 | request/invocation notifications | `bin/ci-test test/hitch/mcp/observation_test.rb`; subscriber-failure evidence | 2d/high | R1 |
 | M4.5 | M4.4 | Lattice, hostile callbacks, mutation/concurrency QA | `bin/contract && bin/mutation-mcp`; kill/evidence manifest | 4d/high | R1 |
 | M5.1 | M4.5 | install/endpoint generator | `bin/ci-generators install`; collision/rollback evidence | 3d/medium | R1 |
 | M5.2 | M4.5 | tool generator and public helpers | `bin/ci-generators tool`; generated-file manifest | 2d/medium | R1 |
-| M5.3 | M5.1,M5.2 | doctor, Redis/operator/upgrade/removal docs | `bin/doctor-fixtures && bin/prose-audit`; diagnostic snapshots | 3d/high | R1 |
+| M5.3 | M5.1,M5.2 | doctor, admission/operator/upgrade/removal docs | `bin/doctor-fixtures && bin/prose-audit`; diagnostic snapshots | 3d/high | R1 |
 | M5.4 | M5.3 | disposable apps, Redis service, client smokes, publication decision | `bin/package-apps && bin/client-smokes --automated`; app/client/checkpoint evidence and conditional downloaded-gem verification | 4d/high | R1/R3/R4 if published |
-| M6 | M5.4 | Skillit adoption report/change | host `bin/ci`, `bin/mcp-smoke`, benchmark script | 5d/high | R3 |
-| M7 | M6 | independent adoption report/change | host `bin/ci`, `bin/mcp-smoke`, isolation tests | 5d/high | R3 |
-| M8 | M7 | final docs/evidence/release | `bin/release-check 0.2.0`; downloaded-gem evidence | 3d/high | R4 |
+| M6 | M5.4 | copied-lineage adoption report/change and redacted manifest | host `bin/ci`, `bin/mcp-smoke`, benchmark; `bin/verify-release-evidence --through M6` | 5d/high | R3 |
+| M7 | M6 | independent adoption report/change and redacted manifest | host `bin/ci`, `bin/mcp-smoke`, isolation; `bin/verify-release-evidence --through M7` | 5d/high | R3 |
+| M8 | M7 | final docs/templates, candidate-bound hosted/local gates, product/adoption evidence, release reconciliation | `bin/verify-release-matrix`; evidence-draft validation; `bin/final-local-gates`; `bin/verify-release-evidence --ready-for-authority 0.2.0`; `bin/prepare-release-artifact`; public preflight; `bin/release-check --complete 0.2.0` | 3d/high | R4 |
 
 ## Definition of done
 
@@ -1010,7 +1140,8 @@ generator collisions cannot cross their owning boundary.
 - API-only consent/auth patterns and MySQL;
 - `client_secret_post`, JWT/mTLS/DPoP, refresh-token issuance, and device flow;
 - named authorization adapters or bundled Pundit integration;
-- per-tool quotas and distributed concurrency leases;
+- per-tool quotas, distributed concurrency leases, and a Hitch-owned
+  admission store;
 - framework-owned durable audit persistence; and
 - automatic tool discovery, including the controller/action-shaped seed below.
 

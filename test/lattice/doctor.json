@@ -2,58 +2,104 @@
   "model_name": "hitch_doctor",
   "_intent_notes": [
     "Pairwise operator-diagnostic model for M5.3.",
-    "Every row executes all twelve stable doctor categories against an immutable fixture system.",
-    "Auth-only mode must skip MCP registry and Redis checks regardless of irrelevant fixture values.",
+    "Every row executes all eleven stable doctor categories against an immutable fixture system.",
+    "Auth-only mode must skip MCP registry and admission-store checks regardless of irrelevant fixture values.",
     "Forced rows pin the healthy full runtime, healthy auth-only mode, and every actionable failure category."
   ],
   "parameters": [
     {
       "name": "runtime",
-      "values": ["full", "auth_only"]
+      "values": [
+        "full",
+        "auth_only"
+      ]
     },
     {
       "name": "environment",
-      "values": ["test", "production"]
+      "values": [
+        "test",
+        "production"
+      ]
     },
     {
       "name": "configuration",
-      "values": ["valid", "invalid"]
+      "values": [
+        "valid",
+        "invalid"
+      ]
     },
     {
       "name": "discovery",
-      "values": ["coherent", "mismatch"]
+      "values": [
+        "coherent",
+        "mismatch"
+      ]
     },
     {
       "name": "route",
-      "values": ["ordered", "missing", "shadowed", "after_engine", "wrong_verbs", "invalid_mount"]
+      "values": [
+        "ordered",
+        "missing",
+        "shadowed",
+        "after_engine",
+        "wrong_verbs",
+        "invalid_mount"
+      ]
     },
     {
       "name": "migrations",
-      "values": ["current", "missing", "cutover_legacy"]
+      "values": [
+        "current",
+        "missing",
+        "cutover_legacy"
+      ]
     },
     {
       "name": "registry",
-      "values": ["populated", "empty", "invalid"]
+      "values": [
+        "populated",
+        "empty",
+        "invalid"
+      ]
     },
     {
       "name": "hosts",
-      "values": ["accepted", "blocked"]
+      "values": [
+        "accepted",
+        "blocked"
+      ]
     },
     {
       "name": "origins",
-      "values": ["deny_default", "exact", "http"]
+      "values": [
+        "deny_default",
+        "exact",
+        "http"
+      ]
     },
     {
-      "name": "redis",
-      "values": ["absent", "healthy", "unreachable", "non_atomic"]
+      "name": "rate_limit_store",
+      "values": [
+        "shared",
+        "unshared",
+        "uncountable",
+        "error"
+      ]
     },
     {
       "name": "package",
-      "values": ["complete", "missing"]
+      "values": [
+        "complete",
+        "missing"
+      ]
     },
     {
       "name": "legacy",
-      "values": ["absent", "noncanonical", "canonical"]
+      "values": [
+        "absent",
+        "noncanonical",
+        "canonical"
+      ]
     }
   ],
   "constraints": [
@@ -61,130 +107,329 @@
       "type": "forced",
       "_why": "Healthy production full-runtime golden path.",
       "assignments": [
-        {"parameter": "runtime", "value": "full"},
-        {"parameter": "environment", "value": "production"},
-        {"parameter": "configuration", "value": "valid"},
-        {"parameter": "discovery", "value": "coherent"},
-        {"parameter": "route", "value": "ordered"},
-        {"parameter": "migrations", "value": "current"},
-        {"parameter": "registry", "value": "populated"},
-        {"parameter": "hosts", "value": "accepted"},
-        {"parameter": "origins", "value": "exact"},
-        {"parameter": "redis", "value": "healthy"},
-        {"parameter": "package", "value": "complete"},
-        {"parameter": "legacy", "value": "absent"}
+        {
+          "parameter": "runtime",
+          "value": "full"
+        },
+        {
+          "parameter": "environment",
+          "value": "production"
+        },
+        {
+          "parameter": "configuration",
+          "value": "valid"
+        },
+        {
+          "parameter": "discovery",
+          "value": "coherent"
+        },
+        {
+          "parameter": "route",
+          "value": "ordered"
+        },
+        {
+          "parameter": "migrations",
+          "value": "current"
+        },
+        {
+          "parameter": "registry",
+          "value": "populated"
+        },
+        {
+          "parameter": "hosts",
+          "value": "accepted"
+        },
+        {
+          "parameter": "origins",
+          "value": "exact"
+        },
+        {
+          "parameter": "rate_limit_store",
+          "value": "shared"
+        },
+        {
+          "parameter": "package",
+          "value": "complete"
+        },
+        {
+          "parameter": "legacy",
+          "value": "absent"
+        }
       ]
     },
     {
       "type": "forced",
       "_why": "Healthy auth-only nonproduction mode skips MCP-only checks.",
       "assignments": [
-        {"parameter": "runtime", "value": "auth_only"},
-        {"parameter": "environment", "value": "test"},
-        {"parameter": "configuration", "value": "valid"},
-        {"parameter": "discovery", "value": "coherent"},
-        {"parameter": "route", "value": "missing"},
-        {"parameter": "migrations", "value": "current"},
-        {"parameter": "registry", "value": "invalid"},
-        {"parameter": "hosts", "value": "accepted"},
-        {"parameter": "origins", "value": "deny_default"},
-        {"parameter": "redis", "value": "unreachable"},
-        {"parameter": "package", "value": "complete"},
-        {"parameter": "legacy", "value": "absent"}
+        {
+          "parameter": "runtime",
+          "value": "auth_only"
+        },
+        {
+          "parameter": "environment",
+          "value": "test"
+        },
+        {
+          "parameter": "configuration",
+          "value": "valid"
+        },
+        {
+          "parameter": "discovery",
+          "value": "coherent"
+        },
+        {
+          "parameter": "route",
+          "value": "missing"
+        },
+        {
+          "parameter": "migrations",
+          "value": "current"
+        },
+        {
+          "parameter": "registry",
+          "value": "invalid"
+        },
+        {
+          "parameter": "hosts",
+          "value": "accepted"
+        },
+        {
+          "parameter": "origins",
+          "value": "deny_default"
+        },
+        {
+          "parameter": "rate_limit_store",
+          "value": "unshared"
+        },
+        {
+          "parameter": "package",
+          "value": "complete"
+        },
+        {
+          "parameter": "legacy",
+          "value": "absent"
+        }
       ]
     },
     {
       "type": "forced",
       "_why": "Configuration failure.",
-      "assignments": [{"parameter": "configuration", "value": "invalid"}]
+      "assignments": [
+        {
+          "parameter": "configuration",
+          "value": "invalid"
+        }
+      ]
     },
     {
       "type": "forced",
       "_why": "Discovery mismatch.",
-      "assignments": [{"parameter": "discovery", "value": "mismatch"}]
+      "assignments": [
+        {
+          "parameter": "discovery",
+          "value": "mismatch"
+        }
+      ]
     },
     {
       "type": "forced",
       "_why": "Missing endpoint route.",
-      "assignments": [{"parameter": "route", "value": "missing"}]
+      "assignments": [
+        {
+          "parameter": "route",
+          "value": "missing"
+        }
+      ]
     },
     {
       "type": "forced",
       "_why": "Shadowed endpoint route.",
-      "assignments": [{"parameter": "route", "value": "shadowed"}]
+      "assignments": [
+        {
+          "parameter": "route",
+          "value": "shadowed"
+        }
+      ]
     },
     {
       "type": "forced",
       "_why": "Endpoint placed after the engine mount.",
-      "assignments": [{"parameter": "route", "value": "after_engine"}]
+      "assignments": [
+        {
+          "parameter": "route",
+          "value": "after_engine"
+        }
+      ]
     },
     {
       "type": "forced",
       "_why": "Endpoint route missing method coverage.",
-      "assignments": [{"parameter": "route", "value": "wrong_verbs"}]
+      "assignments": [
+        {
+          "parameter": "route",
+          "value": "wrong_verbs"
+        }
+      ]
     },
     {
       "type": "forced",
       "_why": "Engine is not mounted once at root.",
-      "assignments": [{"parameter": "route", "value": "invalid_mount"}]
+      "assignments": [
+        {
+          "parameter": "route",
+          "value": "invalid_mount"
+        }
+      ]
     },
     {
       "type": "forced",
       "_why": "Missing migration/table state.",
-      "assignments": [{"parameter": "migrations", "value": "missing"}]
+      "assignments": [
+        {
+          "parameter": "migrations",
+          "value": "missing"
+        }
+      ]
     },
     {
       "type": "forced",
       "_why": "Legacy redirect authority marker.",
-      "assignments": [{"parameter": "migrations", "value": "cutover_legacy"}]
+      "assignments": [
+        {
+          "parameter": "migrations",
+          "value": "cutover_legacy"
+        }
+      ]
     },
     {
       "type": "forced",
       "_why": "Invalid registry.",
       "assignments": [
-        {"parameter": "runtime", "value": "full"},
-        {"parameter": "registry", "value": "invalid"}
+        {
+          "parameter": "runtime",
+          "value": "full"
+        },
+        {
+          "parameter": "registry",
+          "value": "invalid"
+        }
       ]
     },
     {
       "type": "forced",
       "_why": "Rails blocks a Hitch host.",
-      "assignments": [{"parameter": "hosts", "value": "blocked"}]
-    },
-    {
-      "type": "forced",
-      "_why": "Production Redis is absent.",
       "assignments": [
-        {"parameter": "runtime", "value": "full"},
-        {"parameter": "environment", "value": "production"},
-        {"parameter": "redis", "value": "absent"}
+        {
+          "parameter": "hosts",
+          "value": "blocked"
+        }
       ]
     },
     {
       "type": "forced",
-      "_why": "Configured Redis cannot connect.",
+      "_why": "Production admission store cannot count across processes.",
       "assignments": [
-        {"parameter": "runtime", "value": "full"},
-        {"parameter": "redis", "value": "unreachable"}
+        {
+          "parameter": "runtime",
+          "value": "full"
+        },
+        {
+          "parameter": "environment",
+          "value": "production"
+        },
+        {
+          "parameter": "rate_limit_store",
+          "value": "unshared"
+        }
       ]
     },
     {
       "type": "forced",
-      "_why": "Configured Redis fails atomicity or expiry.",
+      "_why": "Production admission store cannot count at all.",
       "assignments": [
-        {"parameter": "runtime", "value": "full"},
-        {"parameter": "redis", "value": "non_atomic"}
+        {
+          "parameter": "runtime",
+          "value": "full"
+        },
+        {
+          "parameter": "environment",
+          "value": "production"
+        },
+        {
+          "parameter": "rate_limit_store",
+          "value": "uncountable"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Configured admission store raises while probing.",
+      "assignments": [
+        {
+          "parameter": "runtime",
+          "value": "full"
+        },
+        {
+          "parameter": "rate_limit_store",
+          "value": "error"
+        }
       ]
     },
     {
       "type": "forced",
       "_why": "Package is incomplete.",
-      "assignments": [{"parameter": "package", "value": "missing"}]
+      "assignments": [
+        {
+          "parameter": "package",
+          "value": "missing"
+        }
+      ]
     },
     {
       "type": "forced",
       "_why": "Deprecated endpoint owns the canonical resource.",
-      "assignments": [{"parameter": "legacy", "value": "canonical"}]
+      "assignments": [
+        {
+          "parameter": "legacy",
+          "value": "canonical"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Nonproduction admission store is not shared across processes.",
+      "assignments": [
+        {
+          "parameter": "runtime",
+          "value": "full"
+        },
+        {
+          "parameter": "environment",
+          "value": "test"
+        },
+        {
+          "parameter": "rate_limit_store",
+          "value": "unshared"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Nonproduction admission store cannot count at all.",
+      "assignments": [
+        {
+          "parameter": "runtime",
+          "value": "full"
+        },
+        {
+          "parameter": "environment",
+          "value": "test"
+        },
+        {
+          "parameter": "rate_limit_store",
+          "value": "uncountable"
+        }
+      ]
     }
   ]
 }

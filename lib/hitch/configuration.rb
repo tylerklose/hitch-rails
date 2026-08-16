@@ -141,17 +141,19 @@ module Hitch
     # @return [Hash{Symbol => Integer}]
     attr_reader :dynamic_client_registration_limit
 
-    # A fleet-shared counter implementing:
-    #
-    #   increment_with_expiry(key:, expires_in:) -> positive Integer
-    #   shared? -> true
-    #
-    # The increment and first-write expiry MUST be one atomic operation. The
-    # returned integer is the count after incrementing. Hitch deliberately does
-    # not emulate this with cache read/write calls because that races under
-    # concurrency. Production DCR fails closed without this contract.
-    # @return [Object, nil]
-    attr_accessor :dynamic_client_registration_rate_store
+    # Any ActiveSupport::Cache store responding to increment. Nil counts
+    # through config.action_controller.cache_store, like every other Rails
+    # rate limit.
+    # @return [ActiveSupport::Cache::Store, nil]
+    def dynamic_client_registration_rate_store
+      Hitch::RateLimitStore.resolve(@dynamic_client_registration_rate_store)
+    end
+
+    def dynamic_client_registration_rate_store=(value)
+      @dynamic_client_registration_rate_store = Hitch::RateLimitStore.validate!(
+        value, setting: "config.dynamic_client_registration_rate_store"
+      )
+    end
 
     # MCP transport and tool configuration. This remains a separate value so
     # the OAuth surface and MCP runtime can validate their own settings without
@@ -275,7 +277,7 @@ module Hitch
     private
 
     def loopback_resource_uri_allowed?
-      defined?(Rails) && (Rails.env.development? || Rails.env.test?)
+      Rails.env.development? || Rails.env.test?
     end
 
     def validate_hosts(values)

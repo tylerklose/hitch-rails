@@ -1,0 +1,25 @@
+{
+  "schema": "hitch.m8-publication-authority.v1",
+  "milestone": "M8",
+  "status": "<string:accepted>",
+  "verified_at": "<timestamp:authority-record verification time>",
+  "authority": {
+    "authorized_by": "<string:Tyler Klose>",
+    "role": "<string:release_authority>",
+    "status": "<string:authorized>",
+    "approved_at": "<timestamp:authority approval time>",
+    "scope": "<string:create annotated v0.2.0 tag and publish hitch-rails 0.2.0 to RubyGems>"
+  },
+  "candidate": {
+    "version": "<string:0.2.0>",
+    "artifact": "<string:hitch-rails-0.2.0.gem>",
+    "sha256": "<sha256:accepted final candidate>",
+    "source_commit": "<commit:accepted final source commit>",
+    "source_tree": "<commit:accepted final source tree>",
+    "tag": "<string:v0.2.0>"
+  },
+  "final_check": {
+    "path": "<path:docs/evidence/0.2.0/release/final-check.json>",
+    "sha256": "<sha256:accepted final-check record>"
+  }
+}

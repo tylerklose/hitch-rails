@@ -101,15 +101,27 @@ Dir.mktmpdir("hitch-ci-migrations-") do |directory|
     )
   ensure
     if postgresql_created
-      system(
-        { "DATABASE_URL" => postgresql_url, "RAILS_ENV" => "test" },
-        APPRAISAL,
-        "rails_8_1_postgresql",
-        "--",
-        File.join(ROOT, "bin/rails"),
-        "db:drop",
-        chdir: ROOT
-      )
+      primary_failure = $!
+      cleanup_failure = begin
+        cleanup_succeeded = system(
+          { "DATABASE_URL" => postgresql_url, "RAILS_ENV" => "test" },
+          APPRAISAL,
+          "rails_8_1_postgresql",
+          "--",
+          File.join(ROOT, "bin/rails"),
+          "db:drop",
+          chdir: ROOT
+        )
+        RuntimeError.new("failed to drop the disposable PostgreSQL migration database") unless cleanup_succeeded
+      rescue StandardError => error
+        error
+      end
+
+      if cleanup_failure
+        raise cleanup_failure unless primary_failure
+
+        warn "PostgreSQL migration cleanup also failed: #{cleanup_failure.message}"
+      end
     end
   end
 end

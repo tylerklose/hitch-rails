@@ -34,7 +34,11 @@ patterns = {
   "obsolete doctor format variable" => /(?<!HITCH_DOCTOR_)FORMAT=json bin\/rails hitch:doctor/,
   "MCP route after engine mount" => /MCP route (?:may|can|should|must) (?:follow|come after) (?:the )?(?:Hitch )?engine mount/i,
   "doctor application quota mutation" => /doctor (?:uses|increments|tests|writes) (?:the )?(?:application|production) (?:quota|rate-limit) keys/i,
-  "doctor external discovery request" => /doctor (?:fetches|requests) discovery over (?:the )?(?:network|internet)/i
+  "doctor external discovery request" => /doctor (?:fetches|requests) discovery over (?:the )?(?:network|internet)/i,
+  "obsolete combined M6 benchmark" => /1,000 warmed (?:list\/call|list and call) requests/i,
+  "obsolete checkpoint support matrix" => /internal checkpoint verification matrix/i,
+  "publication authority after preflight" => /after (?:that|the) (?:public )?preflight.{0,80}publication authority/i,
+  "M8 through treated as preflight" => /--through M8.{0,80}(?:preflight|prepublication)/i
 }.freeze
 
 release_patterns = {
@@ -53,6 +57,9 @@ historical_allowlist = {
   "PostgreSQL-only code consumption" => [
     %r{\AROADMAP\.md:\d+: .*FOR UPDATE SKIP LOCKED},
     %r{\Adocs/work_packets/M0\.3b\.md:\d+: .*FOR UPDATE SKIP LOCKED}
+  ],
+  "obsolete checkpoint support matrix" => [
+    %r{\ASECURITY\.md:\d+: The internal checkpoint verification matrix is Ruby}
   ]
 }.freeze
 used_allowlist = Set.new

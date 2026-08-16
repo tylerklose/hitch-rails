@@ -261,7 +261,7 @@ class MCPToolAuthorizationLatticeTest < ActionDispatch::IntegrationTest
         principal
       end
       configuration.mcp.request_limit = { to: 1_000, within: 60 }
-      configuration.mcp.rate_limit_redis_url = nil
+      configuration.mcp.rate_limit_store = ActiveSupport::Cache::MemoryStore.new
       configuration.mcp.max_request_bytes = 8_192
     end
     Hitch.configuration.validate!

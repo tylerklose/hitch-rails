@@ -5,6 +5,125 @@ All notable changes to hitch-rails will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Internal development build only. `0.2.0.rc1.dev` is the mutable Hitch source
+line after the sealed internal `0.2.0.pre.4` checkpoint; it is not a release or
+an accepted M6 artifact.
+
+### Changed
+
+- **One way to configure a rate limit.** Dynamic Client Registration no longer
+  asks the host to implement `increment_with_expiry(key:, expires_in:)` and
+  `shared?`. `config.dynamic_client_registration_rate_store` now accepts any
+  `ActiveSupport::Cache` store and defaults to `config.cache_store`, matching
+  MCP request admission and Rails' own `rate_limit`. Enabling DCR in production
+  no longer requires writing a class. Removed the private in-process fallback
+  store; production still refuses a store that cannot count across processes,
+  and because registration is unauthenticated it also refuses the request
+  rather than admitting it when the store cannot count.
+
+- **M4.3 erratum.** MCP request admission now counts through the host
+  application's own `ActiveSupport::Cache` store, exactly as Rails'
+  `ActionController::RateLimiting` does. `redis` is no longer a runtime
+  dependency, and a Rails 8 application on the Solid Cache default installs
+  Hitch and reaches production without introducing Redis. Replaced
+  `config.mcp.rate_limit_redis_url` with `config.mcp.rate_limit_store`, which
+  accepts any store responding to `increment` and defaults to the
+  application's own cache store (`config.cache_store`). Production now refuses a store that
+  cannot count one principal's requests across the processes serving them
+  (`:memory_store`, `:null_store`, `:file_store`) rather than requiring a Redis
+  URL. Removed the private `RedisRateStore`, `MemoryRateStore`, and
+  `RequestRateLimiter`, along with their connection lifecycle and Lua script;
+  supported stores already assign expiry on first write only. The two
+  `redis_connectivity` and `redis_atomicity_expiry` doctor checks became one
+  `rate_limit_store` check that drives the configured store. Redis remains a
+  fully supported backend and the pinned cross-process CI lane still exercises
+  `RedisCacheStore`. The accepted M4.3 evidence record is reopened as pending.
+
+### Added
+
+- Added the fail-closed M6-M8 evidence ledger, exhaustive nine-factor release
+  Lattice, source-bound artifact rebuilds, candidate-bound hosted/local gate
+  records, publication-authority preflight, exclusive external report writing,
+  and live downloaded-gem reconciliation. Public RubyGems publication remains
+  deferred until the separately approved final `0.2.0` candidate.
+- Bound final hosted CI evidence to the canonical repository, candidate head
+  SHA, run attempt, and four distinct jobs; product-client evidence now proves
+  the complete disposable OAuth/discover/list/call/step-up flow.
+- Hardened final local and postpublication gates against ambient database
+  authority, candidate-report drift, HEAD/tree changes, dirty completion rails,
+  lightweight or mis-targeted tags, and mismatched downloaded bytes.
+- Corrected the pre.4 Registry reload-timing prose through the one executable
+  `endpoint_registry_prepare_cycle` documentation erratum: requests read the
+  current immutable snapshot while Rails rebuilds it during `to_prepare`.
+- Extended MCP route collision/reachability checks to slashless Rails routes,
+  canonical-host constraints, and every method owned by the catch-all endpoint.
+- Added the exact four-lane Ruby/Rails/MCP/database release matrix, reviewed
+  evidence templates, contributor and release guides, and post-M4 mutation
+  subjects for endpoint reporting and server-generated correlation IDs.
+- Added source-bound `--checkpoint` staging for accepted internal pre4/RC1/RC2
+  bytes and generated M6 package/M7 mutation reports that bind fixed commands
+  to the clean checkpoint source and artifact before exclusive publication.
+- Added the distinct mutable `0.2.0.rc2.dev` M7 identity and documented the
+  protected, human-reviewed Git trust boundary for private and human evidence.
+
+### Fixed
+
+- Final artifact staging now preserves a pre-existing destination file when it
+  refuses to overwrite it; cleanup removes only bytes created by the current
+  failed staging attempt.
+- Package, downloaded-release, final-artifact, and milestone report outputs are
+  now published only after worktree/HEAD/tree postconditions pass; a failed
+  source-stability check leaves no apparently successful durable output.
+- M6/M7 evidence now binds Tyler's approval to a stable private repository
+  identity and installed input bytes, rejects Skillit identity contradictions,
+  and requires M7's host and private report to differ from M6's.
+- Product-client reports must be distinct, milestone-local hashes derive from
+  generated candidate-bound reports, and final publication authority must be
+  granted by Tyler Klose for the exact accepted candidate.
+- Product-client release evidence now proves every run started after Tyler's
+  explicit approval and completed before verification; hosted jobs must also
+  start within their recorded Actions run.
+- Final hosted evidence accepts only a canonical push run of the candidate
+  commit, never a pull-request run whose default checkout is a synthetic merge.
+- Adoption evidence now derives framework changes from checkpoint source,
+  requires failing-test and exact output-artifact reruns when Hitch changes,
+  freezes runtime/public API from adopted RC2 to final, and orders a named final
+  maintainer review after every prerequisite.
+- Adoption deltas now include runtime dependency metadata, accept version files
+  as mechanical only after exact literal normalization, require strict pre.4
+  ancestry, and reject implementation committed before a claimed red test.
+- Hosted and local final gates must begin after product evidence is accepted,
+  and final review follows every bound prerequisite's exact fail-closed
+  completion-field authority, including companion path/digest reconciliation.
+- Postpublication completion now reconciles the canonical GitHub annotated tag
+  object and peeled commit in addition to local tag metadata and RubyGems bytes.
+- Final artifact staging now rejects stale Unreleased content, roadmap status,
+  README development language, and gem metadata that still describes an
+  internal development product.
+- Automated client checkpoints now reuse an already-cached Redis image only
+  after verifying the exact locked platform digest and OS/architecture. Missing
+  images are still pulled by digest, and post-pull platform drift fails closed.
+- Pinned Redis cleanup now distinguishes a confirmed absent container from a
+  Docker infrastructure failure and retains its identity until absence is
+  positively verified.
+- PostgreSQL appraisal lanes now fail when a passing test run cannot drop its
+  disposable database, while preserving an earlier nonzero primary result.
+- The cross-adapter migration gate now applies the same fail-closed PostgreSQL
+  cleanup rule while preserving the original migration or test failure.
+- Package smoke resolves conditional RC distribution through the accepted
+  pre.4 publication decision, so deferred RC1/RC2 bytes must retain the full
+  internal-package contract.
+- MCP installation and doctor checks now reject wildcard and root-mount route
+  predecessors that would make the generated canonical endpoint unreachable;
+  Doctor probes every HTTP and WebDAV method Rails can recognize.
+- Unexpected MCP authentication, admission, and dispatch failures now report
+  only a synthetic category and Hitch's server-generated correlation ID.
+  Client-controlled JSON-RPC IDs and original exceptions never enter the
+  framework error reporter, and reporter failures cannot change the fail-closed
+  response.
+
 ## [0.2.0.pre.4] - 2026-08-02
 
 Internal verified checkpoint only. `0.2.0.pre.4` is not tagged, GitHub-released,

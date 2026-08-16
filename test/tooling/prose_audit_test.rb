@@ -12,14 +12,14 @@ class ProseAuditTest < ActiveSupport::TestCase
     stdout, stderr, status = Open3.capture3(COMMAND)
 
     assert_predicate status, :success?, stderr
-    assert_includes stdout, "patterns=31"
-    assert_includes stdout, "allowlisted_historical_fixtures=3"
+    assert_includes stdout, "patterns=35"
+    assert_includes stdout, "allowlisted_historical_fixtures=4"
     assert_includes stdout, "stale_matches=0"
     searched = stdout[/^searched_files=(\d+)$/, 1].to_i
     assert_operator searched, :>, 250
   end
 
-  test "superseded generator production doctor and publication claims fail" do
+  test "superseded runtime release and publication claims fail" do
     Dir.mktmpdir("hitch-prose-audit") do |root|
       production_memory = [
         [ "Production", " uses " ].join,
@@ -29,7 +29,23 @@ class ProseAuditTest < ActiveSupport::TestCase
         [ "The tool generator ", "registers the tool automatically." ].join,
         production_memory,
         [ "hitch:doctor ", "repairs configuration for you." ].join,
-        [ "0.2.0.pre.4 ", "is publicly published." ].join
+        [ "0.2.0.pre.4 ", "is publicly published." ].join,
+        [
+          "Run 1,000 warmed ",
+          "list/call requests."
+        ].join,
+        [
+          "The internal checkpoint ",
+          "verification matrix proves every supported bound."
+        ].join,
+        [
+          "Only after the public preflight may separate ",
+          "publication authority be granted."
+        ].join,
+        [
+          "Treat --through ",
+          "M8 as the prepublication preflight."
+        ].join
       ]
       File.write(File.join(root, "README.md"), stale_lines.join("\n"))
 
@@ -40,6 +56,10 @@ class ProseAuditTest < ActiveSupport::TestCase
       assert_includes stderr, "production memory rate store"
       assert_includes stderr, "doctor repair mode"
       assert_includes stderr, "premature pre4 publication"
+      assert_includes stderr, "obsolete combined M6 benchmark"
+      assert_includes stderr, "obsolete checkpoint support matrix"
+      assert_includes stderr, "publication authority after preflight"
+      assert_includes stderr, "M8 through treated as preflight"
     end
   end
 

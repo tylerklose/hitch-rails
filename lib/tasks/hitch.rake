@@ -51,7 +51,7 @@ module Hitch
 end
 
 namespace :hitch do
-  desc "Diagnose Hitch configuration, routes, schema, registry, Redis, and package contents"
+  desc "Diagnose Hitch configuration, routes, schema, registry, admission store, and package contents"
   task doctor: :environment do
     doctor = Hitch.const_get(:Doctor, false)
     format = ENV.fetch("HITCH_DOCTOR_FORMAT", "human")

@@ -16,6 +16,11 @@ EXPECTED_ARTIFACTS = {
   "M7" => [ "0.2.0.rc2", "public_if_pre4_published" ],
   "M8" => [ "0.2.0", "public_required" ]
 }.freeze
+EXPECTED_DEVELOPMENT_VERSIONS = {
+  "M5.4" => "0.2.0.pre.4.dev",
+  "M6" => "0.2.0.rc1.dev",
+  "M7" => "0.2.0.rc2.dev"
+}.freeze
 
 EVIDENCE_ROOT = "docs/evidence/0.1.0/checkpoint"
 EVIDENCE_PATHS = {
@@ -270,6 +275,11 @@ EXPECTED_ARTIFACTS.each do |issue, (version, distribution)|
   artifact = index.dig("nodes", issue, "artifact")
   unless artifact.is_a?(Hash) && artifact["version"] == version && artifact["distribution"] == distribution
     errors << "#{issue} must own #{version} as #{distribution}"
+  end
+end
+EXPECTED_DEVELOPMENT_VERSIONS.each do |issue, version|
+  unless index.dig("nodes", issue, "artifact", "development_version") == version
+    errors << "#{issue} must own mutable development identity #{version}"
   end
 end
 

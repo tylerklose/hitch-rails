@@ -1,16 +1,14 @@
 # frozen_string_literal: true
 
-require "uri"
-
 module Hitch
   module MCP
     class Configuration
       DEFAULT_MAX_REQUEST_BYTES = 1_048_576
       DEFAULT_MAX_RESULT_BYTES = 1_048_576
-      MAX_REDIS_URL_BYTES = 2_048
+      SETTING = "mcp.rate_limit_store"
 
       attr_reader :registry, :server_info, :scope_resolver, :request_limit,
-        :rate_limit_redis_url, :max_request_bytes, :max_result_bytes
+        :max_request_bytes, :max_result_bytes
 
       def initialize
         @registry = nil
@@ -19,10 +17,7 @@ module Hitch
         @server_info = nil
         @scope_resolver = nil
         @request_limit = nil
-        @rate_limit_redis_url = nil
-        @rate_store = nil
-        @rate_store_identity = nil
-        @rate_store_mutex = Mutex.new
+        @rate_limit_store = nil
         @max_request_bytes = DEFAULT_MAX_REQUEST_BYTES
         @max_result_bytes = DEFAULT_MAX_RESULT_BYTES
       end
@@ -59,17 +54,15 @@ module Hitch
         @request_limit = normalize_request_limit(value)
       end
 
-      def rate_limit_redis_url=(value)
-        normalized = normalize_redis_url(value)
-        stale_store = @rate_store_mutex.synchronize do
-          stale = @rate_store
-          @rate_limit_redis_url = normalized
-          @rate_store = nil
-          @rate_store_identity = nil
-          stale
-        end
-        close_rate_store(stale_store)
-        @rate_limit_redis_url
+      # Nil means "whatever this application already configured", which is what
+      # ActionController::RateLimiting does. Hosts that want MCP admission kept
+      # out of their general cache pass their own ActiveSupport::Cache store.
+      def rate_limit_store=(value)
+        @rate_limit_store = Hitch::RateLimitStore.validate!(value, setting: SETTING)
+      end
+
+      def rate_limit_store
+        Hitch::RateLimitStore.resolve(@rate_limit_store)
       end
 
       def max_request_bytes=(value)
@@ -109,13 +102,17 @@ module Hitch
         end
 
         normalize_request_limit(request_limit)
-        normalize_redis_url(rate_limit_redis_url)
-        if production? && rate_limit_redis_url.nil?
-          raise ArgumentError,
-            "mcp.rate_limit_redis_url is required in production when the Hitch::MCP endpoint runtime is configured"
-        end
 
         true
+      end
+
+      # Resolved separately from validate! because the application's cache store
+      # is assembled by Rails' own initializers; this runs from to_prepare, once
+      # config.cache_store is settled.
+      def validate_rate_limit_store!
+        return true unless Rails.env.production?
+
+        Hitch::RateLimitStore.assert_shared!(rate_limit_store, setting: SETTING)
       end
 
       private
@@ -137,47 +134,9 @@ module Hitch
         end
       end
 
-      def prepare_rate_store!
-        validate!
-        identity = [ rate_limit_redis_url, production? ].freeze
-        stale_store = nil
-
-        @rate_store_mutex.synchronize do
-          return @rate_store if @rate_store && @rate_store_identity == identity
-
-          replacement = if rate_limit_redis_url
-            RedisRateStore.new(url: rate_limit_redis_url)
-          else
-            MemoryRateStore.new
-          end
-          stale_store = @rate_store
-          @rate_store = replacement
-          @rate_store_identity = identity
-        end
-
-        close_rate_store(stale_store)
-        @rate_store
-      end
-
-      def rate_store!
-        @rate_store_mutex.synchronize do
-          @rate_store || raise(ArgumentError, "MCP request rate store is unavailable")
-        end
-      end
-
-      def shutdown_rate_store!
-        stale_store = @rate_store_mutex.synchronize do
-          stale = @rate_store
-          @rate_store = nil
-          @rate_store_identity = nil
-          stale
-        end
-        close_rate_store(stale_store)
-      end
-
       def runtime_configured?
         !registry.nil? || !server_info.nil? || !scope_resolver.nil? ||
-          !request_limit.nil? || !rate_limit_redis_url.nil?
+          !request_limit.nil? || !@rate_limit_store.nil?
       end
 
       def normalize_request_limit(value)
@@ -234,37 +193,6 @@ module Hitch
         end
 
         seconds
-      end
-
-      def normalize_redis_url(value)
-        return if value.nil?
-
-        unless value.is_a?(String) && value.valid_encoding? && !value.empty? &&
-            value.bytesize <= MAX_REDIS_URL_BYTES && !value.match?(/[\x00-\x20\x7F]/)
-          raise ArgumentError, "mcp.rate_limit_redis_url must be a valid redis:// or rediss:// URL"
-        end
-
-        uri = URI.parse(value)
-        path = uri.path.to_s
-        valid_path = path.empty? || path == "/" || path.match?(/\A\/[0-9]+\z/)
-        unless %w[redis rediss].include?(uri.scheme&.downcase) && uri.host &&
-            !uri.host.empty? && uri.fragment.nil? && valid_path
-          raise ArgumentError, "mcp.rate_limit_redis_url must be a valid redis:// or rediss:// URL"
-        end
-
-        value.dup.freeze
-      rescue URI::InvalidURIError
-        raise ArgumentError, "mcp.rate_limit_redis_url must be a valid redis:// or rediss:// URL"
-      end
-
-      def production?
-        defined?(Rails) && Rails.env.production?
-      end
-
-      def close_rate_store(store)
-        store&.close
-      rescue StandardError
-        nil
       end
     end
   end

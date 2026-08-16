@@ -8,8 +8,8 @@ if Minitest::Test.respond_to?(:cover)
     cover "Hitch::AccessToken#valid_for_resource?"
   end
 
-  class Hitch::MCP::RateLimitTest
-    cover "Hitch::MCP::RequestRateLimiter.call"
+  class MCPRateLimitCacheStoreTest
+    cover "Hitch::MCP::Endpoint#hitch_mcp_admit_authenticated_request"
   end
 
   class Hitch::MCP::RegistryTest

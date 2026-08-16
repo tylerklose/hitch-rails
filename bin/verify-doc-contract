@@ -12,10 +12,27 @@ REQUIRED_ADRS = %w[
   docs/adr/0004-rate-limit-and-observation.md
 ].freeze
 REQUIRED_DOCUMENTS = %w[
+  CONTRIBUTING.md
   docs/architecture/mcp-data-flow.md
+  docs/releasing.md
   docs/security/mcp-threat-model.md
 ].freeze
 REQUIRED_API_FIELDS = %w[name kind visibility introduced inputs outputs errors reload_behavior].freeze
+EXPECTED_API_ERRATA = [
+  {
+    "id" => "endpoint_registry_prepare_cycle",
+    "checkpoint" => "0.2.0.pre.4",
+    "classification" => "documentation_correction",
+    "incorrect" => "Resolves configured registry class by name on each request.",
+    "corrected" => "Each request reads the current immutable snapshot; the configured registry is constantized and validated on every Rails prepare cycle.",
+    "runtime_evidence" => %w[
+      lib/hitch/engine.rb
+      lib/hitch/mcp/configuration.rb
+      app/controllers/concerns/hitch/mcp/endpoint.rb
+      test/hitch/mcp/registry_reload_test.rb
+    ]
+  }
+].freeze
 REQUIRED_INVARIANT_FIELDS = %w[id statement owner_issue source_targets mutation killing_tests].freeze
 REQUIRED_PROBE_IDS = %w[
   structural_symbol_keys
@@ -71,6 +88,7 @@ invariants = load_yaml(root, "docs/contracts/mcp_invariants.yml", errors)
 probes = load_yaml(root, "docs/contracts/sdk_probes.yml", errors)
 
 entries = api["entries"]
+errors << "mcp_public_api.yml: exact documentation erratum differs" unless api["errata"] == EXPECTED_API_ERRATA
 errors << "mcp_public_api.yml: entries must be a nonempty array" unless entries.is_a?(Array) && entries.any?
 entries ||= []
 names = []

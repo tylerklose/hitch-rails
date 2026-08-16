@@ -305,6 +305,131 @@ class Hitch::MCP::ObservationTest < ActionDispatch::IntegrationTest
     refute_includes public_bytes, "result-canary"
   end
 
+  test "unexpected endpoint failures report only a synthetic category and safe request id" do
+    reporter = ErrorReporter.new
+
+    stub_class_method(Rails, :error, -> { reporter }) do
+      stub_class_method(
+        Hitch::AccessToken,
+        :find_by_token,
+        ->(*) { raise NameError, "authentication-secret" }
+      ) do
+        post_call("observation.success")
+      end
+      assert_response :service_unavailable
+
+      post_call("observation.success", admission: "raise")
+      assert_response :service_unavailable
+
+      client_request_id = "eyJhbGciOiJIUzI1NiJ9.secret.signature"
+      post_scope_failure(request_id: client_request_id)
+      assert_response :ok
+      assert_equal(-32_603, JSON.parse(response.body).dig("error", "code"))
+      assert_equal client_request_id, JSON.parse(response.body).fetch("id")
+    end
+
+    assert_equal 3, reporter.reports.length
+    expected = [
+      [ "authentication", %i[hitch_mcp_category hitch_mcp_request_id] ],
+      [ "request_admission", %i[hitch_mcp_category hitch_mcp_request_id] ],
+      [ "dispatch", %i[hitch_mcp_category hitch_mcp_request_id] ]
+    ]
+    reporter.reports.zip(expected).each do |report, (category, context_keys)|
+      error = report.fetch(:error)
+      options = report.fetch(:options)
+      context = options.fetch(:context)
+
+      assert_equal "Hitch MCP endpoint failed", error.message
+      assert_nil error.cause
+      assert_equal true, options.fetch(:handled)
+      assert_equal :error, options.fetch(:severity)
+      assert_equal "hitch.mcp.endpoint", options.fetch(:source)
+      assert_equal context_keys, context.keys
+      assert_equal category, context.fetch(:hitch_mcp_category)
+    end
+    assert_match(/\A[0-9a-f]{32}\z/,
+      reporter.reports.last.dig(:options, :context, :hitch_mcp_request_id))
+
+    public_bytes = response.body + reporter.reports.inspect
+    refute_includes public_bytes, "authentication-secret"
+    refute_includes public_bytes, "wire-admission-secret"
+    refute_includes public_bytes, "scope-failure-canary"
+    refute_includes public_bytes, @token
+    refute_includes public_bytes, @user.email
+    refute_includes public_bytes, @client_id
+    refute_includes reporter.reports.inspect, "eyJhbGciOiJIUzI1NiJ9.secret.signature"
+  end
+
+  test "a missing polymorphic principal remains an expected invalid credential" do
+    Hitch::AccessToken.find_by_token(@token).update_column(:principal_type, "MissingPrincipal")
+    reporter = ErrorReporter.new
+
+    stub_class_method(Rails, :error, -> { reporter }) do
+      post_call("observation.success")
+    end
+
+    assert_response :unauthorized
+    assert_empty reporter.reports
+  end
+
+  test "endpoint reporting failure cannot change the fail-closed response" do
+    failing_reporter = Object.new
+    failing_reporter.define_singleton_method(:report) do |*|
+      raise "reporter-secret"
+    end
+
+    stub_class_method(Rails, :error, -> { failing_reporter }) do
+      post_call("observation.success", admission: "raise")
+    end
+
+    assert_response :service_unavailable
+    assert_empty response.body
+  end
+
+  test "endpoint reporting context is fixed frozen and correlation-only" do
+    internal = Hitch::MCP.const_get(:Internal, false)
+    endpoint_reporter = internal.const_get(:EndpointErrorReporter, false)
+    observation = internal.const_get(:Observation, false)
+
+    {
+      authentication: "authentication",
+      request_admission: "request_admission",
+      dispatch: "dispatch"
+    }.each do |category, expected|
+      stub_class_method(observation, :current_request_id, -> { nil }) do
+        context = endpoint_reporter.__send__(:reporting_context, category)
+        assert_equal({ hitch_mcp_category: expected }, context)
+        assert_predicate context, :frozen?
+      end
+    end
+
+    request_id = "a" * 32
+    stub_class_method(observation, :current_request_id, -> { request_id }) do
+      context = endpoint_reporter.__send__(:reporting_context, :dispatch)
+      assert_equal %i[hitch_mcp_category hitch_mcp_request_id], context.keys
+      assert_equal request_id, context.fetch(:hitch_mcp_request_id)
+      assert_not_same request_id, context.fetch(:hitch_mcp_request_id)
+      assert_predicate context.fetch(:hitch_mcp_request_id), :frozen?
+      assert_predicate context, :frozen?
+    end
+    assert_raises(KeyError) { endpoint_reporter.__send__(:reporting_context, :unknown) }
+  end
+
+  test "correlation ids accept only copied frozen server-generated shape" do
+    observation = Hitch::MCP.const_get(:Internal, false).const_get(:Observation, false)
+    request_id = "0123456789abcdef" * 2
+    copied = observation.__send__(:correlation_id, request_id)
+
+    assert_equal request_id, copied
+    assert_not_same request_id, copied
+    assert_predicate copied, :frozen?
+    string_subclass = Class.new(String).new("a" * 32)
+    [ nil, Object.new, string_subclass, "", "a" * 31, "a" * 33, "A" * 32,
+      "eyJhbGciOiJIUzI1NiJ9.secret.signature" ].each do |value|
+      assert_nil observation.__send__(:correlation_id, value)
+    end
+  end
+
   test "publisher detaches and restores request state on success absence and subscriber failure" do
     observation = Hitch::MCP.const_get(:Internal, false).const_get(:Observation, false)
     current_key = observation.const_get(:CURRENT_REQUEST_KEY, false)
@@ -357,7 +482,7 @@ class Hitch::MCP::ObservationTest < ActionDispatch::IntegrationTest
       configuration.mcp.server_info = ->(_context) { { name: "hitch-observation", version: "0.2.0" } }
       configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
       configuration.mcp.request_limit = { to: 1_000, within: 60 }
-      configuration.mcp.rate_limit_redis_url = nil
+      configuration.mcp.rate_limit_store = ActiveSupport::Cache::MemoryStore.new
       configuration.mcp.max_request_bytes = 8_192
     end
     Hitch.configuration.validate!
@@ -365,7 +490,6 @@ class Hitch::MCP::ObservationTest < ActionDispatch::IntegrationTest
       :prepare_registry!,
       supported_scopes: Hitch.configuration.supported_scopes
     )
-    Hitch.configuration.mcp.__send__(:prepare_rate_store!)
   end
 
   def capture_events
@@ -414,6 +538,7 @@ class Hitch::MCP::ObservationTest < ActionDispatch::IntegrationTest
 
   def post_request(
     method:,
+    request_id: SecureRandom.hex(4),
     name: nil,
     arguments: {},
     token: @token,
@@ -435,7 +560,7 @@ class Hitch::MCP::ObservationTest < ActionDispatch::IntegrationTest
       params["name"] = name
       params["arguments"] = arguments
     end
-    body = JSON.generate(jsonrpc: "2.0", id: SecureRandom.hex(4), method:, params:)
+    body = JSON.generate(jsonrpc: "2.0", id: request_id, method:, params:)
     post_raw(
       body,
       method: header_method,
@@ -505,10 +630,10 @@ class Hitch::MCP::ObservationTest < ActionDispatch::IntegrationTest
     }.compact
   end
 
-  def post_scope_failure
+  def post_scope_failure(request_id: SecureRandom.hex(4))
     original = Hitch.configuration.mcp.scope_resolver
     Hitch.configuration.mcp.scope_resolver = ->(**) { raise "scope-failure-canary" }
-    post_call("observation.success")
+    post_request(method: "tools/call", name: "observation.success", request_id:)
   ensure
     Hitch.configuration.mcp.scope_resolver = original
   end

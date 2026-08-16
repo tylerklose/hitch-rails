@@ -317,9 +317,9 @@ class Hitch::MCP::ResultTest < ActiveSupport::TestCase
     refute_match(/stack-failure-canary/, JSON.generate(response) + report_log)
   end
 
-  test "unsafe request IDs are omitted from error reporting" do
-    unsafe_request_id = "request-id-canary\nwith-control-data"
-    context = result_context(request_id: unsafe_request_id)
+  test "client request IDs never enter error reporting" do
+    client_request_id = "eyJhbGciOiJIUzI1NiJ9.secret.signature"
+    context = result_context(request_id: client_request_id)
 
     response, reports, report_log = capture_reports do
       call_result(context:, perform: -> { raise "request-id-host-canary" })
@@ -328,7 +328,8 @@ class Hitch::MCP::ResultTest < ActiveSupport::TestCase
     assert_generic_tool_error response
     assert_equal 1, reports.length
     refute reports.fetch(0).fetch(:context).key?(:hitch_mcp_request_id)
-    refute_match(/request-id-canary|request-id-host-canary/, JSON.generate(response) + report_log)
+    refute_match(/#{Regexp.escape(client_request_id)}|request-id-host-canary/,
+      JSON.generate(response) + report_log)
   end
 
   test "failure canaries never cross Hitch boundaries" do
@@ -367,7 +368,7 @@ class Hitch::MCP::ResultTest < ActiveSupport::TestCase
     assert_equal "hitch.mcp.tool", report.fetch(:source)
     assert_equal "host_execution", report.dig(:context, :hitch_mcp_category)
     assert_equal "result.tool", report.dig(:context, :hitch_mcp_tool)
-    assert_equal "safe-request-id", report.dig(:context, :hitch_mcp_request_id)
+    assert_nil report.dig(:context, :hitch_mcp_request_id)
 
     observed = JSON.generate(response) + report_log + report.fetch(:error).backtrace.join
     canaries.each { |canary| refute_includes observed, canary }
@@ -439,6 +440,66 @@ class Hitch::MCP::ResultTest < ActiveSupport::TestCase
     end
     assert_equal false, normalizer.__send__(:expected_denial?, RuntimeError.new, :authorization)
     assert_equal false, normalizer.__send__(:expected_denial?, Object.new, :authorization)
+  end
+
+  test "direct error reporting context admits only fixed categories safe tool names and correlation ids" do
+    normalizer = error_normalizer_class
+    observation = Hitch::MCP.const_get(:Internal, false).const_get(:Observation, false)
+    request_id = "b" * 32
+    phases = {
+      context: "context_handoff",
+      arguments: "argument_normalization",
+      authorization: "argument_policy",
+      execution: "host_execution",
+      result: "result_normalization",
+      unknown: "tool_boundary"
+    }
+
+    stub_class_method(observation, :current_request_id, -> { request_id }) do
+      phases.each do |phase, category|
+        tool_name = "safe.tool-_#{phase}"
+        context = normalizer.__send__(
+          :reporting_context,
+          error: RuntimeError.new("private-message"),
+          phase:,
+          tool_name:
+        )
+        assert_equal category, context.fetch(:hitch_mcp_category)
+        assert_equal tool_name, context.fetch(:hitch_mcp_tool)
+        assert_not_same tool_name, context.fetch(:hitch_mcp_tool)
+        assert_predicate context.fetch(:hitch_mcp_tool), :frozen?
+        assert_equal request_id, context.fetch(:hitch_mcp_request_id)
+        assert_not_same request_id, context.fetch(:hitch_mcp_request_id)
+        assert_predicate context.fetch(:hitch_mcp_request_id), :frozen?
+        assert_predicate context, :frozen?
+        refute_includes context.inspect, "private-message"
+      end
+    end
+
+    string_subclass = Class.new(String).new("subclass.tool")
+    [ nil, Object.new, string_subclass, "", "a" * 65, "unsafe/name", "token shaped value" ].each do |tool_name|
+      stub_class_method(observation, :current_request_id, -> { nil }) do
+        context = normalizer.__send__(
+          :reporting_context,
+          error: RuntimeError.new,
+          phase: :execution,
+          tool_name:
+        )
+        assert_equal({ hitch_mcp_category: "host_execution" }, context)
+      end
+    end
+
+    failure_class = result_normalizer_class.const_get(:Failure, false)
+    stub_class_method(observation, :current_request_id, -> { nil }) do
+      context = normalizer.__send__(
+        :reporting_context,
+        error: failure_class.new(:result_too_large),
+        phase: :result,
+        tool_name: nil
+      )
+      assert_equal "result_too_large", context.fetch(:hitch_mcp_category)
+      assert_predicate context.fetch(:hitch_mcp_category), :frozen?
+    end
   end
 
   private

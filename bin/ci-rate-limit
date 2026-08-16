@@ -12,6 +12,8 @@ require "timeout"
 require "tmpdir"
 require "yaml"
 
+require_relative "../lib/hitch/version"
+
 ROOT = File.expand_path("..", __dir__)
 LOCK_PATH = File.join(ROOT, "test/conformance/toolchain.lock.yml")
 DEFAULT_EVIDENCE_PATH = File.join(ROOT, "docs/evidence/0.2.0/rate-limit/cross-process.json")
@@ -147,8 +149,8 @@ begin
         worktree_clean_before_evidence_write: worktree_clean
       },
       artifact: {
-        version: "0.2.0.pre.3.dev",
-        target_checkpoint: "0.2.0.pre.3",
+        version: Hitch::VERSION,
+        target_checkpoint: "0.2.0.rc1",
         distribution: "internal_only",
         checkpoint_sealed: false,
         published: false,
@@ -156,31 +158,34 @@ begin
         github_release_created: false,
         rubygems_publication_performed: false
       },
-      redis: {
+      # Redis is the backend this lane pins and exercises. Hitch declares no
+      # runtime Redis dependency; admission counts through whatever
+      # ActiveSupport::Cache store the host application configures.
+      backend: {
+        store_class: "ActiveSupport::Cache::RedisCacheStore",
         image:,
         index_digest:,
         platform:,
         platform_digest:,
         pulled_reference: pinned_image,
         container_id: container_id[0, 12],
-        server_version: redis_version,
-        gem_requirement: redis_lock.fetch("gem_requirement"),
-        gem_version: Redis::VERSION
+        server_version: redis_version
       },
       contract: {
         algorithm: "fixed_window",
         identity: "HMAC-SHA256(canonical JSON principal base class, principal id, client id)",
         bearer_token_in_key: false,
         raw_identifiers_in_key: false,
-        increment_and_first_expiry: "one Redis Lua invocation",
+        increment_and_first_expiry: "host ActiveSupport::Cache store increment with first-write expiry",
         shared_methods: %w[server/discover tools/list tools/call],
         exact_limit_status: 200,
         exceeded_status: 429,
         retry_after: "conservative window seconds",
-        nil_or_store_error_status: 503,
+        store_error_status: 503,
+        nil_count: "admits_fail_open_documented",
         store_error_downstream_body_registry_sdk_host_calls: 0,
-        production_without_redis_url: "boot_refused",
-        nonproduction_memory_store_only: true
+        production_unshared_store: "boot_refused",
+        runtime_redis_dependency: false
       },
       lanes: lane_evidence
     }

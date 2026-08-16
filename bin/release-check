@@ -5,13 +5,29 @@ require "digest"
 require "fileutils"
 require "json"
 require "open3"
+require "rbconfig"
 require "rubygems/package"
 require "rubygems/version"
+require "time"
 require "tmpdir"
+require_relative "../tooling/exclusive_report"
+require_relative "../tooling/downloaded_release"
+require_relative "../tooling/final_release"
 
-ROOT = File.expand_path("..", __dir__)
+root_option = ARGV.index("--root")
+root_path = if root_option
+  value = ARGV.fetch(root_option + 1, nil)
+  raise "--root requires a repository path" unless value
+
+  ARGV.slice!(root_option, 2)
+  value
+else
+  File.expand_path("..", __dir__)
+end
+ROOT = File.realpath(root_path)
 GEM_NAME = "hitch-rails"
-EARLIEST_PUBLIC_VERSION = Gem::Version.new("0.2.0.pre.4")
+CANONICAL_REPOSITORY = "https://github.com/tylerklose/hitch-rails.git"
+SUPPORTED_RELEASES = %w[0.2.0.pre.4 0.2.0.rc1 0.2.0.rc2 0.2.0].freeze
 FORBIDDEN_PACKAGE_PATHS = [
   %r{\A(?:test|spec|tmp|log)/},
   %r{\Adocs/(?:evidence|work_packets)/},
@@ -24,8 +40,9 @@ FORBIDDEN_PACKAGE_PATHS = [
 
 def usage!(message = nil)
   warn message if message
-  warn "Usage: bin/release-check [--validate-version] VERSION"
-  warn "Downloads the published RubyGems artifact; run only after publication and annotated tagging."
+  warn "Usage: bin/release-check [--root PATH] [--validate-version | --complete] VERSION"
+  warn "--validate-version rebuilds the authorized candidate; --complete reruns live tag and RubyGems reconciliation."
+  warn "The default mode downloads an already-published artifact and emits an evidence report."
   exit 64
 end
 
@@ -37,22 +54,90 @@ def capture!(*command, environment: {}, chdir: ROOT)
   raise "command failed (#{status.exitstatus}): #{command.join(' ')}"
 end
 
+def verify_gate!(*command)
+  output, status = Open3.capture2e(*command, chdir: ROOT)
+  if status.success?
+    puts output unless output.empty?
+    return
+  end
+
+  warn output
+  exit status.exitstatus
+end
+
+def verify_checkout_unchanged!(before_status:, before_commit:, before_tree:)
+  after_status = capture!("git", "status", "--porcelain=v1", "-z", "--untracked-files=all")
+  raise "release check changed the worktree" unless after_status == before_status
+  raise "release check changed HEAD" unless capture!("git", "rev-parse", "HEAD").strip == before_commit
+  raise "release check changed the source tree" unless capture!("git", "rev-parse", "HEAD^{tree}").strip == before_tree
+end
+
+def remote_tag_identity!(tag)
+  reference = "refs/tags/#{tag}"
+  output = capture!(
+    "git", "ls-remote", "--tags", CANONICAL_REPOSITORY,
+    reference, "#{reference}^{}"
+  )
+  entries = output.lines.filter_map do |line|
+    sha, name = line.strip.split(/\s+/, 2)
+    [ name, sha ] if name && sha
+  end
+  expected_names = [ reference, "#{reference}^{}" ]
+  unless entries.length == 2 && entries.map(&:first).sort == expected_names.sort &&
+      entries.all? { |_name, sha| sha.match?(/\A[0-9a-f]{40}\z/) }
+    raise "canonical remote #{tag} must expose one annotated tag object and peeled commit"
+  end
+
+  values = entries.to_h
+  {
+    "remote_url" => CANONICAL_REPOSITORY,
+    "remote_tag_object" => values.fetch(reference),
+    "remote_peeled_commit" => values.fetch("#{reference}^{}")
+  }
+end
+
 validate_only = ARGV.delete("--validate-version")
+complete = ARGV.delete("--complete")
+usage!("Choose only one release-check mode") if validate_only && complete
 version = ARGV.shift
 usage! if version.nil?
 usage!("Unexpected arguments: #{ARGV.join(' ')}") unless ARGV.empty?
-usage!("VERSION must be a public-eligible version at or after 0.2.0.pre.4") unless
-  version.match?(/\A\d+\.\d+\.\d+(?:\.pre\.\d+|\.rc\d+)?\z/) &&
-    Gem::Version.new(version) >= EARLIEST_PUBLIC_VERSION
+usage!("VERSION must be one of #{SUPPORTED_RELEASES.join(', ')}") unless SUPPORTED_RELEASES.include?(version)
+usage!("--complete supports only #{HitchFinalRelease::RELEASE}") if complete && version != HitchFinalRelease::RELEASE
+usage!("HITCH_RELEASE_REPORT is not used with --complete") if complete && ENV["HITCH_RELEASE_REPORT"]
+
+before_status = capture!("git", "status", "--porcelain=v1", "-z", "--untracked-files=all")
+raise "release check requires a clean worktree" unless before_status.empty?
+before_commit = capture!("git", "rev-parse", "HEAD").strip
+before_tree = capture!("git", "rev-parse", "HEAD^{tree}").strip
+
+verify_gate!(RbConfig.ruby, File.join(ROOT, "bin/verify-release-policy"))
+evidence_mode = complete ? "--complete" : "--preflight"
+verify_gate!(RbConfig.ruby, File.join(ROOT, "bin/verify-release-evidence"), evidence_mode, version)
+verify_gate!(RbConfig.ruby, File.join(ROOT, "bin/verify-release-matrix"))
+
+publication_authority_sha256 = nil
+authorized_candidate = nil
+if version == HitchFinalRelease::RELEASE
+  authority_record = HitchFinalRelease.candidate!(root: ROOT, authority: true)
+  publication_authority_sha256 = authority_record.fetch("evidence_sha256")
+  authorized_candidate = authority_record.fetch("candidate")
+end
 
 if validate_only
-  puts "#{version} is eligible for public artifact verification."
+  unless authorized_candidate
+    raise "#{version} has no source-bound final publication candidate"
+  end
+  Dir.mktmpdir("hitch-release-preflight-") do |directory|
+    HitchFinalRelease.stage!(root: ROOT, candidate: authorized_candidate, destination: directory)
+  end
+  verify_checkout_unchanged!(before_status:, before_commit:, before_tree:)
+  puts "#{version} has satisfied the source-bound public artifact preflight."
   exit 0
 end
 
 tag = "v#{version}"
 contract_version = version[/\A\d+\.\d+\.\d+/]
-before_status = capture!("git", "status", "--porcelain=v1", "-z", "--untracked-files=all")
 tag_type = capture!("git", "cat-file", "-t", "refs/tags/#{tag}").strip
 raise "#{tag} must be an annotated tag (found #{tag_type.inspect})" unless tag_type == "tag"
 
@@ -63,6 +148,21 @@ tag_metadata = capture!(
 ).strip.split("\0", 4)
 unless tag_metadata.length == 4 && tag_metadata.all? { |value| !value.empty? }
   raise "#{tag} is missing tagger identity, date, or annotation"
+end
+tag_target_commit = capture!("git", "rev-parse", "#{tag}^{commit}").strip
+tag_target_tree = capture!("git", "rev-parse", "#{tag}^{tree}").strip
+tag_object = capture!("git", "rev-parse", "refs/tags/#{tag}").strip
+remote_tag = remote_tag_identity!(tag)
+raise "canonical remote tag object differs from the local annotated tag" unless
+  remote_tag["remote_tag_object"] == tag_object
+raise "canonical remote peeled target differs from the local tag target" unless
+  remote_tag["remote_peeled_commit"] == tag_target_commit
+
+if authorized_candidate
+  unless authorized_candidate["source_commit"] == tag_target_commit &&
+      authorized_candidate["source_tree"] == tag_target_tree
+    raise "#{tag} target differs from the explicitly authorized source commit/tree"
+  end
 end
 
 report = nil
@@ -89,8 +189,15 @@ Dir.mktmpdir("hitch-release-check-") do |directory|
   )
   artifact = File.join(directory, "#{GEM_NAME}-#{version}.gem")
   raise "RubyGems did not return #{File.basename(artifact)}" unless File.file?(artifact)
+  artifact_sha256 = Digest::SHA256.file(artifact).hexdigest
+  if authorized_candidate &&
+      (authorized_candidate["artifact"] != File.basename(artifact) ||
+        authorized_candidate["sha256"] != artifact_sha256)
+    raise "downloaded RubyGems bytes differ from the explicitly authorized candidate"
+  end
 
   package = Gem::Package.new(artifact)
+  HitchFinalRelease.validate_package!(artifact:, version:) if version == HitchFinalRelease::RELEASE
   published_specification = package.spec
   raise "published gem name is #{published_specification.name.inspect}" unless
     published_specification.name == GEM_NAME
@@ -150,11 +257,20 @@ Dir.mktmpdir("hitch-release-check-") do |directory|
   raise "public API manifest does not identify #{contract_version}" unless public_api.include?(contract_version)
 
   report = {
+    "schema" => version == "0.2.0" ? "hitch.m8-downloaded-gem.v1" : "hitch.public-checkpoint-download.v1",
+    "milestone" => {
+      "0.2.0.pre.4" => "M5.4",
+      "0.2.0.rc1" => "M6",
+      "0.2.0.rc2" => "M7",
+      "0.2.0" => "M8"
+    }.fetch(version),
     "release" => version,
     "status" => "verified_published_artifact",
+    "verified_at" => Time.now.utc.iso8601,
+    "publication_authority_sha256" => publication_authority_sha256,
     "rubygems" => {
       "artifact" => File.basename(artifact),
-      "sha256" => Digest::SHA256.file(artifact).hexdigest,
+      "sha256" => artifact_sha256,
       "files" => published_files.length
     },
     "repository" => {
@@ -162,7 +278,10 @@ Dir.mktmpdir("hitch-release-check-") do |directory|
       "tag_type" => tag_type,
       "tagger" => tag_metadata.fetch(0),
       "tagged_at" => tag_metadata.fetch(2),
-      "annotation" => tag_metadata.fetch(3)
+      "annotation" => tag_metadata.fetch(3),
+      "target_commit" => tag_target_commit,
+      "target_tree" => tag_target_tree,
+      **remote_tag
     },
     "checks" => {
       "version" => "match",
@@ -171,24 +290,36 @@ Dir.mktmpdir("hitch-release-check-") do |directory|
       "file_checksums" => "match",
       "readme" => "match",
       "changelog" => "match",
+      "security" => "match",
+      "upgrading" => "match",
       "public_api" => "match"
     }
   }
 end
 
-after_status = capture!("git", "status", "--porcelain=v1", "-z", "--untracked-files=all")
-raise "release check changed the worktree" unless after_status == before_status
-
-json = JSON.pretty_generate(report)
-report_path = ENV["HITCH_RELEASE_REPORT"]
-if report_path
-  expanded_report = File.expand_path(report_path)
-  if expanded_report == ROOT || expanded_report.start_with?("#{ROOT}/")
-    raise "HITCH_RELEASE_REPORT must be outside the repository so release verification stays read-only"
-  end
-  File.write(expanded_report, "#{json}\n")
+if complete
+  accepted = HitchFinalRelease.accepted_evidence!(root: ROOT, kind: "downloaded_gem").fetch("evidence")
+  HitchDownloadedRelease.reconcile!(accepted:, live: report)
 else
+  json = JSON.pretty_generate(report)
+  report_path = ENV["HITCH_RELEASE_REPORT"]
+end
+verify_checkout_unchanged!(before_status:, before_commit:, before_tree:)
+
+if !complete && report_path
+  HitchExclusiveReport.write!(
+    root: ROOT,
+    path: report_path,
+    bytes: "#{json}\n",
+    variable: "HITCH_RELEASE_REPORT"
+  )
+elsif !complete
   puts json
 end
 
-puts "Published #{GEM_NAME} #{version} matches #{tag}."
+if complete
+  verify_gate!(RbConfig.ruby, File.join(ROOT, "bin/verify-release-evidence"), "--complete", version)
+  puts "Live RubyGems bytes and #{tag} match the accepted downloaded-gem evidence."
+else
+  puts "Published #{GEM_NAME} #{version} matches #{tag}."
+end

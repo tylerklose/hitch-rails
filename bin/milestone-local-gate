@@ -1,0 +1,49 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "open3"
+require "rbconfig"
+require_relative "../tooling/milestone_local_gate"
+
+ROOT = File.expand_path("..", __dir__)
+
+def usage!(message = nil)
+  warn message if message
+  warn "Usage: HITCH_MILESTONE_LOCAL_GATE_REPORT=/outside/report.json bin/milestone-local-gate M6 package_smoke"
+  warn "   or: HITCH_MILESTONE_LOCAL_GATE_REPORT=/outside/report.json bin/milestone-local-gate M7 mutation_mcp"
+  exit 64
+end
+
+milestone = ARGV.shift
+gate = ARGV.shift
+usage! unless milestone && gate
+usage!("Unexpected arguments: #{ARGV.join(' ')}") unless ARGV.empty?
+usage!("Unsupported milestone local gate") unless HitchMilestoneLocalGate::CONTRACTS.dig(milestone, gate)
+report_path = ENV["HITCH_MILESTONE_LOCAL_GATE_REPORT"]
+usage!("HITCH_MILESTONE_LOCAL_GATE_REPORT is required") unless report_path
+
+prerequisite = milestone == "M6" ? [] : [ "--through", "M6" ]
+output, status = Open3.capture2e(
+  RbConfig.ruby,
+  File.join(ROOT, "bin/verify-release-evidence"),
+  *prerequisite,
+  chdir: ROOT
+)
+unless status.success?
+  warn output
+  exit status.exitstatus
+end
+
+begin
+  result = HitchMilestoneLocalGate.run!(
+    root: ROOT,
+    milestone:,
+    gate:,
+    report_path:
+  )
+  puts JSON.pretty_generate(result.slice("path", "sha256"))
+rescue HitchMilestoneLocalGate::VerificationError, ArgumentError => error
+  warn error.message
+  exit 1
+end

@@ -45,7 +45,7 @@ class MCPRateLimitCrossProcessContractTest < ActiveSupport::TestCase
     Hitch.reset_configuration!
   end
 
-  test "one Redis window is exact across independent Rails processes" do
+  test "one window is exact across independent Rails processes" do
     results = run_processes
     statuses = results.flat_map { |result| result.fetch("statuses") }
     allowed = statuses.count(200)
@@ -82,8 +82,8 @@ class MCPRateLimitCrossProcessContractTest < ActiveSupport::TestCase
       configured_window_seconds: WINDOW_SECONDS,
       allowed:,
       rejected:,
-      redis_count: count,
-      redis_ttl_ms: ttl_ms,
+      store_count: count,
+      ttl_ms: ttl_ms,
       max_process_elapsed_ms: elapsed_ms,
       key_digest: rate_key.delete_prefix("hitch:mcp:rate-limit:v1:"),
       process_outcomes: results.map do |result|
@@ -115,14 +115,13 @@ class MCPRateLimitCrossProcessContractTest < ActiveSupport::TestCase
       configuration.mcp.server_info = ->(_context) { { name: "hitch-cross-process", version: "0.2.0" } }
       configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
       configuration.mcp.request_limit = { to: REQUEST_LIMIT, within: WINDOW_SECONDS }
-      configuration.mcp.rate_limit_redis_url = @redis_url
+      configuration.mcp.rate_limit_store = ActiveSupport::Cache::RedisCacheStore.new(url: @redis_url)
     end
     Hitch.configuration.validate!
     Hitch.configuration.mcp.__send__(
       :prepare_registry!,
       supported_scopes: Hitch.configuration.supported_scopes
     )
-    Hitch.configuration.mcp.__send__(:prepare_rate_store!)
   end
 
   def run_processes
@@ -198,26 +197,39 @@ class MCPRateLimitCrossProcessContractTest < ActiveSupport::TestCase
     end
   end
 
+  # A fixed window must expire relative to its first write, not its most recent
+  # one. RedisCacheStore#increment issues EXPIRE ... NX for exactly that reason;
+  # this proves the behavior rather than the implementation, so any supported
+  # backend can be swapped in.
+  #
+  # Increments land at t=0, t=0.9, and t=1.4 against a 1.2s window. The third
+  # falls outside the window opened at t=0 but inside one that a rewritten
+  # expiry would have opened at t=0.9, so a reset to 1 distinguishes them.
   def verify_first_expiry
-    store = Hitch::MCP.const_get(:RedisRateStore, false).new(url: @redis_url)
+    store = ActiveSupport::Cache::RedisCacheStore.new(url: @redis_url)
     key = "hitch:mcp:rate-limit:v1:probe:#{SecureRandom.hex(32)}"
-    first_count, first_ttl = store.increment(key:, window_ms: 1_200)
-    sleep 0.25
-    second_count, second_ttl = store.increment(key:, window_ms: 1_200)
+    first = store.increment(key, 1, expires_in: 1.2)
+    sleep 0.9
+    second = store.increment(key, 1, expires_in: 1.2)
+    sleep 0.5
+    third = store.increment(key, 1, expires_in: 1.2)
 
-    assert_equal 1, first_count
-    assert_equal 2, second_count
-    assert_operator first_ttl, :<=, 1_200
-    assert_operator second_ttl, :<=, first_ttl - 150
+    assert_equal 1, first
+    assert_equal 2, second
+    assert_equal 1, third,
+      "the window expired relative to its most recent write, not its first"
     {
       window_ms: 1_200,
-      first_ttl_ms: first_ttl,
-      second_ttl_ms: second_ttl,
-      minimum_observed_decay_ms: first_ttl - second_ttl,
+      counts: [ first, second, third ],
+      elapsed_ms_at_reset: 1_400,
       expiry_rewritten: false
     }
   ensure
-    store&.close
+    begin
+      store&.delete(key)
+    rescue StandardError
+      nil
+    end
   end
 
   def mint_token(principal, client_id:)

@@ -2,7 +2,7 @@
 
 `hitch:doctor` is a read-only installation diagnostic for the current Rails
 environment. Run it after installation, before a deploy, and whenever routing,
-discovery, registry loading, or Redis admission behaves differently than the
+discovery, registry loading, or request admission behaves differently than the
 host expects:
 
 ```sh
@@ -19,7 +19,7 @@ HITCH_DOCTOR_FORMAT=json bin/rails hitch:doctor
 The only accepted formats are `human` and `json`. The process exits zero when
 all findings are `pass`, `skip`, or `warn`; any `fail` finding exits one after
 the complete report is printed. Warnings identify a supported but non-golden
-posture, such as the private memory rate store in development/test, an empty
+posture, such as an unshared cache store in development/test, an empty
 explicit Registry, or a deprecated endpoint on a noncanonical path.
 
 ## Stable check categories
@@ -31,7 +31,8 @@ these IDs in this order:
    packaged support window.
 2. `configuration` — the current OAuth configuration is valid and any enabled
    MCP runtime has all required settings. Production DCR also requires its
-   separate shared atomic rate-store contract.
+   resolved rate store (default: `config.cache_store`) to count across
+   processes.
 3. `resource_discovery` — internal requests to both discovery documents agree
    with the canonical resource URI and issuer. No external network request is
    made.
@@ -46,31 +47,34 @@ these IDs in this order:
    every additional exact Hitch host.
 8. `origins` — browser CORS is deny-default or uses exact configured origins.
    Plain-HTTP browser origins warn in production.
-9. `redis_connectivity` — an enabled production MCP runtime has a reachable
-   Redis URL. A missing URL warns only in development/test; auth-only mode
-   skips it.
-10. `redis_atomicity_expiry` — one isolated diagnostic key increments twice in
-    one Lua operation, receives a short expiry, and is removed. It never uses
-    Hitch's application quota-key namespace.
-11. `package` — the loaded gem contains the required runtime, generators,
+9. `rate_limit_store` — one isolated diagnostic key increments twice against
+   the configured admission store, returns `1` then `2`, and is removed. It
+   never uses Hitch's application quota-key namespace. A store that cannot
+   count, or one that cannot count across processes, fails in production and
+   warns elsewhere; auth-only mode skips it.
+10. `package` — the loaded gem contains the required runtime, generators,
     operator documents, tasks, and migrations, with no test/evidence files.
-12. `legacy_endpoint` — the deprecated `Hitch::ServerEndpoint` does not own the
+11. `legacy_endpoint` — the deprecated `Hitch::ServerEndpoint` does not own the
     canonical resource path. A noncanonical legacy route warns during a staged
     migration; a canonical one fails.
 
 Each check has `status`, stable `code`, human `summary`, and bounded structural
 `details`. Exception messages, credentials, bearer values, request bodies,
-Redis passwords, and diagnostic keys are never reported. Redis targets omit
-userinfo and query values.
+store credentials, and diagnostic keys are never reported. The admission-store
+check reports the store class, whether it is shared across processes, and the
+two probe counts — as integers, nil, or a class name, never message text.
 
 ## No repair mode
 
 Doctor does not edit configuration, routes, Registry declarations, migrations,
 or application data. Its internal discovery requests are GETs against the
-loaded Rack application. The Redis check is the sole write: it uses a random
-`hitch:doctor:v1:*` key, sets a five-second expiry, deletes it inside the Lua
-probe, and attempts deletion again while closing the dedicated connection.
-That namespace is distinct from Hitch's HMAC rate-limit keys.
+loaded Rack application. The store probes are the only writes: the
+`rate_limit_store` check increments a random `hitch:doctor:v1:*` key twice on
+the configured cache store with a five-second expiry, asserts the counts come
+back `1` then `2`, and deletes the key; when production DCR is enabled, the
+`configuration` check increments one such key on the registration store,
+requires an integer count, and deletes it. That namespace is distinct from
+Hitch's HMAC rate-limit keys.
 
 Fix the named host artifact and rerun the command. Do not parse the human prose
 for automation; parse `hitch.doctor.v1` JSON by check `id`, `status`, and

@@ -33,8 +33,11 @@ separate trust boundary owned by the adopting Rails application.
   cap, SDK backstop, generic errors, explicit safe Result.error only.
 - Cross-request/reload leakage: fresh verified request/context/adapter/server and
   class-name registry snapshots rebuilt atomically under `to_prepare`.
-- Rate-limit bypass/race: HMAC validated principal/client key and one Redis Lua
-  increment/first-expiry operation; nil/errors fail closed with no downstream work.
+- Rate-limit bypass/race: HMAC validated principal/client key and one
+  cache-store increment/first-expiry operation. A raised store error is 503
+  with no downstream work; a nil count admits without a limit — Rails'
+  posture on the same stores, bounded because this request already passed
+  bearer authentication and production refuses uncountable stores at boot.
 - Observation leakage/interference: exact versioned payload keys, all SDK
   callbacks replaced, secret canaries, subscriber exceptions isolated/reported.
 

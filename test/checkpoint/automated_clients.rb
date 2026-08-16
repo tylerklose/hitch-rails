@@ -245,7 +245,9 @@ module HitchCheckpoint
           config.mcp.server_info = ->(_context) { { name: "hitch-m5-smoke", version: "1.0.0" } }
           config.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
           config.mcp.request_limit = { to: 1_000, within: 60 }
-          config.mcp.rate_limit_redis_url = ENV.fetch("HITCH_MCP_REDIS_URL")
+          config.mcp.rate_limit_store = ActiveSupport::Cache::RedisCacheStore.new(
+            url: ENV.fetch("HITCH_MCP_REDIS_URL")
+          )
           config.mcp.max_request_bytes = 1.megabyte
           config.mcp.max_result_bytes = 1.megabyte
         end

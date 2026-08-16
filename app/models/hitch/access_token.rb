@@ -83,7 +83,7 @@ module Hitch
       record
     end
 
-    def self.exchange_authorization_code!(raw_code:, code_verifier:, client_id:, resource_uri:)
+    def self.exchange_authorization_code!(raw_code:, code_verifier:, client_id:, resource_uri:, redirect_uri: nil)
       unless Hitch::Pkce.valid_verifier?(code_verifier)
         raise OAuthError.new("invalid_grant", "PKCE verifier is malformed")
       end
@@ -94,6 +94,12 @@ module Hitch
 
       unless record.client_id == client_id
         raise OAuthError.new("invalid_grant", "Authorization code was not issued to this client")
+      end
+      # RFC 6749 §4.1.3: a redirect_uri sent to the token endpoint MUST be
+      # identical to the one the code was issued to. Omitting it is legal
+      # (OAuth 2.1 drops the parameter; PKCE carries the binding).
+      if redirect_uri.present? && record.redirect_uri != redirect_uri
+        raise OAuthError.new("invalid_grant", "redirect_uri does not match the authorization request")
       end
       unless record.resource_uri == resource_uri
         raise OAuthError.new("invalid_target", "resource does not match the authorized resource")

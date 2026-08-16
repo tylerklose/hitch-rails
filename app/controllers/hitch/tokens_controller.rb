@@ -49,7 +49,8 @@ module Hitch
         raw_code: oauth[:code],
         code_verifier: oauth[:code_verifier],
         client_id: client_id,
-        resource_uri: resource
+        resource_uri: resource,
+        redirect_uri: oauth[:redirect_uri]
       )
 
       return oauth_error("invalid_grant", "Invalid or expired authorization code") if result.nil?

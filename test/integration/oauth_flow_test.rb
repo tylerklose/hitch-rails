@@ -664,6 +664,37 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     refute record.valid_for_resource?(RESOURCE_B)
   end
 
+  # RFC 6749 §4.1.3: a redirect_uri presented at the token endpoint MUST be
+  # identical to the one the code was issued to. The mismatch is rejected
+  # before the code is consumed, so a client can retry correctly.
+  test "token exchange rejects a mismatched redirect_uri and keeps the code" do
+    client = register_client
+    sign_in @user
+
+    post "/oauth/authorize", params: {
+      response_type: "code",
+      client_id: client["client_id"], redirect_uri: CLIENT_REDIRECT,
+      code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE_A
+    }
+    code = URI.decode_www_form(URI.parse(response.location).query).to_h["code"]
+
+    post "/oauth/token", params: {
+      grant_type: "authorization_code", code: code,
+      client_id: client["client_id"], code_verifier: @verifier,
+      resource: RESOURCE_A, redirect_uri: "https://claude.ai/other"
+    }
+    assert_response :bad_request
+    assert_equal "invalid_grant", JSON.parse(response.body)["error"]
+
+    post "/oauth/token", params: {
+      grant_type: "authorization_code", code: code,
+      client_id: client["client_id"], code_verifier: @verifier,
+      resource: RESOURCE_A, redirect_uri: CLIENT_REDIRECT
+    }
+    assert_response :success
+    assert JSON.parse(response.body)["access_token"].present?
+  end
+
   # RFC 9207 §2.4: the client compares the authorization response's `iss`
   # against the issuer it discovered, with an exact string comparison,
   # and refuses to exchange the code on any mismatch. Asserting mere

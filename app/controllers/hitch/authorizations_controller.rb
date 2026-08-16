@@ -41,7 +41,7 @@ module Hitch
     def new
       return require_principal! unless current_principal
 
-      oauth = valid_authorization_request(extract_oauth_params)
+      oauth = valid_authorization_request(oauth_parameters(*AUTHORIZATION_PARAMETER_NAMES))
       return unless oauth
 
       if (err = client_redirect_error(oauth[:client_id], oauth[:redirect_uri]))
@@ -62,11 +62,21 @@ module Hitch
     def create
       return require_principal! unless current_principal
 
-      oauth = valid_authorization_request(extract_oauth_params)
+      # :decision is accepted here but never echoed by the consent screen —
+      # a crafted authorize link must not be able to pre-press Deny.
+      oauth = valid_authorization_request(oauth_parameters(*AUTHORIZATION_PARAMETER_NAMES, :decision))
       return unless oauth
 
       if (err = client_redirect_error(oauth[:client_id], oauth[:redirect_uri]))
         return oauth_error(*err)
+      end
+
+      # RFC 6749 §4.1.2.1: the user declining is reported to the validated
+      # redirect_uri as access_denied — with iss, like every redirect.
+      if oauth[:decision] == "deny"
+        return redirect_to_client(
+          build_redirect_uri(oauth[:redirect_uri], error: "access_denied", state: oauth[:state])
+        )
       end
 
       token = Hitch::AccessToken.create_authorization!(
@@ -82,16 +92,12 @@ module Hitch
         scopes: granted_scopes(oauth[:scope])
       )
 
-      redirect_with_authorization_code(
+      redirect_to_client(
         build_redirect_uri(oauth[:redirect_uri], code: token.raw_authorization_code, state: oauth[:state])
       )
     end
 
     private
-
-    def extract_oauth_params
-      oauth_parameters(*AUTHORIZATION_PARAMETER_NAMES)
-    end
 
     def valid_authorization_request(oauth)
       if oauth[:response_type].blank?
@@ -345,13 +351,13 @@ module Hitch
     # primitive on a flow the user actually approved.
     RESPONSE_PARAMS = %w[code state iss error error_description error_uri].freeze
 
-    def build_redirect_uri(base_uri, code:, state:)
+    def build_redirect_uri(base_uri, **response)
       uri = URI.parse(base_uri)
       query_params = URI.decode_www_form(uri.query || "")
                         .reject { |key, _| RESPONSE_PARAMS.include?(key) }
-      query_params << [ "code", code ]
-      query_params << [ "state", state ] if state.present?
-      query_params << [ "iss", issuer_url ]
+      response.merge(iss: issuer_url).each do |key, value|
+        query_params << [ key.to_s, value ] if value.present?
+      end
       uri.query = URI.encode_www_form(query_params)
       uri.to_s
     end
@@ -361,7 +367,7 @@ module Hitch
     # writes the one-time authorization code in plaintext. The destination has
     # already passed exact registered-URI validation, so construct the 302
     # directly and keep the credential out of redirect instrumentation.
-    def redirect_with_authorization_code(location)
+    def redirect_to_client(location)
       response.headers["Cache-Control"] = "no-store"
       response.headers["Pragma"] = "no-cache"
       response.headers["Location"] = location

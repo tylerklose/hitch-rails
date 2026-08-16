@@ -35,12 +35,12 @@
     </p>
   <% end %>
 
-  <%# turbo: false forces a real browser navigation on Approve. The
-     controller redirects to the client's redirect_uri (a cross-origin
-     host, e.g. https://grok.com/...); Turbo Drive submits via fetch and
-     CANNOT follow a cross-origin 302, so the redirect is swallowed and
-     "Approve" appears to do nothing. A full-page submit lets the browser
-     follow the redirect and deliver the auth code to the client. %>
+  <%# turbo: false forces a real browser navigation. The controller
+     redirects to the client's redirect_uri (a cross-origin host, e.g.
+     https://grok.com/...); Turbo Drive submits via fetch and CANNOT
+     follow a cross-origin 302, so the redirect is swallowed and the
+     buttons appear to do nothing. A full-page submit lets the browser
+     follow the redirect and deliver the response to the client. %>
   <%= form_with url: oauth_authorize_path, method: :post, data: { turbo: false } do |f| %>
     <% @oauth_params.each do |key, value| %>
       <% next if value.blank? %>
@@ -49,6 +49,9 @@
 
     <button type="submit" class="hitch-rails-consent__approve">
       Approve
+    </button>
+    <button type="submit" name="decision" value="deny" class="hitch-rails-consent__deny">
+      Deny
     </button>
   <% end %>
 </div>

@@ -56,6 +56,41 @@ class ConsentFlowTest < ActionDispatch::IntegrationTest
       "consent form must set data-turbo=false or Approve can't follow the cross-origin redirect")
   end
 
+  # RFC 6749 §4.1.2.1: declining consent reports error=access_denied to the
+  # validated redirect_uri, carrying state and iss (RFC 9207 §2 covers error
+  # responses too), and mints nothing. The screen may render the Deny button,
+  # but a crafted authorize link must not be able to pre-press it.
+  test "deny round-trips access_denied with iss and issues no code" do
+    client_id = register_client
+    sign_in @user
+
+    get "/oauth/authorize", params: {
+      response_type: "code",
+      client_id: client_id, redirect_uri: REDIRECT,
+      code_challenge: @challenge, code_challenge_method: "S256",
+      resource: RESOURCE, decision: "deny"
+    }
+    assert_response :success
+    assert_match(/<button[^>]*name="decision" value="deny"/, response.body)
+    refute_match(/<input[^>]*name="decision"/, response.body,
+      "decision must never be echoed as a hidden field")
+
+    post "/oauth/authorize", params: {
+      response_type: "code",
+      client_id: client_id, redirect_uri: REDIRECT,
+      code_challenge: @challenge, code_challenge_method: "S256",
+      state: "deny-state", resource: RESOURCE, decision: "deny"
+    }
+    assert_response :redirect
+    assert response.location.start_with?(REDIRECT)
+    query = URI.decode_www_form(URI.parse(response.location).query).to_h
+    assert_equal "access_denied", query["error"]
+    assert_equal "deny-state", query["state"]
+    assert_equal "https://dummy.test", query["iss"]
+    refute query.key?("code")
+    assert_equal 0, Hitch::AccessToken.count
+  end
+
   # On an unauthenticated consent hit, the gem must remember where the user
   # was headed so the host's auth flow returns them to consent after login
   # (Rails 8 reads session[:return_to_after_authenticating]). Without it,

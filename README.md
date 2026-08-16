@@ -59,49 +59,52 @@ gem "hitch-rails"
 
 ```bash
 bundle install
-bin/rails generate hitch:install       # auth initializer + engine mount
+bin/rails generate hitch:install   # initializer, /mcp controller, registry, routes
 bin/rails db:migrate
-bin/rails generate hitch:mcp:install   # MCP controller, registry, config, route
-bin/rails generate hitch:tool echo     # a deny-default tool + focused Minitest
-bin/rails hitch:doctor                 # read-only diagnosis of the install
+bin/rails generate hitch:tool echo # a working, registered tool + integration test
 ```
 
-Implement and review the generated tool, then register it by copying the one
-line the generator prints into `app/models/mcp_tool_registry.rb`. Tools are
-never registered automatically. `bin/rails destroy hitch:mcp:install` and
-`destroy hitch:tool NAME` roll back unchanged generated files and refuse if
-anything was edited.
+Set `resource_uri` and `brand_name` in `config/initializers/hitch.rb`, and
+the generated tool answers `tools/call` — its generated test proves it over
+real HTTP. Add `--deny-default` to generate a hardened tool instead: hidden,
+denying, and unimplemented until you fill it in. `bin/rails hitch:doctor`
+gives a read-only diagnosis of the install, and `bin/rails destroy
+hitch:install` / `destroy hitch:tool NAME` reverse the generators.
 
 ## Configuration
 
+The generated `config/initializers/hitch.rb` holds the knobs every host must
+set; everything else has a working default:
+
 ```ruby
-# Split between config/initializers/hitch.rb and hitch_mcp.rb
 Hitch.configure do |config|
   config.resource_uri = "https://your-app.example.com/mcp"  # RFC 8707
-  config.allowed_hosts = []    # additional exact proxy hosts
-  config.allowed_origins = []  # exact browser origins; denied by default
   config.brand_name = "Your App"
-  config.supported_scopes = [ "mcp" ]
+  config.allowed_origins = []  # exact browser origins; denied by default
+  config.client_id_metadata_enabled = true
   config.dynamic_client_registration_enabled = false
+  config.mcp.enabled = true
   config.mcp.registry = "McpToolRegistry"
-  config.mcp.server_info = ->(_context) {
-    {
-      name: "your-app",
-      version: "1.0.0",
-      title: "Your App",
-      instructions: "Use tools only for the signed-in account."
-    }
-  }
-  config.mcp.scope_resolver = ->(principal:, access_token:, request:) {
-    principal.account
-  }
-  config.mcp.request_limit = { to: 120, within: 1.minute }
-  config.mcp.max_request_bytes = 1.megabyte
-  config.mcp.max_result_bytes = 1.megabyte
-  # Optional:
-  config.principal_method = :current_user  # method on controllers
-  config.login_path = "/sign_in"           # where to redirect when unauth'd
 end
+```
+
+The defaults behind it: `server_info` derives from the application name,
+`request_limit` is 120 requests per minute, request/result bodies cap at
+1 MiB, and admission counts through your `config.cache_store`. Tune them in
+the same block when you need to:
+
+```ruby
+config.allowed_hosts = []                # additional exact proxy hosts
+config.supported_scopes = [ "mcp" ]
+config.mcp.server_info = ->(_context) { { name: "your-app", version: "1.0.0" } }
+config.mcp.scope_resolver = ->(principal:, access_token:, request:) {
+  principal.account                      # what tools see as context.scope
+}
+config.mcp.request_limit = { to: 120, within: 1.minute }
+config.mcp.max_request_bytes = 1.megabyte
+config.mcp.max_result_bytes = 1.megabyte
+config.principal_method = :current_user  # method on controllers
+config.login_path = "/sign_in"           # where to redirect when unauth'd
 ```
 
 The generated route and controller:
@@ -125,6 +128,9 @@ If you use Rails 8's built-in authentication generator, the signed-in user is
 expose `current_user` work unchanged.
 
 ## Tools
+
+Tools live in `app/tools/`, and the registry in
+`app/tools/mcp_tool_registry.rb`:
 
 ```ruby
 module McpTools
@@ -183,9 +189,11 @@ class AccountToolsTest < ActionDispatch::IntegrationTest
   include Hitch::MCP::TestHelper
 
   test "calls a reviewed tool" do
+    token = mint_mcp_token(principal: users(:one))
+
     post_mcp(
       method: "tools/call",
-      token: access_token,
+      token: token,
       params: { name: "echo", arguments: { message: "hello" } }
     )
 
@@ -194,8 +202,11 @@ class AccountToolsTest < ActionDispatch::IntegrationTest
 end
 ```
 
+`mint_mcp_token` mints a real access token through the production
+authorization-code path for any persisted record your app signs in as;
 `post_mcp` builds the JSON-RPC envelope with the canonical Host and modern
 MCP headers; `mcp_headers(token:, method:)` is available for manual requests.
+`rails g hitch:tool` generates a test in exactly this shape.
 
 ## Operator diagnosis
 

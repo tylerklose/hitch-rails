@@ -45,14 +45,17 @@ authorization substrate.
   fields (framework request ID, HMAC identities, categories, byte counts,
   durations) — never credentials, bodies, arguments, or exception messages.
   Subscriber failures cannot change the MCP response.
-- **Generators, test helper, and doctor.** The collision-safe
-  `hitch:mcp:install` generator creates a host-owned controller, empty
-  explicit registry, deny-default settings, and an ordered route with
-  checksum-guarded rollback. `hitch:tool` generates deny-default tool/test
-  pairs and never edits the registry. `Hitch::MCP::TestHelper` builds
-  authenticated JSON-RPC integration requests. The read-only `hitch:doctor`
-  reports configuration, discovery, routing, migrations, Registry, ingress,
-  admission-store, and package findings without exposing credentials.
+- **Generators, test helper, and doctor.** One collision-safe
+  `hitch:install` creates the initializer, a host-owned endpoint controller,
+  the empty explicit registry under `app/tools/`, and the ordered routes.
+  `hitch:tool` generates a working tool, registers it, and emits an
+  integration test that proves it responds over real HTTP; `--deny-default`
+  generates the hardened variant instead. Both reverse with `rails destroy`.
+  `Hitch::MCP::TestHelper` builds authenticated JSON-RPC integration requests
+  and mints real access tokens with `mint_mcp_token`. The read-only
+  `hitch:doctor` reports configuration, discovery, routing, migrations,
+  Registry, ingress, admission-store, and package findings without exposing
+  credentials.
 
 ### Changed
 

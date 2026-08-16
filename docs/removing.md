@@ -11,21 +11,15 @@ the gem must not silently delete OAuth audit data or principal bindings.
    Hitch rake tasks.
 4. Back up the `hitch_*` tables and decide their retention period under the
    application's audit and privacy policy.
-5. For each `config/hitch_tools/*.json` manifest, remove its exact manual
-   Registry line first, then run the matching
-   `bin/rails destroy hitch:tool NAME [--namespace Namespace]` command while
-   the gem is installed. The command refuses customized tool/test bytes or an
-   inconsistent manifest; review those host-owned files manually.
-6. If `config/hitch_mcp_install.json` exists, run
-   `bin/rails destroy hitch:mcp:install` while the gem is still installed. The
-   rollback verifies every generated file checksum and the exact marked route
-   block before changing anything. If it refuses because an artifact was
-   customized, review and remove those host-owned artifacts manually; do not
-   bypass the refusal with blind recursive deletion.
-7. Remove `mount Hitch::Engine` and any remaining host controller inclusions of
-   `Hitch::ServerEndpoint` or `Hitch::CorsSupport`.
-8. Remove `config/initializers/hitch.rb`, any remaining
-   `config/initializers/hitch_mcp.rb`, the Gemfile entry, and bundle again.
+5. Remove generated tools with
+   `bin/rails destroy hitch:tool NAME [--namespace Namespace]` while the gem
+   is installed — each removes its files and its registration line — then run
+   `bin/rails destroy hitch:install` to remove the initializer, endpoint
+   controller, registry, and routes. Review anything you customized in your
+   version control history first; destroy reverses what the generators wrote.
+6. Remove any remaining `mount Hitch::Engine` line and host controller
+   inclusions of `Hitch::ServerEndpoint` or `Hitch::CorsSupport`.
+7. Remove the Gemfile entry and bundle again.
 
 `hitch:doctor` has no repair or uninstall mode. It is safe to use as a final
 read-only inventory before step 5, but its findings do not authorize deletion.

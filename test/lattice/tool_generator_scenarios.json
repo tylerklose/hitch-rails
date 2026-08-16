@@ -2,8 +2,8 @@
   "meta": {
     "model_name": "hitch_tool_generator",
     "strength": 2,
-    "test_count": 31,
-    "exhaustive_count": 180,
+    "test_count": 26,
+    "exhaustive_count": 150,
     "reduction": "5.8x",
     "coverage": "100.0%",
     "seed": 42
@@ -11,126 +11,106 @@
   "coverage_curve": [
     {
       "scenario": 1,
-      "cumulative_pct": 6.6
+      "cumulative_pct": 7.4
     },
     {
       "scenario": 2,
-      "cumulative_pct": 12.1
+      "cumulative_pct": 13.6
     },
     {
       "scenario": 3,
-      "cumulative_pct": 17.6
+      "cumulative_pct": 19.8
     },
     {
       "scenario": 4,
-      "cumulative_pct": 20.9
+      "cumulative_pct": 23.5
     },
     {
       "scenario": 5,
-      "cumulative_pct": 27.5
+      "cumulative_pct": 30.9
     },
     {
       "scenario": 6,
-      "cumulative_pct": 33.0
+      "cumulative_pct": 37.0
     },
     {
       "scenario": 7,
-      "cumulative_pct": 37.4
+      "cumulative_pct": 42.0
     },
     {
       "scenario": 8,
-      "cumulative_pct": 40.7
+      "cumulative_pct": 45.7
     },
     {
       "scenario": 9,
-      "cumulative_pct": 44.0
+      "cumulative_pct": 51.9
     },
     {
       "scenario": 10,
-      "cumulative_pct": 49.5
+      "cumulative_pct": 56.8
     },
     {
       "scenario": 11,
-      "cumulative_pct": 53.8
+      "cumulative_pct": 60.5
     },
     {
       "scenario": 12,
-      "cumulative_pct": 57.1
+      "cumulative_pct": 64.2
     },
     {
       "scenario": 13,
-      "cumulative_pct": 60.4
+      "cumulative_pct": 69.1
     },
     {
       "scenario": 14,
-      "cumulative_pct": 63.7
+      "cumulative_pct": 72.8
     },
     {
       "scenario": 15,
-      "cumulative_pct": 68.1
+      "cumulative_pct": 75.3
     },
     {
       "scenario": 16,
-      "cumulative_pct": 71.4
+      "cumulative_pct": 77.8
     },
     {
       "scenario": 17,
-      "cumulative_pct": 73.6
+      "cumulative_pct": 81.5
     },
     {
       "scenario": 18,
-      "cumulative_pct": 75.8
+      "cumulative_pct": 84.0
     },
     {
       "scenario": 19,
-      "cumulative_pct": 78.0
+      "cumulative_pct": 85.2
     },
     {
       "scenario": 20,
-      "cumulative_pct": 81.3
+      "cumulative_pct": 86.4
     },
     {
       "scenario": 21,
-      "cumulative_pct": 83.5
+      "cumulative_pct": 87.7
     },
     {
       "scenario": 22,
-      "cumulative_pct": 84.6
+      "cumulative_pct": 91.4
     },
     {
       "scenario": 23,
-      "cumulative_pct": 85.7
+      "cumulative_pct": 95.1
     },
     {
       "scenario": 24,
-      "cumulative_pct": 86.8
+      "cumulative_pct": 97.5
     },
     {
       "scenario": 25,
-      "cumulative_pct": 87.9
+      "cumulative_pct": 98.8
     },
     {
       "scenario": 26,
-      "cumulative_pct": 91.2
-    },
-    {
-      "scenario": 27,
-      "cumulative_pct": 94.5
-    },
-    {
-      "scenario": 28,
-      "cumulative_pct": 96.7
-    },
-    {
-      "scenario": 29,
-      "cumulative_pct": 97.8
-    },
-    {
-      "scenario": 30,
-      "cumulative_pct": 98.9
-    },
-    {
-      "scenario": 31,
       "cumulative_pct": 100.0
     }
   ],
@@ -210,15 +190,6 @@
     {
       "id": 9,
       "values": {
-        "name": "simple_snake",
-        "namespace": "default",
-        "registry": "absent",
-        "collision": "manifest"
-      }
-    },
-    {
-      "id": 10,
-      "values": {
         "name": "nested_slash",
         "namespace": "custom_valid",
         "registry": "present",
@@ -226,7 +197,7 @@
       }
     },
     {
-      "id": 11,
+      "id": 10,
       "values": {
         "name": "nested_slash",
         "namespace": "invalid",
@@ -235,7 +206,7 @@
       }
     },
     {
-      "id": 12,
+      "id": 11,
       "values": {
         "name": "nested_slash",
         "namespace": "default",
@@ -244,7 +215,7 @@
       }
     },
     {
-      "id": 13,
+      "id": 12,
       "values": {
         "name": "nested_slash",
         "namespace": "custom_valid",
@@ -253,12 +224,21 @@
       }
     },
     {
+      "id": 13,
+      "values": {
+        "name": "nested_constant",
+        "namespace": "default",
+        "registry": "absent",
+        "collision": "tool_file"
+      }
+    },
+    {
       "id": 14,
       "values": {
-        "name": "nested_slash",
-        "namespace": "custom_valid",
-        "registry": "present",
-        "collision": "manifest"
+        "name": "nested_constant",
+        "namespace": "invalid",
+        "registry": "absent",
+        "collision": "test_constant"
       }
     },
     {
@@ -267,29 +247,11 @@
         "name": "nested_constant",
         "namespace": "default",
         "registry": "absent",
-        "collision": "tool_file"
-      }
-    },
-    {
-      "id": 16,
-      "values": {
-        "name": "nested_constant",
-        "namespace": "invalid",
-        "registry": "absent",
-        "collision": "test_constant"
-      }
-    },
-    {
-      "id": 17,
-      "values": {
-        "name": "nested_constant",
-        "namespace": "default",
-        "registry": "absent",
         "collision": "test_file"
       }
     },
     {
-      "id": 18,
+      "id": 16,
       "values": {
         "name": "nested_constant",
         "namespace": "custom_valid",
@@ -298,16 +260,7 @@
       }
     },
     {
-      "id": 19,
-      "values": {
-        "name": "nested_constant",
-        "namespace": "invalid",
-        "registry": "absent",
-        "collision": "manifest"
-      }
-    },
-    {
-      "id": 20,
+      "id": 17,
       "values": {
         "name": "hyphenated",
         "namespace": "custom_valid",
@@ -316,7 +269,7 @@
       }
     },
     {
-      "id": 21,
+      "id": 18,
       "values": {
         "name": "hyphenated",
         "namespace": "invalid",
@@ -325,7 +278,7 @@
       }
     },
     {
-      "id": 22,
+      "id": 19,
       "values": {
         "name": "hyphenated",
         "namespace": "default",
@@ -334,7 +287,7 @@
       }
     },
     {
-      "id": 23,
+      "id": 20,
       "values": {
         "name": "hyphenated",
         "namespace": "default",
@@ -343,7 +296,7 @@
       }
     },
     {
-      "id": 24,
+      "id": 21,
       "values": {
         "name": "hyphenated",
         "namespace": "default",
@@ -352,16 +305,7 @@
       }
     },
     {
-      "id": 25,
-      "values": {
-        "name": "hyphenated",
-        "namespace": "default",
-        "registry": "absent",
-        "collision": "manifest"
-      }
-    },
-    {
-      "id": 26,
+      "id": 22,
       "values": {
         "name": "invalid",
         "namespace": "default",
@@ -370,7 +314,7 @@
       }
     },
     {
-      "id": 27,
+      "id": 23,
       "values": {
         "name": "invalid",
         "namespace": "custom_valid",
@@ -379,7 +323,7 @@
       }
     },
     {
-      "id": 28,
+      "id": 24,
       "values": {
         "name": "invalid",
         "namespace": "invalid",
@@ -388,7 +332,7 @@
       }
     },
     {
-      "id": 29,
+      "id": 25,
       "values": {
         "name": "invalid",
         "namespace": "default",
@@ -397,21 +341,12 @@
       }
     },
     {
-      "id": 30,
+      "id": 26,
       "values": {
         "name": "invalid",
         "namespace": "default",
         "registry": "absent",
         "collision": "test_constant"
-      }
-    },
-    {
-      "id": 31,
-      "values": {
-        "name": "invalid",
-        "namespace": "default",
-        "registry": "absent",
-        "collision": "manifest"
       }
     }
   ]

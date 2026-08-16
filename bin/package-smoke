@@ -395,14 +395,13 @@ Dir.mktmpdir("hitch-package-smoke-") do |directory|
         database_created = true
         run!("bundle", "exec", "rails", "db:migrate", environment: database_environment, chdir: app)
         registry_path = File.join(app, "app/tools/mcp_tool_registry.rb")
-        registry_before_tool_generation = File.binread(registry_path)
         run!(
           "bundle", "exec", "rails", "generate", "hitch:tool", "package_echo",
           environment: database_environment,
           chdir: app
         )
-        raise "tool generator edited the explicit registry" unless
-          File.binread(registry_path) == registry_before_tool_generation
+        raise "tool generator did not register the tool" unless
+          File.binread(registry_path).include?('register McpTools::PackageEcho, scopes: [ "mcp" ]')
 
         doctor_output = capture!(
           "bundle", "exec", "rails", "hitch:doctor",

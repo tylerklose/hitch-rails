@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require "digest"
 require "fileutils"
 require "json"
 require "open3"
@@ -15,9 +14,10 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
 
   SCENARIO_PATH = Rails.root.join("../lattice/tool_generator_scenarios.json").expand_path
   SCENARIOS = JSON.parse(SCENARIO_PATH.read).fetch("scenarios").freeze
-  REGISTRY_PATH = "app/models/mcp_tool_registry.rb"
+  REGISTRY_PATH = "app/tools/mcp_tool_registry.rb"
   REGISTRY_BYTES = <<~RUBY.freeze
-    # host-owned registry sentinel
+    # frozen_string_literal: true
+
     class McpToolRegistry < Hitch::MCP::Registry
     end
   RUBY
@@ -34,41 +34,60 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
     "invalid" => "admin/tools"
   }.freeze
 
-  test "simple generation is deny-default and reports one manual registration line" do
-    prepare_registry("present")
+  test "simple generation emits a working tool and registers it" do
+    prepare_registry
 
     output, error = invoke_generator
 
     assert_predicate self.class.generator_class, :exit_on_failure?
     assert_nil error
-    assert_includes output, "Generated deny-default Hitch MCP tool McpTools::WeatherLookup"
-    assert_includes output, 'register McpTools::WeatherLookup, scopes: [ "mcp" ]'
-    assert_equal REGISTRY_BYTES, read(REGISTRY_PATH)
+    assert_includes output, "Generated and registered Hitch MCP tool McpTools::WeatherLookup"
 
-    tool_path = "app/models/mcp_tools/weather_lookup.rb"
+    tool_path = "app/tools/mcp_tools/weather_lookup.rb"
     test_path = "test/integration/mcp_tools/weather_lookup_test.rb"
     assert_file tool_path, /class WeatherLookup < Hitch::MCP::Tool/
     assert_file tool_path, /tool_name "weather_lookup"/
-    assert_file tool_path, /def self\.available_to\?\(_context\)\n      false/
-    assert_file tool_path, /raise Hitch::MCP::Forbidden/
-    assert_file tool_path, /additionalProperties: false/
+    assert_file tool_path, /def self\.available_to\?\(_context\)\n      true/
+    assert_file tool_path, /TODO: enforce your policy/
+    assert_file tool_path, /Hitch::MCP::Result\.text/
+    refute_match(/^\s*raise\b/, read(tool_path))
+    assert_includes read(REGISTRY_PATH), %(  register McpTools::WeatherLookup, scopes: [ "mcp" ]\n)
     # post_mcp calls post, which only integration tests define — a plain
     # ActiveSupport::TestCase would include a helper it cannot use.
     assert_file test_path, /< ActionDispatch::IntegrationTest/
     assert_file test_path, /include Hitch::MCP::TestHelper/
+    assert_file test_path, /post_mcp\(method: "tools\/list"/
+    assert_file test_path, /method: "tools\/call"/
     assert_nothing_raised { RubyVM::AbstractSyntaxTree.parse(read(tool_path)) }
     assert_nothing_raised { RubyVM::AbstractSyntaxTree.parse(read(test_path)) }
-    assert_manifest(identity_for("simple_snake", "default"))
+    assert_nothing_raised { RubyVM::AbstractSyntaxTree.parse(read(REGISTRY_PATH)) }
   end
 
-  test "pairwise names namespaces registry states and collisions install completely or write nothing" do
-    assert_equal 31, SCENARIOS.length
-    assert_equal (1..31).to_a, SCENARIOS.map { |scenario| scenario.fetch("id") }
+  test "deny-default generation emits the hardened variant and still registers it" do
+    prepare_registry
+
+    output, error = invoke_generator(arguments_tail: [ "--deny-default" ])
+
+    assert_nil error
+    assert_includes output, "deny-default Hitch MCP tool McpTools::WeatherLookup"
+    tool_path = "app/tools/mcp_tools/weather_lookup.rb"
+    assert_file tool_path, /def self\.available_to\?\(_context\)\n      false/
+    assert_file tool_path, /raise Hitch::MCP::Forbidden/
+    assert_file tool_path, /raise "Implement McpTools::WeatherLookup\.perform/
+    assert_includes read(REGISTRY_PATH), "register McpTools::WeatherLookup"
+    test_path = "test/integration/mcp_tools/weather_lookup_test.rb"
+    assert_file test_path, /stays hidden until the host implements and opens it/
+    assert_file test_path, /-32602/
+  end
+
+  test "pairwise names namespaces registry states and collisions generate completely or write nothing" do
+    assert_equal 26, SCENARIOS.length
+    assert_equal (1..26).to_a, SCENARIOS.map { |scenario| scenario.fetch("id") }
 
     SCENARIOS.each do |scenario|
       prepare_destination
       values = scenario.fetch("values")
-      prepare_registry(values.fetch("registry"))
+      prepare_registry if values.fetch("registry") == "present"
       identity = identity_for(values.fetch("name"), values.fetch("namespace"))
       apply_collision(values.fetch("collision"), identity)
       before = file_snapshot
@@ -83,8 +102,7 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
         assert_nil error, scenario_label(scenario)
         assert destination_file?(identity.fetch(:tool_path)), scenario_label(scenario)
         assert destination_file?(identity.fetch(:test_path)), scenario_label(scenario)
-        assert destination_file?(identity.fetch(:manifest_path)), scenario_label(scenario)
-        assert_registry_unchanged(values.fetch("registry"), scenario_label(scenario))
+        assert_includes read(REGISTRY_PATH), identity.fetch(:registration_line), scenario_label(scenario)
       else
         assert_instance_of Thor::Error, error, scenario_label(scenario)
         assert_equal before, file_snapshot, scenario_label(scenario)
@@ -110,17 +128,19 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
 
     expectations.each do |(name_mode, namespace_mode), (class_name, tool_name)|
       prepare_destination
+      prepare_registry
       _output, error = invoke_generator(name_mode:, namespace_mode:)
       identity = identity_for(name_mode, namespace_mode)
 
       assert_nil error
       assert_includes read(identity.fetch(:tool_path)), "class #{class_name.split('::').last}"
       assert_includes read(identity.fetch(:tool_path)), %(tool_name "#{tool_name}")
-      assert_manifest(identity)
+      assert_includes read(REGISTRY_PATH), %(register #{class_name}, scopes: [ "mcp" ])
     end
   end
 
   test "different inputs that normalize to one identity collide without overwrite" do
+    prepare_registry
     _output, first_error = invoke_generator(name_mode: "nested_slash")
     before = file_snapshot
     _output, second_error = invoke_generator(name_mode: "nested_constant")
@@ -132,6 +152,7 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
   end
 
   test "rerun and overlong protocol name or namespace refuse before writing" do
+    prepare_registry
     _output, first_error = invoke_generator
     before_rerun = file_snapshot
     _output, rerun_error = invoke_generator
@@ -141,6 +162,7 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
     assert_equal before_rerun, file_snapshot
 
     prepare_destination
+    prepare_registry
     before_long_name = file_snapshot
     _output, long_name_error = invoke_generator(raw_name: "a" * 65)
 
@@ -158,8 +180,18 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
     assert_equal before_long_name, file_snapshot
   end
 
-  test "exact rollback removes generated bytes while preserving the registry" do
-    prepare_registry("present")
+  test "a missing registry refuses and points at hitch:install" do
+    before = file_snapshot
+
+    _output, error = invoke_generator
+
+    assert_instance_of Thor::Error, error
+    assert_includes error.message, "run `bin/rails generate hitch:install` first"
+    assert_equal before, file_snapshot
+  end
+
+  test "destroy removes the generated files and the registration line" do
+    prepare_registry
     _output, generation_error = invoke_generator
 
     _output, rollback_error = invoke_generator(behavior: :revoke)
@@ -169,58 +201,32 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
     assert_nil rollback_error
     assert_no_file identity.fetch(:tool_path)
     assert_no_file identity.fetch(:test_path)
-    assert_no_file identity.fetch(:manifest_path)
     assert_equal REGISTRY_BYTES, read(REGISTRY_PATH)
   end
 
-  test "rollback refuses while the exact manual registry instruction remains" do
-    prepare_registry("present")
-    _output, generation_error = invoke_generator
-    append(REGISTRY_PATH, "  register McpTools::WeatherLookup, scopes: [ \"mcp\" ]\n")
-    before = file_snapshot
-
-    _output, first_rollback_error = invoke_generator(behavior: :revoke)
-
-    assert_nil generation_error
-    assert_instance_of Thor::Error, first_rollback_error
-    assert_includes first_rollback_error.message, "still contains the manual registration line"
-    assert_equal before, file_snapshot
-
-    write(REGISTRY_PATH, REGISTRY_BYTES)
-    _output, second_rollback_error = invoke_generator(behavior: :revoke)
-
-    assert_nil second_rollback_error
-    assert_equal REGISTRY_BYTES, read(REGISTRY_PATH)
-  end
-
-  test "rollback refuses customized files and inconsistent manifests without partial deletion" do
-    customizations = {
-      "tool" => ->(_identity) { append("app/models/mcp_tools/weather_lookup.rb", "# host edit\n") },
-      "test" => ->(_identity) { append("test/integration/mcp_tools/weather_lookup_test.rb", "# host edit\n") }
-    }
-    manifest_tamperings = {
-      "canonical name" => ->(manifest) { manifest["canonical_name"] = "anything" },
-      "class" => ->(manifest) { manifest["class_name"] = "McpTools::Anything" },
-      "tool path" => ->(manifest) { manifest.fetch("files").first["path"] = REGISTRY_PATH },
-      "registration" => ->(manifest) { manifest["registry_instruction"] = "register Anything" },
-      "rollback command" => ->(manifest) { manifest["rollback_command"] = "bin/rails destroy anything" }
-    }
-
-    customizations.each do |label, customize|
-      assert_refused_rollback(label) { |identity, _manifest| customize.call(identity) }
-    end
-    manifest_tamperings.each do |label, tamper|
-      assert_refused_rollback(label) { |_identity, manifest| tamper.call(manifest) }
-    end
-  end
-
-  test "the exact generated Minitest file runs successfully" do
-    _output, error = invoke_generator(raw_name: "generated/weather_lookup")
-    identity = identity_for_raw("generated/weather_lookup", "McpTools")
+  test "the exact generated tool and test respond through the real endpoint" do
+    prepare_registry
+    _output, working_error = invoke_generator(raw_name: "generated/weather_lookup")
+    _output, hardened_error = invoke_generator(
+      raw_name: "generated/locked_tool", arguments_tail: [ "--deny-default" ]
+    )
+    working = identity_for_raw("generated/weather_lookup", "McpTools")
+    hardened = identity_for_raw("generated/locked_tool", "McpTools")
     script = <<~RUBY
       require "test_helper"
-      require #{destination_path(identity.fetch(:tool_path)).dump}
-      load #{destination_path(identity.fetch(:test_path)).dump}
+      require #{destination_path(working.fetch(:tool_path)).dump}
+      require #{destination_path(hardened.fetch(:tool_path)).dump}
+      # The registry file carries the injected registrations; loading it
+      # reopens the dummy registry exactly the way a host boot would see it.
+      load #{destination_path(REGISTRY_PATH).dump}
+      principal = User.create!(email: "generated-tool@example.test")
+      Hitch.configuration.mcp.__send__(
+        :prepare_registry!,
+        supported_scopes: Hitch.configuration.supported_scopes
+      )
+      Minitest.after_run { principal.reload.destroy }
+      load #{destination_path(working.fetch(:test_path)).dump}
+      load #{destination_path(hardened.fetch(:test_path)).dump}
     RUBY
 
     stdout, stderr, status = Open3.capture3(
@@ -232,18 +238,21 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
       chdir: repository_root
     )
 
-    assert_nil error
+    assert_nil working_error
+    assert_nil hardened_error
     assert_predicate status, :success?, "#{stdout}\n#{stderr}"
-    assert_match(/3 runs, \d+ assertions, 0 failures, 0 errors, 0 skips/, stdout)
+    assert_match(/4 runs, \d+ assertions, 0 failures, 0 errors, 0 skips/, stdout)
   end
 
   private
 
   def invoke_generator(name_mode: "simple_snake", namespace_mode: "default",
-    raw_name: nil, raw_namespace: nil, constant_collision: nil, behavior: :invoke)
+    raw_name: nil, raw_namespace: nil, arguments_tail: [],
+    constant_collision: nil, behavior: :invoke)
     arguments = [ raw_name || NAME_VALUES.fetch(name_mode) ]
     namespace = raw_namespace || NAMESPACE_VALUES.fetch(namespace_mode)
     arguments.concat([ "--namespace", namespace ]) if raw_namespace || namespace_mode != "default"
+    arguments.concat(arguments_tail)
     invocation = -> { run_generator(arguments, { behavior:, debug: true }) }
     invocation = constant_collision_wrapper(invocation, constant_collision) if constant_collision
     [ invocation.call, nil ]
@@ -251,18 +260,8 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
     [ nil, error ]
   end
 
-  def prepare_registry(mode)
-    return if mode == "absent"
-
+  def prepare_registry
     write(REGISTRY_PATH, REGISTRY_BYTES)
-  end
-
-  def assert_registry_unchanged(mode, label)
-    if mode == "present"
-      assert_equal REGISTRY_BYTES, read(REGISTRY_PATH), label
-    else
-      refute destination_file?(REGISTRY_PATH), label
-    end
   end
 
   def apply_collision(mode, identity)
@@ -270,8 +269,7 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
 
     path = {
       "tool_file" => identity.fetch(:tool_path),
-      "test_file" => identity.fetch(:test_path),
-      "manifest" => identity.fetch(:manifest_path)
+      "test_file" => identity.fetch(:test_path)
     }.fetch(mode)
     write(path, "host-owned collision\n")
   end
@@ -304,6 +302,7 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
   def successful_scenario?(values)
     values.fetch("name") != "invalid" &&
       values.fetch("namespace") != "invalid" &&
+      values.fetch("registry") == "present" &&
       values.fetch("collision") == "none"
   end
 
@@ -315,65 +314,17 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
 
   def identity_for_raw(raw_name, namespace)
     segments = raw_name.gsub("::", "/").split("/").map do |segment|
-      candidate = segment.match?(/\A[A-Z]/) ? segment.underscore : segment.tr("-", "_")
-      candidate
+      segment.match?(/\A[A-Z]/) ? segment.underscore : segment.tr("-", "_")
     end
-    canonical_name = segments.join("/")
-    tool_name = segments.join(".")
     class_name = ([ namespace ] + segments.map(&:camelize)).join("::")
     {
-      canonical_name:,
-      namespace:,
       class_name:,
       test_class_name: "#{class_name}Test",
-      tool_name:,
-      tool_path: "app/models/#{class_name.underscore}.rb",
+      tool_name: segments.join("."),
+      tool_path: "app/tools/#{class_name.underscore}.rb",
       test_path: "test/integration/#{class_name.underscore}_test.rb",
-      manifest_path: "config/hitch_tools/#{tool_name}.json",
-      registration_line: %(register #{class_name}, scopes: [ "mcp" ]),
-      rollback_command: [
-        "bin/rails destroy hitch:tool",
-        canonical_name,
-        ("--namespace #{namespace}" unless namespace == "McpTools")
-      ].compact.join(" ")
+      registration_line: %(register #{class_name}, scopes: [ "mcp" ])
     }
-  end
-
-  def assert_manifest(identity)
-    manifest = JSON.parse(read(identity.fetch(:manifest_path)))
-    assert_equal 1, manifest.fetch("schema_version")
-    assert_equal "hitch:tool", manifest.fetch("generator")
-    assert_equal identity.fetch(:canonical_name), manifest.fetch("canonical_name")
-    assert_equal identity.fetch(:namespace), manifest.fetch("namespace")
-    assert_equal identity.fetch(:class_name), manifest.fetch("class_name")
-    assert_equal identity.fetch(:tool_name), manifest.fetch("tool_name")
-    assert_equal identity.fetch(:registration_line), manifest.fetch("registry_instruction")
-    assert_equal identity.fetch(:rollback_command), manifest.fetch("rollback_command")
-    assert_equal [ identity.fetch(:tool_path), identity.fetch(:test_path) ],
-      manifest.fetch("files").map { |file| file.fetch("path") }
-    manifest.fetch("files").each do |file|
-      assert_equal Digest::SHA256.file(destination_path(file.fetch("path"))).hexdigest,
-        file.fetch("sha256")
-    end
-  end
-
-  def assert_refused_rollback(label)
-    prepare_destination
-    prepare_registry("present")
-    _output, generation_error = invoke_generator
-    identity = identity_for("simple_snake", "default")
-    manifest_path = destination_path(identity.fetch(:manifest_path))
-    manifest = JSON.parse(File.binread(manifest_path))
-    yield identity, manifest
-    File.write(manifest_path, "#{JSON.pretty_generate(manifest)}\n")
-    before = file_snapshot
-
-    _output, rollback_error = invoke_generator(behavior: :revoke)
-
-    assert_nil generation_error, label
-    assert_instance_of Thor::Error, rollback_error, label
-    assert_includes rollback_error.message, "rollback refused", label
-    assert_equal before, file_snapshot, label
   end
 
   def write(relative_path, content)
@@ -384,10 +335,6 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
 
   def read(relative_path)
     File.binread(destination_path(relative_path))
-  end
-
-  def append(relative_path, content)
-    File.open(destination_path(relative_path), "ab") { |file| file.write(content) }
   end
 
   def destination_file?(relative_path)

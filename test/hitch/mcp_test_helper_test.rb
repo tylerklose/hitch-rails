@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "hitch/mcp/test_helper"
+require "digest"
 require "json"
 
 class Hitch::MCPTestHelperTest < ActiveSupport::TestCase
@@ -156,10 +157,35 @@ class Hitch::MCPTestHelperTest < ActiveSupport::TestCase
     end
   end
 
+  test "mint_mcp_token mints a usable bearer through the production exchange path" do
+    principal = User.create!(email: "mint-token@example.test")
+    resource = "https://tools.example.test/mcp"
+
+    token = with_minting_resource(resource) do
+      @helper.mint_mcp_token(principal: principal)
+    end
+
+    record = Hitch::AccessToken.find_by!(token_digest: Digest::SHA256.hexdigest(token))
+    assert_predicate record, :accessible?
+    assert_equal principal, record.principal
+    assert record.has_scope?("mcp")
+    assert record.valid_for_resource?(resource)
+  end
+
   private
 
   def with_resource(uri)
     replacement = -> { Configuration.new(resource_uri: uri) }
     stub_class_method(Hitch, :configuration, replacement) { yield }
+  end
+
+  # Minting reads more than resource_uri (supported_scopes, the AR models),
+  # so it drives the real configuration rather than the header-test stub.
+  def with_minting_resource(uri)
+    Hitch.reset_configuration!
+    Hitch.configuration.resource_uri = uri
+    yield
+  ensure
+    Hitch.reset_configuration!
   end
 end

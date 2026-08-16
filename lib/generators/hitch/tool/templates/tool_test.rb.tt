@@ -4,37 +4,54 @@ require "test_helper"
 require "hitch/mcp/test_helper"
 
 class <%= @test_class_name %> < ActionDispatch::IntegrationTest
-  # post_mcp drives your mounted MCP endpoint over real HTTP once the tool
-  # is registered — see Hitch::MCP::TestHelper.
+  # post_mcp drives your mounted /mcp endpoint over real HTTP — see
+  # Hitch::MCP::TestHelper.
   include Hitch::MCP::TestHelper
 
-  test "declares a closed empty input schema" do
-    assert_equal "<%= @tool_name %>", <%= @class_name %>.tool_name
-    assert_equal(
-      {
-        type: "object",
-        properties: {},
-        additionalProperties: false
-      },
-      <%= @class_name %>.input_schema
+  setup do
+    # Any persisted record your app treats as the signed-in user works here.
+    @token = mint_mcp_token(principal: User.first!)
+  end
+<% if deny_default? -%>
+
+  test "stays hidden until the host implements and opens it" do
+    post_mcp(method: "tools/list", token: @token)
+
+    assert_response :success
+    tools = JSON.parse(response.body).dig("result", "tools")
+    refute_includes tools.map { |tool| tool.fetch("name") }, "<%= @tool_name %>"
+  end
+
+  test "calls are refused while unavailable" do
+    post_mcp(
+      method: "tools/call",
+      token: @token,
+      params: { name: "<%= @tool_name %>", arguments: {} }
     )
+
+    assert_response :success
+    assert_equal(-32602, JSON.parse(response.body).dig("error", "code"))
+  end
+<% else -%>
+
+  test "is listed for an authorized principal" do
+    post_mcp(method: "tools/list", token: @token)
+
+    assert_response :success
+    tools = JSON.parse(response.body).dig("result", "tools")
+    assert_includes tools.map { |tool| tool.fetch("name") }, "<%= @tool_name %>"
   end
 
-  test "starts unavailable and argument policy denies" do
-    context = Object.new.freeze
-    arguments = {}.freeze
+  test "responds when called" do
+    post_mcp(
+      method: "tools/call",
+      token: @token,
+      params: { name: "<%= @tool_name %>", arguments: {} }
+    )
 
-    assert_equal false, <%= @class_name %>.available_to?(context)
-    assert_raises(Hitch::MCP::Forbidden) do
-      <%= @class_name %>.authorize!(context, arguments:)
-    end
+    assert_response :success
+    result = JSON.parse(response.body).fetch("result")
+    assert_includes result.dig("content", 0, "text"), "<%= @tool_name %>"
   end
-
-  test "requires host execution before availability changes" do
-    error = assert_raises(RuntimeError) do
-      <%= @class_name %>.perform(Object.new.freeze, arguments: {}.freeze)
-    end
-
-    assert_includes error.message, "Implement <%= @class_name %>.perform"
-  end
+<% end -%>
 end

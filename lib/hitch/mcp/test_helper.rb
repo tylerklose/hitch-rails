@@ -1,7 +1,10 @@
 # frozen_string_literal: true
 
+require "base64"
 require "date"
+require "digest"
 require "json"
+require "securerandom"
 require "uri"
 
 module Hitch
@@ -64,6 +67,32 @@ module Hitch
         response
       rescue JSON::GeneratorError, EncodingError => error
         raise ArgumentError, "MCP test request is not valid JSON: #{error.class}"
+      end
+
+      # Mints a real access token through the production authorization-code
+      # path (create_authorization! + PKCE exchange) and returns the raw
+      # bearer token post_mcp expects. The principal is any persisted record
+      # the host treats as the signed-in user.
+      def mint_mcp_token(principal:, scopes: Hitch.configuration.supported_scopes,
+        client_id: "hitch-test-client")
+        verifier = SecureRandom.urlsafe_base64(64)
+        challenge = Base64.urlsafe_encode64(Digest::SHA256.digest(verifier), padding: false)
+        resource_uri = Hitch.configuration.resource_uri
+        authorization = Hitch::AccessToken.create_authorization!(
+          principal: principal,
+          client_id: client_id,
+          client_name: client_id,
+          code_challenge: challenge,
+          code_challenge_method: "S256",
+          scopes: Array(scopes).join(" "),
+          resource_uri: resource_uri
+        )
+        Hitch::AccessToken.exchange_authorization_code!(
+          raw_code: authorization.raw_authorization_code,
+          code_verifier: verifier,
+          client_id: client_id,
+          resource_uri: resource_uri
+        ).fetch(:raw_token)
       end
 
       private

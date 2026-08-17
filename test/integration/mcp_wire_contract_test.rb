@@ -73,7 +73,7 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
   end
 
   test "exact http and protocol mapping" do
-    assert_equal 44, VECTOR_IDS.length
+    assert_equal 46, VECTOR_IDS.length
     VECTOR_IDS.each { |vector_id| assert_vector(vector_id) }
   end
 
@@ -121,7 +121,10 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
     ], hitch_callbacks.first(2)
     assert_equal Hitch::MCP::Endpoint, McpController.instance_method(:process_action).owner
 
-    %w[post_host_denied post_origin_denied get_method_denied token_missing admission_reject].each do |vector_id|
+    %w[
+      post_host_denied post_origin_denied get_method_denied token_missing admission_reject
+      post_host_origin_and_token_denied_prefers_host post_origin_denied_without_token
+    ].each do |vector_id|
       assert_vector(vector_id)
     end
   end
@@ -413,6 +416,13 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
       headers["Host"] = "attacker.example"
     when "post_origin_denied"
       headers["Origin"] = "https://denied.example"
+    when "post_host_origin_and_token_denied_prefers_host"
+      headers["Host"] = "attacker.example"
+      headers["Origin"] = "https://denied.example"
+      headers.delete("Authorization")
+    when "post_origin_denied_without_token"
+      headers["Origin"] = "https://denied.example"
+      headers.delete("Authorization")
     when "forwarded_host_cannot_change_public_origin"
       headers["Host"] = "www.example.com"
       headers["X-Forwarded-Host"] = "attacker.example"

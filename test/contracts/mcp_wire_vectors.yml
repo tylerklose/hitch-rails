@@ -25,6 +25,45 @@ vectors:
     phase: host_origin
     request: {http_method: POST, host: allowed, origin: denied}
     expected: {http_status: 403, headers: {cors: absent}, protocol_code: null, result: empty, request_events: 1, invocation_events: 0, work: {body_parses: 0, registry: 0, sdk: 0, host: 0}}
+  - id: post_host_origin_and_token_denied_prefers_host
+    phase: host_origin
+    request:
+      http_method: POST
+      host: denied
+      origin: denied
+      bearer: missing
+    expected:
+      http_status: 400
+      headers: {}
+      protocol_code: null
+      result: empty
+      request_events: 1
+      invocation_events: 0
+      work:
+        body_parses: 0
+        registry: 0
+        sdk: 0
+        host: 0
+  - id: post_origin_denied_without_token
+    phase: host_origin
+    request:
+      http_method: POST
+      host: allowed
+      origin: denied
+      bearer: missing
+    expected:
+      http_status: 403
+      headers:
+        cors: absent
+      protocol_code: null
+      result: empty
+      request_events: 1
+      invocation_events: 0
+      work:
+        body_parses: 0
+        registry: 0
+        sdk: 0
+        host: 0
   - id: forwarded_host_cannot_change_public_origin
     phase: host_origin
     request: {http_method: POST, host: allowed_ingress_alias, x_forwarded_host: attacker.example, bearer: missing}

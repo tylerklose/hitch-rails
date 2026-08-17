@@ -12,17 +12,6 @@ module Hitch
       include Hitch::IssuerUrl
       include Hitch::RequestAdmission
 
-      SERVER_INFO_KEY_MAP = {
-        "name" => "name",
-        "version" => "version",
-        "title" => "title",
-        "instructions" => "instructions",
-        name: "name",
-        version: "version",
-        title: "title",
-        instructions: "instructions"
-      }.freeze
-
       included do
         skip_forgery_protection if respond_to?(:skip_forgery_protection)
 
@@ -210,7 +199,7 @@ module Hitch
       def hitch_mcp_dispatch!(verified_request)
         scope = hitch_mcp_resolve_scope
         context = hitch_mcp_context(verified_request, scope:)
-        server_info = hitch_mcp_server_info(context)
+        server_info = Internal::ServerInfo.normalize(Hitch.configuration.mcp.server_info.call(context))
 
         snapshot = Hitch.configuration.mcp.registry_snapshot!
         hitch_mcp_registry_resolved!
@@ -253,33 +242,6 @@ module Hitch
           protocol_version: metadata.fetch("io.modelcontextprotocol/protocolVersion"),
           meta: metadata
         )
-      end
-
-      def hitch_mcp_server_info(context)
-        callable = Hitch.configuration.mcp.server_info
-        value = callable.call(context)
-        raise ArgumentError, "mcp.server_info must return a Hash" unless value.is_a?(Hash)
-
-        unknown = value.keys - SERVER_INFO_KEY_MAP.keys
-        raise ArgumentError, "mcp.server_info contains unsupported keys" unless unknown.empty?
-
-        canonical_keys = value.keys.map { |key| SERVER_INFO_KEY_MAP.fetch(key) }
-        raise ArgumentError, "mcp.server_info contains duplicate keys" unless canonical_keys.uniq == canonical_keys
-
-        normalized = value.to_h do |key, field|
-          [ SERVER_INFO_KEY_MAP.fetch(key).dup.freeze, hitch_mcp_server_info_value(field) ]
-        end
-        %w[name version].each do |required|
-          field = normalized[required]
-          raise ArgumentError, "mcp.server_info requires name and version" unless field.is_a?(String) && !field.empty?
-        end
-        normalized.freeze
-      end
-
-      def hitch_mcp_server_info_value(value)
-        raise ArgumentError, "mcp.server_info values must be strings" unless value.is_a?(String)
-
-        value.dup.freeze
       end
 
       def hitch_mcp_protocol_error!(status, code, message, request_id: nil, data: nil)
@@ -382,8 +344,6 @@ module Hitch
       def hitch_mcp_request_observed!
         @hitch_mcp_observation&.finish!(response:)
       end
-
-      private_constant :SERVER_INFO_KEY_MAP
     end
   end
 end

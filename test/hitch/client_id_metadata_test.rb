@@ -69,14 +69,14 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
       ::1 :: fe80::1 fc00::1 fd12:3456::1 ff02::1 2001:db8::1
     ]
     blocked.each do |address|
-      assert_nil CIMD.send(:safe_address, address),
+      assert_nil Hitch::ClientIdMetadata::Fetcher.send(:safe_address, address),
         "#{address} is not a public destination — resolving to it would make the authorize endpoint a proxy into a private network"
     end
   end
 
   test "public addresses are accepted" do
     %w[8.8.8.8 1.1.1.1 93.184.216.34 2606:2800:220:1:248:1893:25c8:1946 2a00:1450:4009:81f::200e].each do |address|
-      assert_equal address, CIMD.send(:safe_address, address)
+      assert_equal address, Hitch::ClientIdMetadata::Fetcher.send(:safe_address, address)
     end
   end
 
@@ -101,7 +101,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
       "ff02::1" => "multicast",
       "5f00::1" => "SRv6 (RFC 9602)"
     }.each do |address, why|
-      assert_nil CIMD.send(:safe_address, address), "#{address} (#{why}) must be refused"
+      assert_nil Hitch::ClientIdMetadata::Fetcher.send(:safe_address, address), "#{address} (#{why}) must be refused"
     end
   end
 
@@ -112,7 +112,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
       "2001:20::1" => "ORCHIDv2",
       "3fff::1" => "documentation (RFC 9637)"
     }.each do |address, why|
-      assert_nil CIMD.send(:safe_address, address), "#{address} (#{why}) is inside 2000::/3 but must still be refused"
+      assert_nil Hitch::ClientIdMetadata::Fetcher.send(:safe_address, address), "#{address} (#{why}) is inside 2000::/3 but must still be refused"
     end
   end
 
@@ -120,7 +120,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   # most valuable SSRF target on any hosted deployment.
   test "the cloud metadata address is refused even via a hostname" do
     stub_class_method(Resolv, :getaddresses, ->(_host) { [ "169.254.169.254" ] }) do
-      assert_nil CIMD.send(:safe_address, "metadata.attacker.example")
+      assert_nil Hitch::ClientIdMetadata::Fetcher.send(:safe_address, "metadata.attacker.example")
     end
   end
 
@@ -129,19 +129,19 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   # defeat the check entirely.
   test "a name resolving to any non-public address is refused wholesale" do
     stub_class_method(Resolv, :getaddresses, ->(_host) { [ "93.184.216.34", "127.0.0.1" ] }) do
-      assert_nil CIMD.send(:safe_address, "split.attacker.example")
+      assert_nil Hitch::ClientIdMetadata::Fetcher.send(:safe_address, "split.attacker.example")
     end
   end
 
   test "a name that resolves to nothing is refused" do
     stub_class_method(Resolv, :getaddresses, ->(_host) { [] }) do
-      assert_nil CIMD.send(:safe_address, "nxdomain.example")
+      assert_nil Hitch::ClientIdMetadata::Fetcher.send(:safe_address, "nxdomain.example")
     end
   end
 
   # --- document validation --------------------------------------------
 
-  def build(body, url: DOC_URL) = CIMD.send(:build_document, url, body)
+  def build(body, url: DOC_URL) = Hitch::ClientIdMetadata::Fetcher.send(:build_document, url, body)
 
   test "a valid document yields redirect_uris and a client name" do
     doc = build({ client_id: DOC_URL, client_name: "Example", redirect_uris: [ "https://client.example/cb" ] }.to_json)
@@ -172,7 +172,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   end
 
   test "a document with an absurd number of redirect_uris is refused" do
-    many = Array.new(CIMD::MAX_REDIRECT_URIS + 1) { |i| "https://client.example/cb#{i}" }
+    many = Array.new(Hitch::ClientIdMetadata::Fetcher::MAX_REDIRECT_URIS + 1) { |i| "https://client.example/cb#{i}" }
     assert_nil build({ client_id: DOC_URL, client_name: "N", redirect_uris: many }.to_json)
   end
 
@@ -530,8 +530,8 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
 
       logged.clear
       over = ->(socket) do
-        socket.write("HTTP/1.1 200 OK\r\nContent-Length: #{CIMD::MAX_BYTES + 1}\r\nConnection: close\r\n\r\n")
-        socket.write("x" * (CIMD::MAX_BYTES + 1))
+        socket.write("HTTP/1.1 200 OK\r\nContent-Length: #{Hitch::ClientIdMetadata::Fetcher::MAX_BYTES + 1}\r\nConnection: close\r\n\r\n")
+        socket.write("x" * (Hitch::ClientIdMetadata::Fetcher::MAX_BYTES + 1))
       end
       serve(over) { |port| read_over_socket(port) }
       assert logged.any? { |m| m.include?("Content-Length") }, "an oversized declaration must be explained"
@@ -599,7 +599,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     http.open_timeout = 2
     http.read_timeout = 3
     http.max_retries = 0
-    http.start { |connection| CIMD.send(:read_document, connection, uri) }
+    http.start { |connection| Hitch::ClientIdMetadata::Fetcher.send(:read_document, connection, uri) }
   end
 
   # build_connection is where the address pin, TLS verification and
@@ -609,7 +609,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   # that let the streaming bug ship, so it gets pinned explicitly.
   test "the connection is pinned to the vetted address with TLS verified" do
     uri = URI.parse(DOC_URL)
-    http = CIMD.send(:build_connection, uri, "93.184.216.34")
+    http = Hitch::ClientIdMetadata::Fetcher.send(:build_connection, uri, "93.184.216.34")
 
     assert_equal "93.184.216.34", http.ipaddr,
       "the socket must go to the address that was actually vetted, not to a fresh lookup"
@@ -619,8 +619,8 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     assert_equal OpenSSL::SSL::VERIFY_PEER, http.verify_mode
     assert_equal 0, http.max_retries,
       "a retry would replay the request and double every time budget"
-    assert_equal CIMD::OPEN_TIMEOUT, http.open_timeout
-    assert_equal CIMD::READ_TIMEOUT, http.read_timeout
+    assert_equal Hitch::ClientIdMetadata::Fetcher::OPEN_TIMEOUT, http.open_timeout
+    assert_equal Hitch::ClientIdMetadata::Fetcher::READ_TIMEOUT, http.read_timeout
     assert_not http.proxy?,
       "an ambient http_proxy would reach the destination from the proxy's egress instead of this app's"
   end
@@ -709,8 +709,8 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
 
   test "a declared Content-Length over the cap is refused before reading" do
     handler = lambda do |socket|
-      socket.write("HTTP/1.1 200 OK\r\nContent-Length: #{CIMD::MAX_BYTES + 1}\r\nConnection: close\r\n\r\n")
-      socket.write("x" * (CIMD::MAX_BYTES + 1))
+      socket.write("HTTP/1.1 200 OK\r\nContent-Length: #{Hitch::ClientIdMetadata::Fetcher::MAX_BYTES + 1}\r\nConnection: close\r\n\r\n")
+      socket.write("x" * (Hitch::ClientIdMetadata::Fetcher::MAX_BYTES + 1))
     end
     serve(handler) { |port| assert_nil read_over_socket(port) }
   end
@@ -824,14 +824,14 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   # host:port from the authorization server's egress address — the usual
   # way around a third party's source-IP allowlist.
   test "resolve refuses a non-443 port" do
-    stub_class_method(CIMD, :safe_address, ->(_host) { flunk "must reject on port before any DNS lookup" }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :safe_address, ->(_host) { flunk "must reject on port before any DNS lookup" }) do
       assert_nil CIMD.resolve("https://client.example:8443/doc.json")
       assert_nil CIMD.resolve("https://client.example:22/doc.json")
     end
   end
 
   test "resolve refuses a URL carrying userinfo or a fragment" do
-    stub_class_method(CIMD, :safe_address, ->(_host) { flunk "must reject on URL shape before any DNS lookup" }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :safe_address, ->(_host) { flunk "must reject on URL shape before any DNS lookup" }) do
       assert_nil CIMD.resolve("https://user:pw@client.example/doc.json")
       assert_nil CIMD.resolve("https://client.example/doc.json#frag")
     end

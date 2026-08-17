@@ -117,6 +117,13 @@ class Hitch::MCP::ContextTest < ActiveSupport::TestCase
     assert_context_error("meta must contain only JSON values") do
       build_context(meta: { "unsupported" => Object.new })
     end
+    assert_context_error("meta must contain only JSON values") do
+      build_context(meta: { "unsupported" => :symbol })
+    end
+
+    hash_subclass = Class.new(Hash)
+    subclass_meta = hash_subclass.new.merge!("kind" => "subclass")
+    assert_equal({ "kind" => "subclass" }, build_context(meta: subclass_meta).meta)
 
     string_subclass = Class.new(String)
     subclass_key = string_subclass.new("subclass")

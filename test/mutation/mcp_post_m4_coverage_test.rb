@@ -13,8 +13,13 @@ if Minitest::Test.respond_to?(:cover)
     cover "Hitch::MCP::Internal::JsonValues::Copier"
   end
 
-  # The shared copier backs every JSON boundary; the strongest policy suites
-  # all select against its mutants.
+  # The shared copier backs every JSON boundary; its dedicated policy-matrix
+  # suite owns the engine's mutants, and the strongest boundary suites also
+  # select against them through their production call sites.
+  class Hitch::MCP::JsonValuesTest
+    cover "Hitch::MCP::Internal::JsonValues::Copier"
+  end
+
   class Hitch::MCP::ContextTest
     cover "Hitch::MCP::Internal::JsonValues::Copier"
   end

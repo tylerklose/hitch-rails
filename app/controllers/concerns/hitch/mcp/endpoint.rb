@@ -315,7 +315,6 @@ module Hitch
         configuration = Hitch.configuration.mcp
         configuration.rate_limit_store.increment(
           RateLimitKey.call(principal:, client_id:),
-          1,
           expires_in: configuration.request_limit.fetch(:within)
         )
       end

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "set"
+
 module Hitch
   module MCP
     module Internal
@@ -61,9 +63,18 @@ module Hitch
           REPLACED = Object.new
           private_constant :REPLACED
 
-          def initialize(**policy)
-            @policy = policy
-            @seen = {}
+          def initialize(keys:, symbols:, foreign:, finite:, duplicates:,
+            freeze:, max_depth:, max_objects:, on_invalid:)
+            @keys = keys
+            @symbols = symbols
+            @foreign = foreign
+            @finite = finite
+            @duplicates = duplicates
+            @freeze = freeze
+            @max_depth = max_depth
+            @max_objects = max_objects
+            @on_invalid = on_invalid
+            @seen = Set.new
             @objects = 0
           end
 
@@ -74,8 +85,8 @@ module Hitch
           private
 
           def walk(value, depth)
-            max_depth = @policy[:max_depth]
-            invalid!(:depth, nil) if max_depth && depth > max_depth
+            invalid!(:depth, nil) if @max_depth && depth > @max_depth
+            return if value.nil?
 
             copied = case value
             when Hash then walk_hash(value, depth)
@@ -83,30 +94,28 @@ module Hitch
             when String then value.dup
             when Symbol then symbol_value(value)
             when Float
-              invalid!(:non_finite, nil) if @policy[:finite] && !value.finite?
+              invalid!(:non_finite, nil) if @finite && !value.finite?
 
               value
-            when Integer, TrueClass, FalseClass, NilClass
+            when Integer, TrueClass, FalseClass
               value
             else
-              invalid!(:foreign, nil) if @policy[:foreign] == :reject
+              invalid!(:foreign, nil) if @foreign == :reject
 
               value
             end
-            @policy[:freeze] ? copied.freeze : copied
+            @freeze ? copied.freeze : copied
           end
 
           def walk_hash(hash, depth)
-            invalid!(:recursive, nil) if @seen.key?(hash.object_id)
+            invalid!(:recursive, nil) unless @seen.add?(hash.object_id)
 
             @objects += 1
-            max_objects = @policy[:max_objects]
-            invalid!(:objects, nil) if max_objects && @objects > max_objects
+            invalid!(:objects, nil) if @max_objects && @objects > @max_objects
 
-            @seen[hash.object_id] = true
             hash.each_with_object({}) do |(key, child), result|
               copied_key = copy_key(key)
-              invalid!(:duplicate_key, copied_key) if @policy[:duplicates] == :reject && result.key?(copied_key)
+              invalid!(:duplicate_key, copied_key) if @duplicates == :reject && result.key?(copied_key)
 
               result[copied_key] = walk(child, depth + 1)
             end
@@ -115,18 +124,17 @@ module Hitch
           end
 
           def walk_array(array, depth)
-            invalid!(:recursive, nil) if @seen.key?(array.object_id)
+            invalid!(:recursive, nil) unless @seen.add?(array.object_id)
 
-            @seen[array.object_id] = true
             array.map { |child| walk(child, depth + 1) }
           ensure
             @seen.delete(array.object_id)
           end
 
           def copy_key(key)
-            case @policy[:keys]
+            case @keys
             when :as_is then key
-            when :to_s then key.to_s.freeze
+            when :to_s then key.to_s
             when :string
               invalid!(:key, key) unless key.is_a?(String)
 
@@ -134,7 +142,7 @@ module Hitch
             when :stringify_symbols
               case key
               when String then key.dup.freeze
-              when Symbol then key.to_s.freeze
+              when Symbol then key.to_s
               else invalid!(:key, key)
               end
             when :preserve
@@ -143,19 +151,22 @@ module Hitch
               when Symbol then key
               else invalid!(:key, key)
               end
+            else
+              raise ArgumentError, "unknown keys policy #{@keys.inspect}"
             end
           end
 
           def symbol_value(value)
-            case @policy[:symbols]
+            case @symbols
             when :keep then value
             when :to_s then value.to_s
-            else invalid!(:foreign, nil)
+            when :reject then invalid!(:foreign, nil)
+            else raise ArgumentError, "unknown symbols policy #{@symbols.inspect}"
             end
           end
 
           def invalid!(reason, detail)
-            throw REPLACED, @policy[:on_invalid].call(reason, detail)
+            throw REPLACED, @on_invalid.call(reason, detail)
           end
         end
       end

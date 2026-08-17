@@ -118,12 +118,12 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
 
     def migration_facts
       facts = {
-        "required_versions" => [ "20260801090000" ],
+        "required_versions" => [ "20260817000000" ],
         "missing_versions" => [],
         "missing_tables" => []
       }
       if values.fetch("migrations") == "missing"
-        facts["missing_versions"] = [ "20260801090000" ]
+        facts["missing_versions"] = [ "20260817000000" ]
         facts["missing_tables"] = [ "hitch_clients" ]
       end
       facts

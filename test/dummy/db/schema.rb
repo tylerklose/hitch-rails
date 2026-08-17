@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_08_01_091500) do
+ActiveRecord::Schema[7.2].define(version: 2026_08_17_000000) do
   create_table "hitch_access_tokens", force: :cascade do |t|
     t.string "principal_type", null: false
     t.string "principal_id", null: false
@@ -44,25 +44,16 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_01_091500) do
   create_table "hitch_clients", force: :cascade do |t|
     t.string "client_id", null: false
     t.string "client_name", null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
     t.string "application_type"
     t.string "token_endpoint_auth_method", default: "none", null: false
     t.string "client_secret_digest"
     t.datetime "client_secret_issued_at"
     t.datetime "client_secret_rotated_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
     t.index ["client_id"], name: "index_hitch_clients_on_client_id", unique: true
     t.check_constraint "(token_endpoint_auth_method = 'none' AND client_secret_digest IS NULL AND client_secret_issued_at IS NULL AND client_secret_rotated_at IS NULL) OR (token_endpoint_auth_method = 'client_secret_basic' AND client_secret_digest IS NOT NULL AND client_secret_issued_at IS NOT NULL)", name: "hitch_clients_secret_consistency_check"
     t.check_constraint "token_endpoint_auth_method IN ('none', 'client_secret_basic')", name: "hitch_clients_auth_method_check"
-  end
-
-  create_table "hitch_schema_states", force: :cascade do |t|
-    t.string "key", null: false
-    t.integer "version", null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["key"], name: "index_hitch_schema_states_on_key", unique: true
-    t.check_constraint "version IN (1, 2)", name: "hitch_schema_states_version_check"
   end
 
   create_table "users", force: :cascade do |t|

@@ -363,8 +363,9 @@ module Hitch
         return nil unless uri.port == ALLOWED_PORT
 
         uri
-      rescue URI::InvalidURIError => e
-        log_rejection(client_id, "#{e.class}: #{e.message}")
+      rescue URI::InvalidURIError
+        # Unreachable in practice: both callers gate on document_url?,
+        # which already parsed this exact string.
         nil
       end
 

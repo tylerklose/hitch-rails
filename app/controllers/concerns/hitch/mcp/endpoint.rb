@@ -22,7 +22,6 @@ module Hitch
         Mcp-Name
       ].freeze
       LOOPBACK_ORIGIN = %r{\Ahttps?://(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?\z}
-      HEADER_CONTROLS = /[\x00-\x08\x0A-\x1F\x7F]/
       ACCEPT_TYPES = %w[application/json text/event-stream].freeze
       SERVER_INFO_KEY_MAP = {
         "name" => "name",
@@ -347,7 +346,7 @@ module Hitch
 
       def hitch_mcp_origin_allowed?(origin)
         return false unless origin.is_a?(String) && origin.valid_encoding?
-        return false if origin.empty? || origin.include?(",") || HEADER_CONTROLS.match?(origin)
+        return false if origin.empty? || origin.include?(",") || Internal::HeaderField::CONTROLS.match?(origin)
         return true if Hitch.configuration.allowed_origins.include?(origin)
 
         (Rails.env.development? || Rails.env.test?) && LOOPBACK_ORIGIN.match?(origin)
@@ -359,7 +358,7 @@ module Hitch
       end
 
       def hitch_mcp_preflight!
-        method = hitch_mcp_single_header(request.get_header("HTTP_ACCESS_CONTROL_REQUEST_METHOD"))
+        method = Internal::HeaderField.single(request.get_header("HTTP_ACCESS_CONTROL_REQUEST_METHOD"))
         headers = hitch_mcp_requested_headers(request.get_header("HTTP_ACCESS_CONTROL_REQUEST_HEADERS"))
         return hitch_mcp_origin_denied! unless method == "POST" && headers
 
@@ -375,18 +374,18 @@ module Hitch
 
       def hitch_mcp_requested_headers(value)
         return [] if value.nil? || value.empty?
-        return unless value.is_a?(String) && value.valid_encoding? && !HEADER_CONTROLS.match?(value)
+        return unless value.is_a?(String) && value.valid_encoding? && !Internal::HeaderField::CONTROLS.match?(value)
 
-        values = value.split(",", -1).map { |entry| hitch_mcp_trim_ows(entry) }
+        values = value.split(",", -1).map { |entry| Internal::HeaderField.trim_ows(entry) }
         values unless values.any? { |entry| entry.nil? || entry.empty? }
       end
 
       def hitch_mcp_json_content_type?
         value = request.get_header("CONTENT_TYPE")
         return false unless value.is_a?(String) && value.valid_encoding?
-        return false if value.empty? || value.include?(",") || HEADER_CONTROLS.match?(value)
+        return false if value.empty? || value.include?(",") || Internal::HeaderField::CONTROLS.match?(value)
 
-        media_type, *parameters = value.split(";", -1).map { |part| hitch_mcp_trim_ows(part) }
+        media_type, *parameters = value.split(";", -1).map { |part| Internal::HeaderField.trim_ows(part) }
         return false unless media_type&.downcase == "application/json"
 
         parameters.all? { |parameter| parameter&.match?(/\A[A-Za-z0-9!#$%&'*+.^_`|~-]+=[^;\s]+\z/) }
@@ -395,7 +394,7 @@ module Hitch
       def hitch_mcp_accepts_required_types?
         value = request.get_header("HTTP_ACCEPT")
         return false unless value.is_a?(String) && value.valid_encoding?
-        return false if value.empty? || HEADER_CONTROLS.match?(value)
+        return false if value.empty? || Internal::HeaderField::CONTROLS.match?(value)
 
         accepted = {}
         value.split(",", -1).each do |entry|
@@ -408,7 +407,7 @@ module Hitch
       end
 
       def hitch_mcp_accept_entry(entry)
-        media_type, *parameters = entry.split(";", -1).map { |part| hitch_mcp_trim_ows(part) }
+        media_type, *parameters = entry.split(";", -1).map { |part| Internal::HeaderField.trim_ows(part) }
         return [ nil, nil ] unless media_type&.match?(/\A[A-Za-z0-9!#$%&'*+.^_`|~-]+\/[A-Za-z0-9!#$%&'*+.^_`|~-]+\z/)
 
         quality = 1.0
@@ -423,18 +422,6 @@ module Hitch
           quality = raw_value.to_f
         end
         [ media_type.downcase, quality ]
-      end
-
-      def hitch_mcp_single_header(value)
-        return unless value.is_a?(String) && value.valid_encoding?
-        return if value.include?(",") || HEADER_CONTROLS.match?(value)
-
-        candidate = hitch_mcp_trim_ows(value)
-        candidate unless candidate.nil? || candidate.empty?
-      end
-
-      def hitch_mcp_trim_ows(value)
-        value[/\A[\x20\x09]*(.*?)[\x20\x09]*\z/m, 1]
       end
 
       def hitch_mcp_bearer_token
@@ -536,7 +523,6 @@ module Hitch
       private_constant :MAX_BEARER_TOKEN_BYTES,
         :ALLOWED_REQUEST_HEADERS,
         :LOOPBACK_ORIGIN,
-        :HEADER_CONTROLS,
         :ACCEPT_TYPES,
         :SERVER_INFO_KEY_MAP
     end

@@ -10,8 +10,6 @@ module Hitch
       class VerifiedRequest
         PROTOCOL_VERSION = "2026-07-28"
         SUPPORTED_METHODS = %w[server/discover tools/list tools/call].freeze
-        OWS = /\A[\x20\x09]*(.*?)[\x20\x09]*\z/m
-        HEADER_CONTROLS = /[\x00-\x08\x0A-\x1F\x7F]/
         CLIENT_INFO_KEY = "io.modelcontextprotocol/clientInfo"
         CLIENT_INFO_STRING_KEYS = %w[name version title description websiteUrl].freeze
 
@@ -197,12 +195,7 @@ module Hitch
         end
 
         def single_header(value)
-          return unless value.is_a?(String) && value.valid_encoding?
-          return if value.include?(",") || HEADER_CONTROLS.match?(value)
-
-          match = OWS.match(value)
-          candidate = match && match[1]
-          candidate unless candidate.nil? || candidate.empty?
+          HeaderField.single(value)
         end
 
         def parse_error!

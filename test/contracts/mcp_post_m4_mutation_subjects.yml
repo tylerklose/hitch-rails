@@ -4,6 +4,7 @@ required_domains:
   - endpoint_redaction
   - tool_redaction
   - observation_correlation
+  - json_copy
 subjects:
   - domain: endpoint_redaction
     expression: Hitch::MCP::Internal::EndpointErrorReporter.reporting_context
@@ -11,3 +12,5 @@ subjects:
     expression: Hitch::MCP::Internal::ErrorNormalizer.reporting_context
   - domain: observation_correlation
     expression: Hitch::MCP::Internal::Observation.correlation_id
+  - domain: json_copy
+    expression: Hitch::MCP::Internal::JsonValues::Copier

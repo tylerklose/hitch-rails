@@ -39,7 +39,7 @@ subjects:
   - domain: redaction
     expression: Hitch::MCP::Internal::ErrorNormalizer.expected_denial?
   - domain: context
-    expression: Hitch::MCP::Context#deep_copy_json
+    expression: Hitch::MCP::Context#copy_meta
   - domain: callbacks
     expression: Hitch::MCP::Internal::SDKAdapter#sdk_configuration
   - domain: observation

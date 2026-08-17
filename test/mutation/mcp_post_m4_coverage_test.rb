@@ -10,5 +10,20 @@ if Minitest::Test.respond_to?(:cover)
 
   class Hitch::MCP::ResultTest
     cover "Hitch::MCP::Internal::ErrorNormalizer.reporting_context"
+    cover "Hitch::MCP::Internal::JsonValues::Copier"
+  end
+
+  # The shared copier backs every JSON boundary; the strongest policy suites
+  # all select against its mutants.
+  class Hitch::MCP::ContextTest
+    cover "Hitch::MCP::Internal::JsonValues::Copier"
+  end
+
+  class Hitch::MCP::ToolTest
+    cover "Hitch::MCP::Internal::JsonValues::Copier"
+  end
+
+  class Hitch::MCP::RegistryTest
+    cover "Hitch::MCP::Internal::JsonValues::Copier"
   end
 end

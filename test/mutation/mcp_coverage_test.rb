@@ -36,7 +36,7 @@ if Minitest::Test.respond_to?(:cover)
   end
 
   class Hitch::MCP::ContextTest
-    cover "Hitch::MCP::Context#deep_copy_json"
+    cover "Hitch::MCP::Context#copy_meta"
   end
 
   class Hitch::MCP::ObservationTest

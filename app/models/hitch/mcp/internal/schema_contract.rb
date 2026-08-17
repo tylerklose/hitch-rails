@@ -23,9 +23,7 @@ module Hitch
         def initialize(value, label:, input:)
           @label = label
           @input = input
-          @objects = 0
-          @seen = {}
-          @schema = copy_json(value, depth: 1)
+          @schema = copy_schema(value)
         end
 
         def call
@@ -45,47 +43,28 @@ module Hitch
 
         attr_reader :label, :input
 
-        def copy_json(value, depth:)
-          invalid!("nesting exceeds #{MAX_SCHEMA_DEPTH}") if depth > MAX_SCHEMA_DEPTH
+        def copy_schema(value)
+          JsonValues.copy(
+            value,
+            keys: :stringify_symbols, symbols: :to_s, foreign: :reject,
+            finite: true, duplicates: :reject, freeze: true,
+            max_depth: MAX_SCHEMA_DEPTH, max_objects: MAX_SCHEMA_OBJECTS,
+            on_invalid: method(:copy_invalid!)
+          )
+        end
 
-          copy = case value
-          when Hash
-            invalid!("contains a recursive Ruby object") if @seen.key?(value.object_id)
-
-            @objects += 1
-            invalid!("exceeds #{MAX_SCHEMA_OBJECTS} schema objects") if @objects > MAX_SCHEMA_OBJECTS
-            @seen[value.object_id] = true
-            value.each_with_object({}) do |(key, child), result|
-              normalized_key = case key
-              when String then key.dup
-              when Symbol then key.to_s
-              else invalid!("contains a non-string schema key")
-              end
-              invalid!("contains duplicate key #{normalized_key.inspect}") if result.key?(normalized_key)
-
-              result[normalized_key.freeze] = copy_json(child, depth: depth + 1)
+        def copy_invalid!(reason, detail)
+          invalid!(
+            case reason
+            when :depth then "nesting exceeds #{MAX_SCHEMA_DEPTH}"
+            when :recursive then "contains a recursive Ruby object"
+            when :objects then "exceeds #{MAX_SCHEMA_OBJECTS} schema objects"
+            when :key then "contains a non-string schema key"
+            when :duplicate_key then "contains duplicate key #{detail.inspect}"
+            when :non_finite then "contains a non-finite number"
+            else "contains a non-JSON value"
             end
-          when Array
-            invalid!("contains a recursive Ruby object") if @seen.key?(value.object_id)
-
-            @seen[value.object_id] = true
-            value.map { |child| copy_json(child, depth: depth + 1) }
-          when String
-            value.dup
-          when Symbol
-            value.to_s
-          when Float
-            invalid!("contains a non-finite number") unless value.finite?
-
-            value
-          when Integer, TrueClass, FalseClass, NilClass
-            value
-          else
-            invalid!("contains a non-JSON value")
-          end
-          copy.freeze
-        ensure
-          @seen.delete(value.object_id) if value.is_a?(Hash) || value.is_a?(Array)
+          )
         end
 
         def serialized_bytes

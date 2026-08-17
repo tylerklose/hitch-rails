@@ -5,6 +5,15 @@ module Hitch
     # Closed host return value for MCP tool execution. Constructors copy host
     # values so later mutation cannot change the result Hitch validates.
     class Result
+      RESULT_MESSAGES = {
+        recursive: "MCP Result contains a recursive value",
+        key: "MCP Result keys must be Strings",
+        duplicate_key: "MCP Result contains a duplicate key",
+        non_finite: "MCP Result contains a non-finite number",
+        foreign: "MCP Result must contain only JSON values"
+      }.freeze
+      private_constant :RESULT_MESSAGES
+
       class << self
         def text(value)
           new(:text, copy_string(value), nil)
@@ -29,37 +38,13 @@ module Hitch
           value.dup.freeze
         end
 
-        def copy_json(value, seen = {})
-          copied = case value
-          when Hash
-            raise ArgumentError, "MCP Result contains a recursive value" if seen.key?(value.object_id)
-
-            seen[value.object_id] = true
-            value.each_with_object({}) do |(key, child), result|
-              raise ArgumentError, "MCP Result keys must be Strings" unless key.is_a?(String)
-              raise ArgumentError, "MCP Result contains a duplicate key" if result.key?(key)
-
-              result[key.dup.freeze] = copy_json(child, seen)
-            end
-          when Array
-            raise ArgumentError, "MCP Result contains a recursive value" if seen.key?(value.object_id)
-
-            seen[value.object_id] = true
-            value.map { |child| copy_json(child, seen) }
-          when String
-            value.dup
-          when Float
-            raise ArgumentError, "MCP Result contains a non-finite number" unless value.finite?
-
-            value
-          when Integer, TrueClass, FalseClass, NilClass
-            value
-          else
-            raise ArgumentError, "MCP Result must contain only JSON values"
-          end
-          copied.freeze
-        ensure
-          seen.delete(value.object_id) if value.is_a?(Hash) || value.is_a?(Array)
+        def copy_json(value)
+          Internal::JsonValues.copy(
+            value,
+            keys: :string, symbols: :reject, foreign: :reject, finite: true,
+            duplicates: :reject, freeze: true,
+            on_invalid: ->(reason, _detail) { raise ArgumentError, RESULT_MESSAGES.fetch(reason) }
+          )
         end
       end
 

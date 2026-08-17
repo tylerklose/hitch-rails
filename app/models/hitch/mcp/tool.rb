@@ -9,6 +9,13 @@ module Hitch
     class Tool
       NOT_SET = Object.new.freeze
       INVALID_DECLARATION = Object.new.freeze
+      ARGUMENT_MESSAGES = {
+        recursive: "recursive MCP tool arguments",
+        key: "MCP tool argument keys must be strings",
+        duplicate_key: "duplicate MCP tool argument key",
+        non_finite: "MCP tool arguments contain a non-finite number",
+        foreign: "MCP tool arguments must contain only JSON values"
+      }.freeze
 
       class << self
         def inherited(subclass)
@@ -111,41 +118,13 @@ module Hitch
 
         private
 
-        def normalize_arguments(value, seen = {})
-          normalized = case value
-          when Hash
-            raise ArgumentError, "recursive MCP tool arguments" if seen.key?(value.object_id)
-
-            seen[value.object_id] = true
-            value.each_with_object({}) do |(key, child), result|
-              normalized_key = case key
-              when String then key.dup.freeze
-              when Symbol then key.to_s.freeze
-              else raise ArgumentError, "MCP tool argument keys must be strings"
-              end
-              raise ArgumentError, "duplicate MCP tool argument key" if result.key?(normalized_key)
-
-              result[normalized_key] = normalize_arguments(child, seen)
-            end
-          when Array
-            raise ArgumentError, "recursive MCP tool arguments" if seen.key?(value.object_id)
-
-            seen[value.object_id] = true
-            value.map { |child| normalize_arguments(child, seen) }
-          when String
-            value.dup
-          when Float
-            raise ArgumentError, "MCP tool arguments contain a non-finite number" unless value.finite?
-
-            value
-          when Integer, TrueClass, FalseClass, NilClass
-            value
-          else
-            raise ArgumentError, "MCP tool arguments must contain only JSON values"
-          end
-          normalized.freeze
-        ensure
-          seen.delete(value.object_id) if value.is_a?(Hash) || value.is_a?(Array)
+        def normalize_arguments(value)
+          Internal::JsonValues.copy(
+            value,
+            keys: :stringify_symbols, symbols: :reject, foreign: :reject,
+            finite: true, duplicates: :reject, freeze: true,
+            on_invalid: ->(reason, _detail) { raise ArgumentError, ARGUMENT_MESSAGES.fetch(reason) }
+          )
         end
 
         # The setter path guards against value and keywords both being absent,
@@ -154,46 +133,16 @@ module Hitch
           keywords.empty? ? value : keywords
         end
 
-        def copy_declaration(value, seen = {})
-          case value
-          when Hash
-            return INVALID_DECLARATION if seen.key?(value.object_id)
-
-            seen[value.object_id] = true
-            copied = {}
-            value.each do |key, child|
-              normalized_key = declaration_key(key)
-              return INVALID_DECLARATION if normalized_key.equal?(INVALID_DECLARATION)
-              return INVALID_DECLARATION if copied.key?(normalized_key)
-
-              copied[normalized_key] = copy_declaration(child, seen)
-            end
-            copied.freeze
-          when Array
-            return INVALID_DECLARATION if seen.key?(value.object_id)
-
-            seen[value.object_id] = true
-            value.map { |child| copy_declaration(child, seen) }.freeze
-          when String
-            value.dup.freeze
-          when Symbol, Numeric, TrueClass, FalseClass, NilClass
-            value
-          else
-            INVALID_DECLARATION
-          end
-        ensure
-          seen.delete(value.object_id) if value.is_a?(Hash) || value.is_a?(Array)
-        end
-
-        def declaration_key(value)
-          return value.dup.freeze if value.is_a?(String)
-          return value if value.is_a?(Symbol)
-
-          INVALID_DECLARATION
+        def copy_declaration(value)
+          Internal::JsonValues.copy(
+            value,
+            keys: :preserve, foreign: :reject, duplicates: :reject, freeze: true,
+            on_invalid: ->(_reason, _detail) { INVALID_DECLARATION }
+          )
         end
       end
 
-      private_constant :NOT_SET, :INVALID_DECLARATION
+      private_constant :NOT_SET, :INVALID_DECLARATION, :ARGUMENT_MESSAGES
     end
   end
 end

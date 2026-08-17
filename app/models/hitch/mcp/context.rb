@@ -77,27 +77,14 @@ module Hitch
       def copy_meta(value)
         raise ArgumentError, "meta must be a Hash" unless value.is_a?(Hash)
 
-        deep_copy_json(value)
-      end
-
-      def deep_copy_json(value)
-        copy = case value
-        when Hash
-          value.to_h do |key, child|
-            raise ArgumentError, "meta keys must be Strings" unless key.is_a?(String)
-
-            [ key.dup.freeze, deep_copy_json(child) ]
+        Internal::JsonValues.copy(
+          value,
+          keys: :string, symbols: :reject, foreign: :reject, freeze: true,
+          on_invalid: lambda do |reason, _detail|
+            raise ArgumentError,
+              (reason == :key ? "meta keys must be Strings" : "meta must contain only JSON values")
           end
-        when Array
-          value.map { |child| deep_copy_json(child) }
-        when String
-          value.dup
-        when Numeric, TrueClass, FalseClass
-          value
-        else
-          raise ArgumentError, "meta must contain only JSON values" unless value.nil?
-        end
-        copy.freeze
+        )
       end
     end
   end

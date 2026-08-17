@@ -14,14 +14,6 @@ module Hitch
       include Hitch::RequestAdmission
 
       MAX_BEARER_TOKEN_BYTES = 512
-      ALLOWED_REQUEST_HEADERS = %w[
-        Content-Type
-        Authorization
-        MCP-Protocol-Version
-        Mcp-Method
-        Mcp-Name
-      ].freeze
-      LOOPBACK_ORIGIN = %r{\Ahttps?://(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?\z}
       SERVER_INFO_KEY_MAP = {
         "name" => "name",
         "version" => "version",
@@ -138,7 +130,7 @@ module Hitch
         origin = request.get_header("HTTP_ORIGIN")
         return hitch_mcp_origin_denied! if request.options? && origin.nil?
         return if origin.nil?
-        return hitch_mcp_origin_denied! unless hitch_mcp_origin_allowed?(origin)
+        return hitch_mcp_origin_denied! unless Internal::CorsPolicy.origin_allowed?(origin)
         return if request.options?
 
         response.headers["Access-Control-Allow-Origin"] = origin
@@ -343,40 +335,23 @@ module Hitch
         [ match[1].downcase, port ]
       end
 
-      def hitch_mcp_origin_allowed?(origin)
-        return false unless origin.is_a?(String) && origin.valid_encoding?
-        return false if origin.empty? || origin.include?(",") || Internal::HeaderField::CONTROLS.match?(origin)
-        return true if Hitch.configuration.allowed_origins.include?(origin)
-
-        (Rails.env.development? || Rails.env.test?) && LOOPBACK_ORIGIN.match?(origin)
-      end
-
       def hitch_mcp_origin_denied!
         response.headers.delete("Access-Control-Allow-Origin")
         head :forbidden
       end
 
       def hitch_mcp_preflight!
-        method = Internal::HeaderField.single(request.get_header("HTTP_ACCESS_CONTROL_REQUEST_METHOD"))
-        headers = hitch_mcp_requested_headers(request.get_header("HTTP_ACCESS_CONTROL_REQUEST_HEADERS"))
-        return hitch_mcp_origin_denied! unless method == "POST" && headers
-
-        allowed = ALLOWED_REQUEST_HEADERS.map(&:downcase)
-        return hitch_mcp_origin_denied! unless headers.all? { |header| allowed.include?(header.downcase) }
+        allowed = Internal::CorsPolicy.preflight_allowed?(
+          requested_method: request.get_header("HTTP_ACCESS_CONTROL_REQUEST_METHOD"),
+          requested_headers: request.get_header("HTTP_ACCESS_CONTROL_REQUEST_HEADERS")
+        )
+        return hitch_mcp_origin_denied! unless allowed
 
         response.headers["Access-Control-Allow-Origin"] = request.get_header("HTTP_ORIGIN")
-        response.headers["Access-Control-Allow-Methods"] = "POST"
-        response.headers["Access-Control-Allow-Headers"] = ALLOWED_REQUEST_HEADERS.join(", ")
-        response.headers["Access-Control-Max-Age"] = "600"
+        Internal::CorsPolicy::PREFLIGHT_RESPONSE_HEADERS.each do |header, value|
+          response.headers[header] = value
+        end
         head :no_content
-      end
-
-      def hitch_mcp_requested_headers(value)
-        return [] if value.nil? || value.empty?
-        return unless value.is_a?(String) && value.valid_encoding? && !Internal::HeaderField::CONTROLS.match?(value)
-
-        values = value.split(",", -1).map { |entry| Internal::HeaderField.trim_ows(entry) }
-        values unless values.any? { |entry| entry.nil? || entry.empty? }
       end
 
       def hitch_mcp_bearer_token
@@ -475,10 +450,7 @@ module Hitch
         @hitch_mcp_observation&.finish!(response:)
       end
 
-      private_constant :MAX_BEARER_TOKEN_BYTES,
-        :ALLOWED_REQUEST_HEADERS,
-        :LOOPBACK_ORIGIN,
-        :SERVER_INFO_KEY_MAP
+      private_constant :MAX_BEARER_TOKEN_BYTES, :SERVER_INFO_KEY_MAP
     end
   end
 end

@@ -372,7 +372,6 @@ module Hitch
       def fetch_and_validate(client_id, uri)
         Fetcher.call(client_id, uri)
       end
-
     end
   end
 end

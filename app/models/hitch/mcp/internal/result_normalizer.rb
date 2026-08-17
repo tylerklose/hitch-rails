@@ -81,7 +81,7 @@ module Hitch
         attr_reader :result, :output_schema, :max_bytes
 
         def canonical_result
-          case result.__send__(:kind)
+          case result.kind
           when :text then text_result
           when :structured then structured_result
           when :error then error_result
@@ -91,17 +91,17 @@ module Hitch
 
         def text_result
           validate_output_schema!(nil) if output_schema
-          content = text_content(result.__send__(:value))
+          content = text_content(result.value)
           [ deep_freeze(content: content, isError: false), true, nil ]
         end
 
         def structured_result
           invalid!(:missing_output_schema) unless output_schema
 
-          value = result.__send__(:value)
+          value = result.value
           serialized_value = generate(value)
           validate_output_schema!(value)
-          text = result.__send__(:text)
+          text = result.text
           fallback = value.is_a?(Hash) ? nil : serialized_value
           content = text || fallback
           canonical = {
@@ -113,7 +113,7 @@ module Hitch
         end
 
         def error_result
-          text = result.__send__(:value)
+          text = result.value
           [ deep_freeze(content: text_content(text), isError: true), true, text ]
         end
 

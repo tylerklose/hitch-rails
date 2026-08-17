@@ -99,7 +99,7 @@ module Hitch
             output_schema: output_schema,
             max_bytes: Hitch.configuration.mcp.max_result_bytes
           )
-          invocation&.result_normalized!(kind: result.__send__(:kind))
+          invocation&.result_normalized!(kind: result.kind)
           normalized
         rescue StandardError, SystemStackError => error
           invocation&.failed!(

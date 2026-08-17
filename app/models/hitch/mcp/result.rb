@@ -48,16 +48,14 @@ module Hitch
         end
       end
 
+      attr_reader :kind, :value, :text
+
       def initialize(kind, value, text)
         @kind = kind
         @value = value
         @text = text
         freeze
       end
-
-      private
-
-      attr_reader :kind, :value, :text
 
       private_class_method :new, :allocate
     end

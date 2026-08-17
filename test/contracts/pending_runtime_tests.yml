@@ -3,7 +3,7 @@ runtime_status: m2_m4_5_active
 tests:
   - path: test/hitch/mcp/sdk_contract_test.rb
     owner_issue: M2.1
-    activation_constant: Hitch::MCP::SDKAdapter
+    activation_constant: Hitch::MCP::Internal::SDKAdapter
     test_names:
       - test_handle_requires_structural_symbol_keys
       - test_selective_symbolization_preserves_untrusted_string_keys

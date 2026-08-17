@@ -23,7 +23,7 @@ SEP-986 tool names are tracked at
 
 ## Decision
 
-Hitch owns a private `Hitch::MCP::SDKAdapter`, never a copied SDK. It receives an
+Hitch owns a framework-internal `Hitch::MCP::Internal::SDKAdapter`, never a copied SDK. It receives an
 already capped/parsed/verified request, selectively symbolizes fixed protocol
 structure, retains attacker-controlled `_meta`/argument keys as strings, builds
 a fresh server, explicitly replaces exception/around-request/instrumentation

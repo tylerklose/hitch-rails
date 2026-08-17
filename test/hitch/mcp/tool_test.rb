@@ -262,7 +262,7 @@ class Hitch::MCP::ToolTest < ActiveSupport::TestCase
   end
 
   def adapter_class
-    Hitch::MCP.const_get(:SDKAdapter, false)
+    Hitch::MCP::Internal::SDKAdapter
   end
 
   def successful_response

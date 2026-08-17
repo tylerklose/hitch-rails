@@ -387,9 +387,8 @@ class Hitch::MCP::ObservationTest < ActionDispatch::IntegrationTest
   end
 
   test "endpoint reporting context is fixed frozen and correlation-only" do
-    internal = Hitch::MCP.const_get(:Internal, false)
-    endpoint_reporter = internal.const_get(:EndpointErrorReporter, false)
-    observation = internal.const_get(:Observation, false)
+    endpoint_reporter = Hitch::MCP::Internal::EndpointErrorReporter
+    observation = Hitch::MCP::Internal::Observation
 
     {
       authentication: "authentication",
@@ -416,7 +415,7 @@ class Hitch::MCP::ObservationTest < ActionDispatch::IntegrationTest
   end
 
   test "correlation ids accept only copied frozen server-generated shape" do
-    observation = Hitch::MCP.const_get(:Internal, false).const_get(:Observation, false)
+    observation = Hitch::MCP::Internal::Observation
     request_id = "0123456789abcdef" * 2
     copied = observation.__send__(:correlation_id, request_id)
 
@@ -431,7 +430,7 @@ class Hitch::MCP::ObservationTest < ActionDispatch::IntegrationTest
   end
 
   test "publisher detaches and restores request state on success absence and subscriber failure" do
-    observation = Hitch::MCP.const_get(:Internal, false).const_get(:Observation, false)
+    observation = Hitch::MCP::Internal::Observation
     current_key = observation.const_get(:CURRENT_REQUEST_KEY, false)
     execution_state = ActiveSupport::IsolatedExecutionState
     previous = Object.new

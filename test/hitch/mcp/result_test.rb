@@ -444,7 +444,7 @@ class Hitch::MCP::ResultTest < ActiveSupport::TestCase
 
   test "direct error reporting context admits only fixed categories safe tool names and correlation ids" do
     normalizer = error_normalizer_class
-    observation = Hitch::MCP.const_get(:Internal, false).const_get(:Observation, false)
+    observation = Hitch::MCP::Internal::Observation
     request_id = "b" * 32
     phases = {
       context: "context_handoff",
@@ -535,15 +535,15 @@ class Hitch::MCP::ResultTest < ActiveSupport::TestCase
   end
 
   def adapter_class
-    Hitch::MCP.const_get(:SDKAdapter, false)
+    Hitch::MCP::Internal::SDKAdapter
   end
 
   def result_normalizer_class
-    Hitch::MCP.const_get(:Internal, false).const_get(:ResultNormalizer, false)
+    Hitch::MCP::Internal::ResultNormalizer
   end
 
   def error_normalizer_class
-    Hitch::MCP.const_get(:Internal, false).const_get(:ErrorNormalizer, false)
+    Hitch::MCP::Internal::ErrorNormalizer
   end
 
   def result_context(

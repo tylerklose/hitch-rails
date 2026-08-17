@@ -47,7 +47,7 @@ class ServerConformanceFixtureToolsTest < ActiveSupport::TestCase
   end
 
   test "verified wire accepts the protocol-optional omitted arguments member" do
-    verifier = Hitch::MCP.const_get(:VerifiedRequest, false)
+    verifier = Hitch::MCP::Internal::VerifiedRequest
     raw = JSON.generate(
       jsonrpc: "2.0",
       id: "omitted-arguments",

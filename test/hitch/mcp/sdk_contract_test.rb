@@ -6,7 +6,7 @@ require "mcp"
 require "mcp/server/transports/streamable_http_transport"
 
 class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
-  ACTIVATION_CONSTANT = "Hitch::MCP::SDKAdapter"
+  ACTIVATION_CONSTANT = "Hitch::MCP::Internal::SDKAdapter"
   RUNTIME_TEST_NAMES = %w[
     test_handle_requires_structural_symbol_keys
     test_selective_symbolization_preserves_untrusted_string_keys
@@ -605,7 +605,7 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
   private
 
   def adapter_class
-    Hitch::MCP.const_get(:SDKAdapter, false)
+    Hitch::MCP::Internal::SDKAdapter
   end
 
   def reserved_context_predicate(method:, arguments:)
@@ -613,8 +613,7 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
   end
 
   def raw_internal_adapter(method:, arguments:)
-    internal = Hitch::MCP.const_get(:Internal, false).const_get(:SDKAdapter, false)
-    internal.new(
+    Hitch::MCP::Internal::SDKAdapter.new(
       verified_request: {
         "jsonrpc" => "2.0",
         "id" => "reserved-predicate",

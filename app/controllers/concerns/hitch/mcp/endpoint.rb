@@ -60,7 +60,7 @@ module Hitch
         return hitch_mcp_protocol_error!(413, -32600, "Invalid Request") unless raw_body
 
         hitch_mcp_body_parse_started!
-        verified_request = VerifiedRequest.call(
+        verified_request = Internal::VerifiedRequest.call(
           raw_body: raw_body,
           headers: {
             protocol_version: request.get_header("HTTP_MCP_PROTOCOL_VERSION"),
@@ -71,7 +71,7 @@ module Hitch
         @hitch_mcp_observation&.verified!(verified_request)
 
         hitch_mcp_dispatch!(verified_request)
-      rescue VerifiedRequest::Failure => error
+      rescue Internal::VerifiedRequest::Failure => error
         hitch_mcp_protocol_error!(
           error.http_status,
           error.code,
@@ -219,7 +219,7 @@ module Hitch
         return if performed?
 
         hitch_mcp_sdk_dispatch_started!
-        protocol_response = SDKAdapter.call(
+        protocol_response = Internal::SDKAdapter.call(
           verified_request: verified_request,
           tools: tools,
           context: context,

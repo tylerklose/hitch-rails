@@ -90,31 +90,6 @@ namespace :hitch do
     end
   end
 
-  namespace :redirects do
-    desc "Reconcile legacy redirects and make normalized redirect rows authoritative"
-    task cutover: :environment do
-      warn "[hitch] Drain every redirect-mutating old writer before cutover."
-      warn "[hitch] Keep DCR, client registration, and redirect mutation disabled until this task commits."
-
-      version = Hitch::Client.send(:cutover_redirects!)
-      puts "Hitch redirect authority is version #{version} (normalized rows)."
-    rescue StandardError => error
-      abort "Hitch redirect cutover failed without committing authority: #{error.class}: #{error.message}"
-    end
-
-    desc "Verify redirect parity and restore legacy redirect authority before a code rollback"
-    task prepare_rollback: :environment do
-      warn "[hitch] Drain every redirect-mutating writer before rollback preparation."
-      warn "[hitch] Do not return old writers to service until this task commits version 1."
-
-      version = Hitch::Client.send(:prepare_redirect_rollback!)
-      puts "Hitch redirect authority is version #{version} (legacy column)."
-    rescue StandardError => error
-      abort "Hitch redirect rollback preparation failed without changing authority: " \
-        "#{error.class}: #{error.message}"
-    end
-  end
-
   namespace :cimd do
     desc "Fetch a Client ID Metadata Document to verify this host's egress " \
          "(usage: bin/rails 'hitch:cimd:check[https://client.example/client.json]')"

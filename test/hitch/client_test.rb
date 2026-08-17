@@ -6,9 +6,6 @@ class Hitch::ClientTest < ActiveSupport::TestCase
   setup do
     Hitch::ClientRedirectUri.delete_all
     Hitch::Client.delete_all
-    state = Hitch::SchemaState.find_or_create_by!(key: "redirect_uris") { |record| record.version = 2 }
-    version = Hitch::Client.connection.column_exists?(:hitch_clients, :redirect_uris) ? 1 : 2
-    state.update!(version: version)
   end
 
   test "register! rejects lossy redirect normalization and persists an exact valid array" do
@@ -93,68 +90,6 @@ class Hitch::ClientTest < ActiveSupport::TestCase
       Hitch::Client.register!(client_id: "dup", client_name: "B",
         redirect_uris: [ "https://app.test/b" ])
     end
-  end
-
-  test "register! writes both legacy and normalized redirects during compatibility mode" do
-    client = Hitch::Client.register!(
-      client_id: "dual-write",
-      client_name: "Dual",
-      redirect_uris: [ "https://b.test/callback", "https://a.test/callback" ]
-    )
-
-    if client.has_attribute?(:redirect_uris)
-      assert_equal [ "https://b.test/callback", "https://a.test/callback" ], client[:redirect_uris]
-    end
-    assert_equal \
-      [ "https://a.test/callback", "https://b.test/callback" ],
-      client.redirect_uri_records.order(:uri).pluck(:uri)
-  end
-
-  test "cutover and prepared rollback preserve old-writer changes across a forward deploy" do
-    client = Hitch::Client.register!(
-      client_id: "rolling",
-      client_name: "Rolling",
-      redirect_uris: [ "https://before.test/callback" ]
-    )
-
-    assert_equal 2, Hitch::Client.send(:cutover_redirects!)
-    assert_equal [ "https://before.test/callback" ], client.reload.redirect_uris
-
-    unless client.has_attribute?(:redirect_uris)
-      assert_raises(Hitch::SchemaState::CorruptState) do
-        Hitch::Client.send(:prepare_redirect_rollback!)
-      end
-      next
-    end
-
-    assert_equal 1, Hitch::Client.send(:prepare_redirect_rollback!)
-
-    # Simulate an old process, which knows only the legacy array column.
-    client.update_column(:redirect_uris, [ "https://old-writer.test/callback" ])
-
-    assert_equal [ "https://old-writer.test/callback" ], client.reload.redirect_uris
-    assert_equal 2, Hitch::Client.send(:cutover_redirects!)
-    assert_equal [ "https://old-writer.test/callback" ], client.reload.redirect_uris
-  end
-
-  test "prepare rollback refuses divergent representations" do
-    client = Hitch::Client.register!(
-      client_id: "divergent",
-      client_name: "Divergent",
-      redirect_uris: [ "https://one.test/callback" ]
-    )
-    Hitch::Client.send(:cutover_redirects!)
-    client.redirect_uri_records.delete_all
-
-    error = assert_raises(Hitch::SchemaState::CorruptState) do
-      Hitch::Client.send(:prepare_redirect_rollback!)
-    end
-    if client.has_attribute?(:redirect_uris)
-      assert_match(/disagree/, error.message)
-    else
-      assert_match(/legacy redirect_uris column is unavailable/, error.message)
-    end
-    assert_equal 2, Hitch::SchemaState.redirect_uris_version
   end
 
   test "register_confidential! returns a secret once and persists only its digest" do

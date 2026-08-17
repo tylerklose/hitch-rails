@@ -184,105 +184,36 @@ module Hitch
     end
 
     def redirect_uris
-      case Hitch::SchemaState.redirect_uris_version
-      when 1
-        ensure_legacy_redirect_storage!
-        legacy_redirect_uris
-      when 2
-        redirect_uri_records.order(:uri).pluck(:uri)
+      redirect_uri_records.order(:uri).pluck(:uri)
+    end
+
+    # Works on new and persisted records alike: unpersisted clients build
+    # association records that save with the parent; persisted clients
+    # replace their rows atomically.
+    def redirect_uris=(values)
+      desired = self.class.normalize_redirect_uris!(values)
+      if persisted?
+        replace_redirect_uris!(desired)
+      else
+        self.redirect_uri_records = desired.map { |uri| Hitch::ClientRedirectUri.new(uri: uri) }
       end
     end
 
-    def redirect_uris=(values)
-      raise ActiveRecord::ActiveRecordError, "redirect URIs require a persisted client" unless persisted?
-
-      replace_redirect_uris!(values)
-    end
-
     def replace_redirect_uris!(values)
-      desired = normalize_redirect_uris(values)
-      authority = Hitch::SchemaState.redirect_uris_version
-      ensure_legacy_redirect_storage! if authority == 1
-
+      desired = self.class.normalize_redirect_uris!(values)
       transaction do
-        update_columns(redirect_uris: desired, updated_at: Time.current) if has_attribute?(:redirect_uris)
-        replace_normalized_redirects!(desired)
+        if desired.empty?
+          redirect_uri_records.delete_all
+        else
+          redirect_uri_records.where.not(uri: desired).delete_all
+        end
+        existing = redirect_uri_records.where(uri: desired).pluck(:uri)
+        (desired - existing).each { |uri| redirect_uri_records.create!(uri: uri) }
       end
       redirect_uris
     end
 
-    def self.cutover_redirects!
-      Hitch::SchemaState.send(:transition_redirect_uris!, from: 1, to: 2) do
-        ensure_legacy_redirect_storage!
-        find_each do |client|
-          legacy = client.send(:legacy_redirect_uris)
-          client.send(:replace_normalized_redirects!, legacy, bounded: false)
-          client.send(:verify_redirect_parity!, legacy)
-        end
-      end
-    end
-
-    def self.prepare_redirect_rollback!
-      ensure_legacy_redirect_storage!
-
-      Hitch::SchemaState.send(:transition_redirect_uris!, from: 2, to: 1) do
-        find_each do |client|
-          client.send(:verify_redirect_parity!, client.send(:legacy_redirect_uris))
-        end
-      end
-    end
-
-    private_class_method :cutover_redirects!, :prepare_redirect_rollback!
-
     private
-
-    def normalize_redirect_uris(values)
-      self.class.normalize_redirect_uris!(values)
-    end
-
-    def legacy_redirect_uris
-      ensure_legacy_redirect_storage!
-
-      normalize_legacy_redirect_uris(self[:redirect_uris])
-    end
-
-    def replace_normalized_redirects!(values, bounded: true)
-      desired = bounded ? normalize_redirect_uris(values) : normalize_legacy_redirect_uris(values)
-      if desired.empty?
-        redirect_uri_records.delete_all
-      else
-        redirect_uri_records.where.not(uri: desired).delete_all
-      end
-      existing = redirect_uri_records.where(uri: desired).pluck(:uri)
-      (desired - existing).each { |uri| redirect_uri_records.create!(uri: uri) }
-    end
-
-    def normalize_legacy_redirect_uris(values)
-      Array.wrap(values).select { |value| value.is_a?(String) }.compact_blank.uniq
-    end
-
-    def verify_redirect_parity!(legacy)
-      normalized = redirect_uri_records.order(:uri).pluck(:uri)
-      return if legacy.sort == normalized
-
-      raise Hitch::SchemaState::CorruptState,
-        "redirect representations disagree for client #{id}"
-    end
-
-    def ensure_legacy_redirect_storage!
-      self.class.send(:ensure_legacy_redirect_storage!)
-      return if has_attribute?(:redirect_uris)
-
-      raise Hitch::SchemaState::CorruptState,
-        "legacy redirect_uris column is unavailable to this client record"
-    end
-
-    def self.ensure_legacy_redirect_storage!
-      return if connection.column_exists?(table_name, :redirect_uris)
-
-      raise Hitch::SchemaState::CorruptState, "legacy redirect_uris column is unavailable"
-    end
-    private_class_method :ensure_legacy_redirect_storage!
 
     def secret_matches_auth_method
       if public_client?

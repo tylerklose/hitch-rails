@@ -10,8 +10,6 @@ APPRAISAL = File.join(ROOT, "bin/ci-appraisal")
 TEST_FILES = %w[
   test/hitch/client_redirect_uri_test.rb
   test/integration/principal_id_storage_migration_test.rb
-  test/integration/redirect_storage_migration_test.rb
-  test/integration/redirect_cutover_test.rb
   test/integration/concurrent_code_exchange_test.rb
 ].freeze
 

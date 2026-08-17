@@ -68,7 +68,6 @@ module Hitch
         hitch_access_tokens
         hitch_clients
         hitch_client_redirect_uris
-        hitch_schema_states
       ].freeze
       REQUIRED_PACKAGE_FILES = %w[
         app/controllers/concerns/hitch/mcp/endpoint.rb
@@ -212,8 +211,7 @@ module Hitch
         {
           "required_versions" => required,
           "missing_versions" => required - installed,
-          "missing_tables" => REQUIRED_TABLES.reject { |table| connection.data_source_exists?(table) },
-          "redirect_cutover_version" => Hitch::SchemaState.redirect_uris_version
+          "missing_tables" => REQUIRED_TABLES.reject { |table| connection.data_source_exists?(table) }
         }
       end
 
@@ -597,14 +595,8 @@ module Hitch
       facts = system.migration_facts
       missing = facts.fetch("missing_versions").any? || facts.fetch("missing_tables").any?
       return fail_check("migrations", "missing", "Required Hitch migrations or tables are missing", facts) if missing
-      return fail_check(
-        "migrations",
-        "cutover_not_current",
-        "Redirect rows are not the authoritative version-2 schema",
-        facts
-      ) unless facts.fetch("redirect_cutover_version") == 2
 
-      pass("migrations", "current", "Hitch migrations and redirect cutover marker are current", facts)
+      pass("migrations", "current", "Hitch migrations are current", facts)
     rescue StandardError => error
       probe_failure("migrations", error)
     end

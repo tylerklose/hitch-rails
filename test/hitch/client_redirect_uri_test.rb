@@ -5,12 +5,9 @@ require "test_helper"
 class Hitch::ClientRedirectUriTest < ActiveSupport::TestCase
   setup do
     Hitch::Client.delete_all
-    Hitch::SchemaState.find_or_create_by!(key: Hitch::SchemaState::REDIRECT_URIS_KEY) do |state|
-      state.version = 2
-    end.update!(version: 2)
   end
 
-  test "state 2 reads sorted normalized redirects and replacement removes stale rows" do
+  test "reads are sorted normalized redirects and replacement removes stale rows" do
     assert_raises(Hitch::Client::InvalidRegistrationMetadata) do
       Hitch::Client.register!(
         client_id: "lossy-client",
@@ -39,35 +36,29 @@ class Hitch::ClientRedirectUriTest < ActiveSupport::TestCase
     assert_equal 1, client.redirect_uri_records.count
   end
 
-  test "compatibility writes keep the legacy array and normalized rows in parity" do
-    unless Hitch::Client.connection.column_exists?(:hitch_clients, :redirect_uris)
-      assert_equal 2, Hitch::SchemaState.redirect_uris_version
-      assert_raises(Hitch::SchemaState::CorruptState) do
-        Hitch::SchemaState.find_by!(key: Hitch::SchemaState::REDIRECT_URIS_KEY).update_column(:version, 1)
-        Hitch::Client.register!(
-          client_id: "impossible-legacy",
-          client_name: "Impossible",
-          redirect_uris: [ "https://client.example/callback" ]
-        )
-      end
-      next
-    end
+  test "the writer works on unpersisted records through the association" do
+    client = Hitch::Client.new(
+      client_id: "new-record-writer",
+      client_name: "New",
+      token_endpoint_auth_method: "none",
+      redirect_uris: [ "https://b.example/cb", "https://a.example/cb" ]
+    )
+    client.save!
 
-    Hitch::SchemaState.find_by!(key: Hitch::SchemaState::REDIRECT_URIS_KEY).update!(version: 1)
+    assert_equal [ "https://a.example/cb", "https://b.example/cb" ], client.reload.redirect_uris
+  end
+
+  test "the writer validates shape before touching any rows" do
     client = Hitch::Client.register!(
-      client_id: "dual-client",
-      client_name: "Dual",
-      redirect_uris: [ "https://b.example/callback", "https://a.example/callback" ]
+      client_id: "strict-writer",
+      client_name: "Strict",
+      redirect_uris: [ "https://keep.example/cb" ]
     )
 
-    assert_equal(
-      [ "https://b.example/callback", "https://a.example/callback" ],
-      client[:redirect_uris]
-    )
-    assert_equal(
-      [ "https://a.example/callback", "https://b.example/callback" ],
-      client.redirect_uri_records.order(:uri).pluck(:uri)
-    )
+    assert_raises(Hitch::Client::InvalidRegistrationMetadata) do
+      client.redirect_uris = [ "https://ok.example/cb", "" ]
+    end
+    assert_equal [ "https://keep.example/cb" ], client.reload.redirect_uris
   end
 
   test "database uniqueness is final and deleting a client cascades without callbacks" do
@@ -85,30 +76,5 @@ class Hitch::ClientRedirectUriTest < ActiveSupport::TestCase
     assert_difference(-> { Hitch::ClientRedirectUri.count }, -1) do
       Hitch::Client.where(id: client.id).delete_all
     end
-  end
-
-  test "missing authority state fails reads and writes closed" do
-    client = Hitch::Client.register!(
-      client_id: "closed-client",
-      client_name: "Closed",
-      redirect_uris: [ "https://client.example/callback" ]
-    )
-    Hitch::SchemaState.where(key: Hitch::SchemaState::REDIRECT_URIS_KEY).delete_all
-
-    assert_raises(Hitch::SchemaState::CorruptState) { client.redirect_uris }
-    assert_raises(Hitch::SchemaState::CorruptState) do
-      client.redirect_uris = [ "https://changed.example/callback" ]
-    end
-    assert_equal [ "https://client.example/callback" ], client.redirect_uri_records.pluck(:uri)
-  end
-
-  test "authority state is read uncached from the writing database" do
-    state = Hitch::SchemaState.find_by!(key: Hitch::SchemaState::REDIRECT_URIS_KEY)
-
-    assert_equal 2, Hitch::SchemaState.redirect_uris_version
-    state.update_column(:version, 1)
-    assert_equal 1, Hitch::SchemaState.redirect_uris_version
-    state.update_column(:version, 2)
-    assert_equal 2, Hitch::SchemaState.redirect_uris_version
   end
 end

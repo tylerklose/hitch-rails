@@ -11,15 +11,6 @@ require_relative "support/mcp_work_probes"
 
 McpWorkProbes.install!
 
-# db:test:prepare can load schema.rb without replaying the migration's data
-# insert. Production installs run db:migrate; tests recreate the one durable
-# authority row explicitly so missing-state behavior remains fail-closed.
-if ActiveRecord::Base.connection.data_source_exists?("hitch_schema_states")
-  Hitch::SchemaState.find_or_create_by!(key: Hitch::SchemaState::REDIRECT_URIS_KEY) do |state|
-    state.version = 2
-  end
-end
-
 # Minitest 6 no longer ships minitest/mock, and this gem deliberately
 # carries no test-double dependency. This is the whole of what the suite
 # needs: swap a singleton method for the duration of a block and put the

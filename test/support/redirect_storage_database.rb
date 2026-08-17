@@ -148,6 +148,6 @@ module RedirectStorageDatabase
   end
 
   def reset_hitch_redirect_model_columns
-    [ Hitch::AccessToken, Hitch::Client, Hitch::ClientRedirectUri, Hitch::SchemaState ].each(&:reset_column_information)
+    [ Hitch::AccessToken, Hitch::Client, Hitch::ClientRedirectUri ].each(&:reset_column_information)
   end
 end

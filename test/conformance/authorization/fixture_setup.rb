@@ -15,9 +15,6 @@ abort "Fixture directory must already exist" unless fixture_directory.directory?
 User.delete_all
 Hitch::AccessToken.delete_all
 Hitch::Client.delete_all
-Hitch::SchemaState.find_or_create_by!(key: Hitch::SchemaState::REDIRECT_URIS_KEY) do |state|
-  state.version = 2
-end
 
 user = User.create!(email: "hitch-conformance@example.test")
 public_client = Hitch::Client.register!(

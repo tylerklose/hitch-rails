@@ -120,14 +120,11 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
       facts = {
         "required_versions" => [ "20260801090000" ],
         "missing_versions" => [],
-        "missing_tables" => [],
-        "redirect_cutover_version" => 2
+        "missing_tables" => []
       }
       if values.fetch("migrations") == "missing"
         facts["missing_versions"] = [ "20260801090000" ]
-        facts["missing_tables"] = [ "hitch_schema_states" ]
-      elsif values.fetch("migrations") == "cutover_legacy"
-        facts["redirect_cutover_version"] = 1
+        facts["missing_tables"] = [ "hitch_clients" ]
       end
       facts
     end
@@ -205,8 +202,8 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
   end
 
   test "Lattice fixtures exercise all stable categories and actionable outcomes" do
-    assert_equal 28, SCENARIOS.length
-    assert_equal (1..28).to_a, SCENARIOS.map { |scenario| scenario.fetch("id") }
+    assert_equal 27, SCENARIOS.length
+    assert_equal (1..27).to_a, SCENARIOS.map { |scenario| scenario.fetch("id") }
     seen = Set.new
 
     SCENARIOS.each do |scenario|
@@ -586,7 +583,6 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
       [ "route_order", "fail", "wrong_verbs" ],
       [ "route_order", "fail", "invalid_engine_mount" ],
       [ "migrations", "fail", "missing" ],
-      [ "migrations", "fail", "cutover_not_current" ],
       [ "registry", "fail", "invalid" ],
       [ "registry", "warn", "empty" ],
       [ "hosts", "fail", "blocked" ],

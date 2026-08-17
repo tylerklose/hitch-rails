@@ -50,8 +50,7 @@
       "name": "migrations",
       "values": [
         "current",
-        "missing",
-        "cutover_legacy"
+        "missing"
       ]
     },
     {
@@ -288,16 +287,6 @@
         {
           "parameter": "migrations",
           "value": "missing"
-        }
-      ]
-    },
-    {
-      "type": "forced",
-      "_why": "Legacy redirect authority marker.",
-      "assignments": [
-        {
-          "parameter": "migrations",
-          "value": "cutover_legacy"
         }
       ]
     },

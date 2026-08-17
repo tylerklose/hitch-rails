@@ -222,13 +222,13 @@ class Hitch::MCP::RegistryTest < ActiveSupport::TestCase
   end
 
   test "runtime accepts only the exact internal snapshot type" do
-    snapshot_class = Hitch::MCP::Registry.const_get(:Snapshot, false)
+    snapshot_class = Hitch::MCP::Internal::RegistryRuntime::Snapshot
     snapshot = snapshot_class.new(registry_name: "McpToolRegistry", entries: [].freeze)
 
-    assert_nil Hitch::MCP::Registry.__send__(:validate_snapshot!, snapshot)
+    assert_nil Hitch::MCP::Internal::RegistryRuntime.__send__(:validate_snapshot!, snapshot)
     [ nil, Object.new, Struct.new(:registry_name, :entries).new("McpToolRegistry", []) ].each do |invalid|
       error = assert_raises(ArgumentError) do
-        Hitch::MCP::Registry.__send__(:validate_snapshot!, invalid)
+        Hitch::MCP::Internal::RegistryRuntime.__send__(:validate_snapshot!, invalid)
       end
       assert_equal "MCP registry is unavailable", error.message
     end
@@ -237,19 +237,19 @@ class Hitch::MCP::RegistryTest < ActiveSupport::TestCase
   test "runtime static scope comparison is exact and fails closed on corrupt context" do
     context = Struct.new(:granted_scopes).new(%w[mcp read])
 
-    assert Hitch::MCP::Registry.__send__(:scopes_granted?, [], context)
-    assert Hitch::MCP::Registry.__send__(:scopes_granted?, [ "mcp" ], context)
-    assert Hitch::MCP::Registry.__send__(:scopes_granted?, %w[mcp read], context)
-    refute Hitch::MCP::Registry.__send__(:scopes_granted?, [ "write" ], context)
-    refute Hitch::MCP::Registry.__send__(:scopes_granted?, [ "MCP" ], context)
+    assert Hitch::MCP::Internal::RegistryRuntime.__send__(:scopes_granted?, [], context)
+    assert Hitch::MCP::Internal::RegistryRuntime.__send__(:scopes_granted?, [ "mcp" ], context)
+    assert Hitch::MCP::Internal::RegistryRuntime.__send__(:scopes_granted?, %w[mcp read], context)
+    refute Hitch::MCP::Internal::RegistryRuntime.__send__(:scopes_granted?, [ "write" ], context)
+    refute Hitch::MCP::Internal::RegistryRuntime.__send__(:scopes_granted?, [ "MCP" ], context)
 
     subclass = Class.new(String)
     subclass_context = Struct.new(:granted_scopes).new([ subclass.new("mcp") ])
-    assert Hitch::MCP::Registry.__send__(:scopes_granted?, [ "mcp" ], subclass_context)
+    assert Hitch::MCP::Internal::RegistryRuntime.__send__(:scopes_granted?, [ "mcp" ], subclass_context)
 
     [ nil, "mcp", [ :mcp ], [ "mcp", nil ] ].each do |invalid|
       error = assert_raises(ArgumentError) do
-        Hitch::MCP::Registry.__send__(:scopes_granted?, [ "mcp" ], Struct.new(:granted_scopes).new(invalid))
+        Hitch::MCP::Internal::RegistryRuntime.__send__(:scopes_granted?, [ "mcp" ], Struct.new(:granted_scopes).new(invalid))
       end
       assert_equal "MCP context scopes are unavailable", error.message
     end

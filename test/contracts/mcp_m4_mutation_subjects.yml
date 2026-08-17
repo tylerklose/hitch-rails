@@ -19,11 +19,11 @@ subjects:
   - domain: admission
     expression: Hitch::MCP::Endpoint#hitch_mcp_admit_authenticated_request
   - domain: registration
-    expression: Hitch::MCP::Registry.validate_snapshot!
+    expression: Hitch::MCP::Internal::RegistryRuntime.validate_snapshot!
   - domain: availability
     expression: Hitch::MCP::Tool.available_to?
   - domain: scope
-    expression: Hitch::MCP::Registry.scopes_granted?
+    expression: Hitch::MCP::Internal::RegistryRuntime.scopes_granted?
   - domain: schema
     expression: Hitch::MCP::Internal::SchemaContract#call
   - domain: schema

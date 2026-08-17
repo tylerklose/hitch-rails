@@ -475,8 +475,7 @@ module Hitch
 
       def hitch_mcp_tools(verified_request:, context:, snapshot:)
         if verified_request.fetch("method") == "tools/call"
-          resolution = Registry.__send__(
-            :runtime_call,
+          resolution = Internal::RegistryRuntime.runtime_call(
             snapshot:,
             name: verified_request.fetch("params").fetch("name"),
             context:
@@ -492,7 +491,7 @@ module Hitch
           return resolution.status == :available ? [ resolution.tool ].freeze : [].freeze
         end
 
-        Registry.__send__(:runtime_listing, snapshot:, context:)
+        Internal::RegistryRuntime.runtime_listing(snapshot:, context:)
       end
 
       # Private test seams wrap production-owned admission and request

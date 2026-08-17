@@ -126,8 +126,7 @@ module Hitch
       def prepare_registry!(supported_scopes:)
         @registry_mutex.synchronize do
           @registry_snapshot = nil
-          @registry_snapshot = Hitch::MCP::Registry.__send__(
-            :build_snapshot,
+          @registry_snapshot = Hitch::MCP::Internal::RegistryRuntime.build_snapshot(
             registry_name: @registry,
             supported_scopes:
           )

@@ -73,6 +73,21 @@ authorization substrate.
   a synthetic category and a server-generated correlation ID; client
   controlled JSON-RPC IDs and original exceptions never enter the framework
   error reporter.
+- **The pre-release migration chain was squashed into one
+  `CreateHitchTables`.** `hitch_schema_states` is dropped — it existed only
+  for the retired redirect dual-write, along with the
+  `hitch:redirects:cutover` / `prepare_rollback` tasks that drove it. Nothing
+  shipped publicly; an install that applied pre-release migrations should
+  drop and re-migrate rather than upgrade in place (see
+  `docs/upgrading/0.2.0.md`).
+- Doctor JSON output: the `migrations` check no longer reports a
+  `redirect_cutover_version` fact or a `cutover_not_current` failure code,
+  and its pass summary reads "Hitch migrations are current".
+- The CIMD SSRF, timeout, and size-cap constants moved from
+  `Hitch::ClientIdMetadata` to `Hitch::ClientIdMetadata::Fetcher`
+  (`ALLOWED_PORT` stays; `FAILURE_CACHE_TTL` is now
+  `Hitch::ClientIdMetadata::Cache::FAILURE_TTL`). Host code referencing the
+  old constants gets `NameError`.
 
 ## [0.1.0] - 2026-08-01
 

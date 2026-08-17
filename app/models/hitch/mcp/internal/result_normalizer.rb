@@ -2,7 +2,6 @@
 
 require "json"
 require "json_schemer"
-require "mcp"
 
 module Hitch
   module MCP
@@ -12,7 +11,6 @@ module Hitch
       class ResultNormalizer
         JSON_SCHEMA_2020_12 = "https://json-schema.org/draft/2020-12/schema"
         ROOT_SCHEMA_KEYWORDS = %w[type $ref oneOf anyOf allOf not if const enum].freeze
-        EXPLICIT_ERROR_MARKER = Object.new.freeze
 
         class Failure < StandardError
           attr_reader :category
@@ -23,24 +21,25 @@ module Hitch
           end
         end
 
-        class SDKResponse < ::MCP::Tool::Response
-          def initialize(result, content_provided:)
+        # Duck-typed stand-in for ::MCP::Tool::Response — both supported SDK
+        # lines read only #to_h and #content_provided?. explicit_error_text is
+        # the host-authored Result.error string, carried out of band so the
+        # response normalizer can tell it apart from SDK-generated errors.
+        class SDKResponse
+          attr_reader :explicit_error_text
+
+          def initialize(result, content_provided:, explicit_error_text: nil)
             @hitch_result = result
             @hitch_content_provided = content_provided
+            @explicit_error_text = explicit_error_text
           end
 
           def to_h
-            copy(@hitch_result)
+            JsonValues.copy(@hitch_result)
           end
 
           def content_provided?
             @hitch_content_provided
-          end
-
-          private
-
-          def copy(value)
-            JsonValues.copy(value)
           end
         end
 
@@ -53,29 +52,8 @@ module Hitch
             error.category if error.instance_of?(Failure)
           end
 
-          def explicit_error_text(result)
-            return unless explicit_error?(result)
-
-            content = read(result, :content)
-            return unless content.is_a?(Array) && content.length == 1
-
-            block = content.first
-            return unless block.is_a?(Hash) && read(block, :type) == "text"
-
-            text = read(block, :text)
-            text if text.is_a?(String)
-          end
-
-          private
-
-          def explicit_error?(result)
-            meta = read(result, :_meta)
-            meta.is_a?(Hash) && meta.key?(EXPLICIT_ERROR_MARKER) &&
-              meta.fetch(EXPLICIT_ERROR_MARKER).equal?(EXPLICIT_ERROR_MARKER)
-          end
-
-          def read(hash, key)
-            JsonValues.read(hash, key)
+          def explicit_error_text(response)
+            response.explicit_error_text if response.instance_of?(SDKResponse)
           end
         end
 
@@ -89,16 +67,11 @@ module Hitch
           invalid!(:invalid_result_type) unless result.instance_of?(Result)
           invalid!(:invalid_result_limit) unless max_bytes.instance_of?(Integer) && max_bytes.positive?
 
-          canonical, content_provided, explicit_error = canonical_result
+          canonical, content_provided, explicit_error_text = canonical_result
           serialized = generate(canonical)
           invalid!(:result_too_large) if serialized.bytesize > max_bytes
 
-          sdk_result = if explicit_error
-            canonical.merge(_meta: { EXPLICIT_ERROR_MARKER => EXPLICIT_ERROR_MARKER }.freeze).freeze
-          else
-            canonical
-          end
-          SDKResponse.new(sdk_result, content_provided:)
+          SDKResponse.new(canonical, content_provided:, explicit_error_text:)
         rescue SystemStackError
           invalid!(:serialization_failure)
         end
@@ -119,7 +92,7 @@ module Hitch
         def text_result
           validate_output_schema!(nil) if output_schema
           content = text_content(result.__send__(:value))
-          [ deep_freeze(content: content, isError: false), true, false ]
+          [ deep_freeze(content: content, isError: false), true, nil ]
         end
 
         def structured_result
@@ -136,12 +109,12 @@ module Hitch
             isError: false,
             structuredContent: value
           }
-          [ deep_freeze(canonical), !content.nil?, false ]
+          [ deep_freeze(canonical), !content.nil?, nil ]
         end
 
         def error_result
-          content = text_content(result.__send__(:value))
-          [ deep_freeze(content: content, isError: true), true, true ]
+          text = result.__send__(:value)
+          [ deep_freeze(content: text_content(text), isError: true), true, text ]
         end
 
         def validate_output_schema!(value)
@@ -187,7 +160,7 @@ module Hitch
           raise Failure, category
         end
 
-        private_constant :Failure, :SDKResponse, :EXPLICIT_ERROR_MARKER
+        private_constant :Failure, :SDKResponse
       end
     end
   end

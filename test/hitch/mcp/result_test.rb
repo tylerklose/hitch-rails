@@ -395,7 +395,7 @@ class Hitch::MCP::ResultTest < ActiveSupport::TestCase
     assert_instance_of normalizer.const_get(:SDKResponse, false), response
     assert_equal canonical, response.to_h
     assert_equal true, response.content_provided?
-    assert_nil normalizer.explicit_error_text(response.to_h)
+    assert_nil normalizer.explicit_error_text(response)
     assert_normalizer_failure(:result_too_large) do
       normalizer.call(result: text_result, output_schema: nil, max_bytes: exact_bytes - 1)
     end
@@ -408,8 +408,8 @@ class Hitch::MCP::ResultTest < ActiveSupport::TestCase
     )
     internal_result = error_response.instance_variable_get(:@hitch_result)
     assert_predicate internal_result, :frozen?
-    assert_predicate internal_result.fetch(:_meta), :frozen?
-    assert_equal public_error, normalizer.explicit_error_text(error_response.to_h)
+    refute internal_result.key?(:_meta)
+    assert_equal public_error, normalizer.explicit_error_text(error_response)
     assert_equal true, error_response.content_provided?
   end
 

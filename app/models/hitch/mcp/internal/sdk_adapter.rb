@@ -27,6 +27,7 @@ module Hitch
           @tools = tools.dup.freeze
           @context = context
           @server_info = copy_hash(server_info)
+          @tool_responses = []
         end
 
         def call
@@ -38,7 +39,8 @@ module Hitch
             response: response,
             method: request_method,
             server_info: server_info,
-            request_id: read(request, "id")
+            request_id: read(request, "id"),
+            tool_response: @tool_responses.last
           )
         end
 
@@ -65,6 +67,9 @@ module Hitch
         end
 
         def build_tools
+          # The SDK rebinds self inside this block (define_singleton_method),
+          # so the response capture rides a closed-over local.
+          captured = @tool_responses
           tools.map do |definition|
             name = validate_tool_name!(definition.name)
             annotations = definition.annotations if definition.respond_to?(:annotations)
@@ -76,7 +81,7 @@ module Hitch
               output_schema: definition.output_schema,
               annotations: annotations
             ) do |server_context:, **arguments|
-              definition.call(server_context:, **arguments)
+              definition.call(server_context:, **arguments).tap { |response| captured << response }
             end
           end
         end

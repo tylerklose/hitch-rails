@@ -13,16 +13,17 @@ module Hitch
           GENERIC_TOOL_ERROR = "Tool execution failed"
 
           class << self
-            def call(response:, method:, server_info:, request_id:)
-              new(response, method, server_info, request_id).call
+            def call(response:, method:, server_info:, request_id:, tool_response:)
+              new(response, method, server_info, request_id, tool_response).call
             end
           end
 
-          def initialize(response, method, server_info, request_id)
+          def initialize(response, method, server_info, request_id, tool_response)
             @response = response
             @method = method
             @server_info = server_info
             @request_id = request_id
+            @tool_response = tool_response
           end
 
           def call
@@ -57,7 +58,7 @@ module Hitch
 
           private
 
-          attr_reader :response, :method, :server_info, :request_id
+          attr_reader :response, :method, :server_info, :request_id, :tool_response
 
           def internal_error
             deep_freeze(
@@ -92,7 +93,7 @@ module Hitch
           end
 
           def normalize_tool_error(result)
-            explicit_text = ResultNormalizer.explicit_error_text(result)
+            explicit_text = ResultNormalizer.explicit_error_text(tool_response)
             result.delete(:structuredContent)
             result.delete("structuredContent")
             result.delete(:_meta)

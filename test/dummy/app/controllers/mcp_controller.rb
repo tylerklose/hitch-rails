@@ -76,18 +76,6 @@ class McpController < ActionController::API
     end
   end
 
-  def hitch_mcp_body_parse_started!
-    self.class.increment_wire_metric!(:body_parses)
-  end
-
-  def hitch_mcp_registry_resolved!
-    self.class.increment_wire_metric!(:registry)
-  end
-
-  def hitch_mcp_sdk_dispatch_started!
-    self.class.increment_wire_metric!(:sdk)
-  end
-
   def hitch_mcp_host_called!
     self.class.increment_wire_metric!(:host)
   end

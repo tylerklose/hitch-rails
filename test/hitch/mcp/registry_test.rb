@@ -337,11 +337,11 @@ class Hitch::MCP::RegistryTest < ActiveSupport::TestCase
   end
 
   def prepare_registry
-    @configuration.__send__(:prepare_registry!, supported_scopes: %w[mcp read])
+    @configuration.prepare_registry!(supported_scopes: %w[mcp read])
   end
 
   def registry_snapshot
-    @configuration.__send__(:registry_snapshot!)
+    @configuration.registry_snapshot!
   end
 
   def clear_fixtures

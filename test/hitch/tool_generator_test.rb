@@ -243,10 +243,7 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
       # reopens the dummy registry exactly the way a host boot would see it.
       load #{destination_path(REGISTRY_PATH).dump}
       principal = User.create!(email: "generated-tool@example.test")
-      Hitch.configuration.mcp.__send__(
-        :prepare_registry!,
-        supported_scopes: Hitch.configuration.supported_scopes
-      )
+      Hitch.configuration.mcp.prepare_registry!(supported_scopes: Hitch.configuration.supported_scopes)
       Minitest.after_run { principal.reload.destroy }
       load #{destination_path(working.fetch(:test_path)).dump}
       load #{destination_path(hardened.fetch(:test_path)).dump}

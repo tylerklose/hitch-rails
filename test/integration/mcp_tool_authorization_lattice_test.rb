@@ -265,10 +265,7 @@ class MCPToolAuthorizationLatticeTest < ActionDispatch::IntegrationTest
       configuration.mcp.max_request_bytes = 8_192
     end
     Hitch.configuration.validate!
-    Hitch.configuration.mcp.__send__(
-      :prepare_registry!,
-      supported_scopes: Hitch.configuration.supported_scopes
-    )
+    Hitch.configuration.mcp.prepare_registry!(supported_scopes: Hitch.configuration.supported_scopes)
   end
 
   def execute_scenario(scenario, token_variant: nil)

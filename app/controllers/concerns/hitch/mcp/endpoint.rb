@@ -29,7 +29,6 @@ module Hitch
         @hitch_mcp_observation&.request_bytes!(raw_body ? raw_body.bytesize : max_request_bytes + 1)
         return hitch_mcp_protocol_error!(413, -32600, "Invalid Request") unless raw_body
 
-        hitch_mcp_body_parse_started!
         verified_request = Internal::VerifiedRequest.call(
           raw_body: raw_body,
           headers: {
@@ -202,11 +201,9 @@ module Hitch
         server_info = Internal::ServerInfo.normalize(Hitch.configuration.mcp.server_info.call(context))
 
         snapshot = Hitch.configuration.mcp.registry_snapshot!
-        hitch_mcp_registry_resolved!
         tools = hitch_mcp_tools(verified_request:, context:, snapshot:)
         return if performed?
 
-        hitch_mcp_sdk_dispatch_started!
         protocol_response = Internal::SDKAdapter.call(
           verified_request: verified_request,
           tools: tools,
@@ -317,10 +314,6 @@ module Hitch
         Internal::RegistryRuntime.runtime_listing(snapshot:, context:)
       end
 
-      # Private test seams wrap production-owned admission and request
-      # observation; final Tool calls emit through Internal::Observation
-      # directly.
-
       # Counts through the host application's own cache store, exactly as
       # ActionController::RateLimiting does. A nil count admits, same as
       # Rails: :null_store returns nil (test, and development without
@@ -338,9 +331,6 @@ module Hitch
         )
       end
 
-      def hitch_mcp_body_parse_started!; end
-      def hitch_mcp_registry_resolved!; end
-      def hitch_mcp_sdk_dispatch_started!; end
       def hitch_mcp_request_observed!
         @hitch_mcp_observation&.finish!(response:)
       end

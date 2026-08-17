@@ -190,10 +190,7 @@ class Hitch::MCP::ContextEndpointTest < ActionDispatch::IntegrationTest
       configuration.mcp.request_limit = { to: 120, within: 60 }
     end
     Hitch.configuration.validate!
-    Hitch.configuration.mcp.__send__(
-      :prepare_registry!,
-      supported_scopes: Hitch.configuration.supported_scopes
-    )
+    Hitch.configuration.mcp.prepare_registry!(supported_scopes: Hitch.configuration.supported_scopes)
   end
 
   teardown do

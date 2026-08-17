@@ -118,10 +118,7 @@ class MCPRateLimitCrossProcessContractTest < ActiveSupport::TestCase
       configuration.mcp.rate_limit_store = ActiveSupport::Cache::RedisCacheStore.new(url: @redis_url)
     end
     Hitch.configuration.validate!
-    Hitch.configuration.mcp.__send__(
-      :prepare_registry!,
-      supported_scopes: Hitch.configuration.supported_scopes
-    )
+    Hitch.configuration.mcp.prepare_registry!(supported_scopes: Hitch.configuration.supported_scopes)
   end
 
   def run_processes

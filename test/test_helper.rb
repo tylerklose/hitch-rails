@@ -7,6 +7,9 @@ ActiveRecord::Migrator.migrations_paths << File.expand_path("../db/migrate", __d
 require "rails/test_help"
 require_relative "support/access_token_exchange"
 require_relative "support/rack_input"
+require_relative "support/mcp_work_probes"
+
+McpWorkProbes.install!
 
 # db:test:prepare can load schema.rb without replaying the migration's data
 # insert. Production installs run db:migrate; tests recreate the one durable

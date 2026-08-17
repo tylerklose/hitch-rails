@@ -450,10 +450,7 @@ class MCPListingTest < ActionDispatch::IntegrationTest
   end
 
   def prepare_registry
-    Hitch.configuration.mcp.__send__(
-      :prepare_registry!,
-      supported_scopes: Hitch.configuration.supported_scopes
-    )
+    Hitch.configuration.mcp.prepare_registry!(supported_scopes: Hitch.configuration.supported_scopes)
   end
 
   def define_listing_reload_pair(available:, description:, description_gate: nil)

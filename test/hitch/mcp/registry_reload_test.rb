@@ -135,7 +135,7 @@ class Hitch::MCP::RegistryReloadTest < ActiveSupport::TestCase
 
     Rails.application.eager_load!
     Rails.application.reloader.prepare!
-    snapshot = fresh_configuration.mcp.__send__(:registry_snapshot!)
+    snapshot = fresh_configuration.mcp.registry_snapshot!
 
     assert_equal "McpToolRegistry", snapshot.registry_name
     assert_equal [ "dummy.echo" ], snapshot.entries.map(&:name)
@@ -159,7 +159,7 @@ class Hitch::MCP::RegistryReloadTest < ActiveSupport::TestCase
     end
 
     assert_raises(ArgumentError) { Rails.application.reloader.prepare! }
-    assert_raises(ArgumentError) { fresh_configuration.mcp.__send__(:registry_snapshot!) }
+    assert_raises(ArgumentError) { fresh_configuration.mcp.registry_snapshot! }
   ensure
     Hitch.instance_variable_set(:@configuration, original_configuration) if defined?(original_configuration)
   end
@@ -188,11 +188,11 @@ class Hitch::MCP::RegistryReloadTest < ActiveSupport::TestCase
   end
 
   def prepare_registry
-    @configuration.__send__(:prepare_registry!, supported_scopes: [ "mcp" ])
+    @configuration.prepare_registry!(supported_scopes: [ "mcp" ])
   end
 
   def registry_snapshot
-    @configuration.__send__(:registry_snapshot!)
+    @configuration.registry_snapshot!
   end
 
   def clear_reload_constants

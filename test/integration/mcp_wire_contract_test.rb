@@ -53,10 +53,7 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
       configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
       configuration.mcp.request_limit = { to: 120, within: 60 }
     end
-    Hitch.configuration.mcp.__send__(
-      :prepare_registry!,
-      supported_scopes: Hitch.configuration.supported_scopes
-    )
+    Hitch.configuration.mcp.prepare_registry!(supported_scopes: Hitch.configuration.supported_scopes)
     McpController.wire_slice_enabled = true
 
     @user = User.create!(email: "wire@example.test")

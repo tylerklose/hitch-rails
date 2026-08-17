@@ -298,6 +298,12 @@ instance variables: `@client_name`, `@redirect_host`, `@brand_name`,
 `@oauth_params`, `@resource`, and `@scopes` (already clamped to
 `supported_scopes` — show them so consent is informed).
 
+`@client_name` is derived from the verified redirect host through
+`config.client_names`, a Hash of host matchers (exact `String` or `Regexp`)
+to labels, checked in order. The default table labels the common MCP
+clients; extend it with
+`config.client_names = Hitch::Configuration::DEFAULT_CLIENT_NAMES.merge("tool.example" => "My Tool")`.
+
 ## Adopter security requirements
 
 This gem is an OAuth **authorization server** — configure the host correctly

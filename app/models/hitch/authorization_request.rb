@@ -229,19 +229,16 @@ module Hitch
       "#{principal.class.name}:#{principal.id}"
     end
 
+    # First matching entry in the configured table, with case/when
+    # semantics: String keys compare exactly, Regexp keys match.
     def friendly_client_name
       host = redirect_host
       return nil if host.blank?
 
-      case host
-      when "claude.ai"                                                 then "Claude"
-      when /\A([\w-]+\.)?chatgpt\.com\z/, /\A([\w-]+\.)?openai\.com\z/ then "ChatGPT"
-      when /\A([\w-]+\.)?cursor\.(com|sh)\z/                           then "Cursor"
-      when /\A([\w-]+\.)?windsurf\.com\z/                              then "Windsurf"
-      when /\A([\w-]+\.)?gemini\.google\.com\z/                        then "Gemini"
-      when "grok.com", /\A([\w-]+\.)?x\.ai\z/                          then "Grok"
-      when "localhost", "127.0.0.1"                                    then "Local Development"
+      Hitch.configuration.client_names.each do |matcher, label|
+        return label if matcher === host
       end
+      nil
     end
 
     def invalid_request(description)

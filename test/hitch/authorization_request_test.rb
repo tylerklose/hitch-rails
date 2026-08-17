@@ -142,6 +142,21 @@ class Hitch::AuthorizationRequestTest < ActiveSupport::TestCase
     assert_equal "tool.example", unknown_host.display_client_name
   end
 
+  test "client_names is host-configurable and matches in order with case/when semantics" do
+    Hitch.configure do |configuration|
+      configuration.client_names = { "tool.example" => "My Tool", /\Atool\./ => "Shadowed" }
+    end
+
+    assert_equal "My Tool",
+      build_request(client_id: "x", redirect_uri: "https://tool.example/cb").display_client_name
+    assert_equal "other.example",
+      build_request(client_id: "x", redirect_uri: "https://other.example/cb").display_client_name
+
+    assert_raises(ArgumentError) { Hitch.configure { |c| c.client_names = { 7 => "label" } } }
+    assert_raises(ArgumentError) { Hitch.configure { |c| c.client_names = { "host" => :label } } }
+    assert_raises(ArgumentError) { Hitch.configure { |c| c.client_names = [ "host" ] } }
+  end
+
   test "localhost-only warning fires only for all-loopback CIMD clients" do
     Hitch.configure { |configuration| configuration.client_id_metadata_enabled = true }
     loopback_only = Hitch::ClientIdMetadata::Document.new(

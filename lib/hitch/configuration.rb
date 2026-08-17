@@ -16,6 +16,20 @@ module Hitch
     MAX_SCOPE_BYTES = 64
     MAX_SCOPE_SET_BYTES = 255
 
+    # The shipped consent-screen label table (see client_names).
+    DEFAULT_CLIENT_NAMES = {
+      "claude.ai" => "Claude",
+      /\A([\w-]+\.)?chatgpt\.com\z/ => "ChatGPT",
+      /\A([\w-]+\.)?openai\.com\z/ => "ChatGPT",
+      /\A([\w-]+\.)?cursor\.(com|sh)\z/ => "Cursor",
+      /\A([\w-]+\.)?windsurf\.com\z/ => "Windsurf",
+      /\A([\w-]+\.)?gemini\.google\.com\z/ => "Gemini",
+      "grok.com" => "Grok",
+      /\A([\w-]+\.)?x\.ai\z/ => "Grok",
+      "localhost" => "Local Development",
+      "127.0.0.1" => "Local Development"
+    }.freeze
+
     # @return [String] e.g. "https://example.com/mcp"
     attr_reader :resource_uri
 
@@ -33,6 +47,16 @@ module Hitch
     # Brand display name shown on the consent screen.
     # @return [String]
     attr_accessor :brand_name
+
+    # Consent-screen labels for known client hosts, matched against the
+    # VERIFIED redirect_uri host — never the client's declared name, which
+    # is attacker-controllable in both registration schemes. Entries match
+    # in order with case/when semantics: a String key is an exact host, a
+    # Regexp key matches the host; first match wins, and an unmatched host
+    # is displayed as itself. Assign a whole Hash to customize (extend the
+    # default with `Hitch::Configuration::DEFAULT_CLIENT_NAMES.merge(...)`).
+    # @return [Hash{String,Regexp => String}]
+    attr_reader :client_names
 
     # OAuth scopes the host app supports. The first entry is the base/default
     # scope requested by the generic MCP bearer challenge; later entries are
@@ -166,6 +190,7 @@ module Hitch
       @allowed_hosts = [].freeze
       @allowed_origins = [].freeze
       @brand_name = "Rails MCP"
+      @client_names = DEFAULT_CLIENT_NAMES
       @supported_scopes = [ "mcp".freeze ].freeze
       @access_token_lifetime_seconds = 3600
       @authorization_code_lifetime_seconds = 600
@@ -205,6 +230,20 @@ module Hitch
 
     def allowed_origins=(values)
       @allowed_origins = validate_origins(values).freeze
+    end
+
+    def client_names=(value)
+      valid = value.is_a?(Hash) && value.all? do |matcher, label|
+        (matcher.is_a?(String) || matcher.is_a?(Regexp)) && label.is_a?(String)
+      end
+      unless valid
+        raise ArgumentError,
+          "client_names must be a Hash of String or Regexp host matchers to String labels"
+      end
+
+      @client_names = value.to_h do |matcher, label|
+        [ matcher.is_a?(String) ? matcher.dup.freeze : matcher, label.dup.freeze ]
+      end.freeze
     end
 
     def supported_scopes=(values)

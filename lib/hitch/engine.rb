@@ -121,10 +121,7 @@ module Hitch
 
       configuration.mcp.validate!
 
-      configuration.mcp.__send__(
-        :prepare_registry!,
-        supported_scopes: configuration.supported_scopes
-      )
+      configuration.mcp.prepare_registry!(supported_scopes: configuration.supported_scopes)
       configuration.mcp.validate_rate_limit_store!
     end
 

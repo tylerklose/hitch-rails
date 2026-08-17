@@ -28,7 +28,7 @@ module Hitch
           status: status.to_s.freeze,
           code: code.to_s.freeze,
           summary: summary.to_s.freeze,
-          details: Doctor.__send__(:copy_json, details)
+          details: Doctor.copy_json(details)
         )
         freeze
       end
@@ -432,21 +432,6 @@ module Hitch
         end
       end
 
-      private
-
-      def render_human(report)
-        lines = [ "Hitch doctor v1: #{report.status.upcase}" ]
-        report.checks.each do |check|
-          lines << format("%-4s %-24s %-28s %s", check.status.upcase, check.id, check.code, check.summary)
-        end
-        counts = %w[pass warn fail skip].to_h do |status|
-          [ status, report.checks.count { |check| check.status == status } ]
-        end
-        lines << "Summary: pass=#{counts.fetch('pass')} warn=#{counts.fetch('warn')} " \
-          "fail=#{counts.fetch('fail')} skip=#{counts.fetch('skip')}"
-        "#{lines.join("\n")}\n"
-      end
-
       def copy_json(value)
         copy = case value
         when Hash
@@ -463,6 +448,21 @@ module Hitch
           value.to_s
         end
         copy.freeze
+      end
+
+      private
+
+      def render_human(report)
+        lines = [ "Hitch doctor v1: #{report.status.upcase}" ]
+        report.checks.each do |check|
+          lines << format("%-4s %-24s %-28s %s", check.status.upcase, check.id, check.code, check.summary)
+        end
+        counts = %w[pass warn fail skip].to_h do |status|
+          [ status, report.checks.count { |check| check.status == status } ]
+        end
+        lines << "Summary: pass=#{counts.fetch('pass')} warn=#{counts.fetch('warn')} " \
+          "fail=#{counts.fetch('fail')} skip=#{counts.fetch('skip')}"
+        "#{lines.join("\n")}\n"
       end
     end
 

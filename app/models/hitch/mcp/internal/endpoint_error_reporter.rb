@@ -29,7 +29,7 @@ module Hitch
 
           def reporting_context(category)
             context = { hitch_mcp_category: CATEGORIES.fetch(category) }
-            request_id = Observation.__send__(:current_request_id)
+            request_id = Observation.current_request_id
             context[:hitch_mcp_request_id] = request_id.dup.freeze if request_id
             context.freeze
           end

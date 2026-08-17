@@ -213,7 +213,7 @@ module Hitch
         context = hitch_mcp_context(verified_request, scope:)
         server_info = hitch_mcp_server_info(context)
 
-        snapshot = Hitch.configuration.mcp.__send__(:registry_snapshot!)
+        snapshot = Hitch.configuration.mcp.registry_snapshot!
         hitch_mcp_registry_resolved!
         tools = hitch_mcp_tools(verified_request:, context:, snapshot:)
         return if performed?

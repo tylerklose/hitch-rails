@@ -47,7 +47,7 @@ module Hitch
             if tool_name.instance_of?(String) && TOOL_NAME_PATTERN.match?(tool_name)
               context[:hitch_mcp_tool] = tool_name.dup.freeze
             end
-            request_id = Observation.__send__(:current_request_id)
+            request_id = Observation.current_request_id
             context[:hitch_mcp_request_id] = request_id.dup.freeze if request_id
             context.freeze
           end

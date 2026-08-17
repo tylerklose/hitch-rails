@@ -121,8 +121,8 @@ module Hitch
         Hitch::RateLimitStore.assert_shared!(rate_limit_store, setting: SETTING)
       end
 
-      private
-
+      # Framework lifecycle, not a host knob: the engine's to_prepare hook
+      # rebuilds the snapshot; the endpoint reads it per request.
       def prepare_registry!(supported_scopes:)
         @registry_mutex.synchronize do
           @registry_snapshot = nil
@@ -139,6 +139,8 @@ module Hitch
           @registry_snapshot || raise(ArgumentError, "MCP registry is unavailable")
         end
       end
+
+      private
 
       def normalize_request_limit(value)
         unless value.respond_to?(:to_h)

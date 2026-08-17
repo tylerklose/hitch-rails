@@ -58,8 +58,7 @@ module Hitch
           end
 
           def authenticated!(principal:, client_id:)
-            principal_type, principal_key, client_key = Observation.__send__(
-              :identity_keys,
+            principal_type, principal_key, client_key = Observation.identity_keys(
               principal:,
               client_id:
             )
@@ -68,7 +67,7 @@ module Hitch
             @client_key = client_key
             nil
           rescue StandardError, SystemStackError
-            Observation.__send__(:report_failure, REQUEST_EVENT, "identity")
+            Observation.report_failure(REQUEST_EVENT, "identity")
             nil
           end
 
@@ -82,7 +81,7 @@ module Hitch
             @method = method.dup.freeze if %w[server/discover tools/list tools/call].include?(method)
             nil
           rescue StandardError, SystemStackError
-            Observation.__send__(:report_failure, REQUEST_EVENT, "verified_request")
+            Observation.report_failure(REQUEST_EVENT, "verified_request")
             nil
           end
 
@@ -97,7 +96,7 @@ module Hitch
             @protocol_code = code if code.is_a?(Integer)
             nil
           rescue StandardError, SystemStackError
-            Observation.__send__(:report_failure, REQUEST_EVENT, "protocol_response")
+            Observation.report_failure(REQUEST_EVENT, "protocol_response")
             nil
           end
 
@@ -125,13 +124,13 @@ module Hitch
               protocol_code: @protocol_code,
               outcome: outcome(http_status),
               request_bytes: @request_bytes,
-              response_bytes: Observation.__send__(:response_bytes, response),
+              response_bytes: Observation.response_bytes(response),
               duration_ms: duration_ms
             }.freeze
-            Observation.__send__(:publish, REQUEST_EVENT, payload)
+            Observation.publish(REQUEST_EVENT, payload)
             nil
           rescue StandardError, SystemStackError
-            Observation.__send__(:report_failure, REQUEST_EVENT, "request_finish")
+            Observation.report_failure(REQUEST_EVENT, "request_finish")
             nil
           end
 
@@ -199,10 +198,10 @@ module Hitch
               result_category: @result_category,
               duration_ms: duration_ms
             }.freeze
-            Observation.__send__(:publish, INVOCATION_EVENT, payload)
+            Observation.publish(INVOCATION_EVENT, payload)
             nil
           rescue StandardError, SystemStackError
-            Observation.__send__(:report_failure, INVOCATION_EVENT, "invocation_finish")
+            Observation.report_failure(INVOCATION_EVENT, "invocation_finish")
             nil
           end
 
@@ -245,22 +244,10 @@ module Hitch
             nil
           end
 
-          private
-
           def current_request_id
             correlation_id(current_request&.request_id)
           rescue StandardError, SystemStackError
             nil
-          end
-
-          def correlation_id(request_id)
-            return unless request_id.instance_of?(String) && REQUEST_ID_PATTERN.match?(request_id)
-
-            request_id.dup.freeze
-          end
-
-          def current_request
-            ActiveSupport::IsolatedExecutionState[CURRENT_REQUEST_KEY]
           end
 
           def publish(event_name, payload)
@@ -293,15 +280,6 @@ module Hitch
             [ principal_type.dup.freeze, principal_key, client_key ].freeze
           end
 
-          def identity_digest(components, key_generator)
-            HmacIdentity.digest(
-              salt: IDENTITY_SALT,
-              components: components,
-              key_generator: key_generator,
-              unavailable_message: "MCP observation key is unavailable"
-            )
-          end
-
           def response_bytes(response)
             body = response.body
             return body.bytesize if body.is_a?(String)
@@ -321,6 +299,27 @@ module Hitch
             )
           rescue StandardError, SystemStackError
             nil
+          end
+
+          private
+
+          def correlation_id(request_id)
+            return unless request_id.instance_of?(String) && REQUEST_ID_PATTERN.match?(request_id)
+
+            request_id.dup.freeze
+          end
+
+          def current_request
+            ActiveSupport::IsolatedExecutionState[CURRENT_REQUEST_KEY]
+          end
+
+          def identity_digest(components, key_generator)
+            HmacIdentity.digest(
+              salt: IDENTITY_SALT,
+              components: components,
+              key_generator: key_generator,
+              unavailable_message: "MCP observation key is unavailable"
+            )
           end
         end
 

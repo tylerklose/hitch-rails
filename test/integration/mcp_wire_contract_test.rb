@@ -120,12 +120,8 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
     end
     assert_equal [
       [ :around, :hitch_mcp_observe_request ],
-      [ :before, :hitch_mcp_host_gate! ],
-      [ :before, :hitch_mcp_origin_gate! ],
-      [ :before, :hitch_mcp_method_gate! ],
-      [ :before, :hitch_mcp_authenticate! ],
-      [ :before, :hitch_mcp_rate_admission! ]
-    ], hitch_callbacks.first(6)
+      [ :before, :hitch_mcp_gate! ]
+    ], hitch_callbacks.first(2)
     assert_equal Hitch::MCP::Endpoint, McpController.instance_method(:process_action).owner
 
     %w[post_host_denied post_origin_denied get_method_denied token_missing admission_reject].each do |vector_id|

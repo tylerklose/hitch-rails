@@ -38,14 +38,7 @@ module Hitch
       included do
         skip_forgery_protection if respond_to?(:skip_forgery_protection)
 
-        # Rails reverses one prepend declaration's method list. This spelling
-        # produces Host -> Origin -> method -> auth -> admission at runtime.
-        prepend_before_action :hitch_mcp_rate_admission!,
-          :hitch_mcp_authenticate!,
-          :hitch_mcp_method_gate!,
-          :hitch_mcp_origin_gate!,
-          :hitch_mcp_host_gate!,
-          only: :handle
+        prepend_before_action :hitch_mcp_gate!, only: :handle
         prepend_around_action :hitch_mcp_observe_request,
           only: :handle,
           unless: -> { request.options? }
@@ -112,6 +105,24 @@ module Hitch
         ensure
           @hitch_mcp_observation = nil
         end
+      end
+
+      # The security order, top to bottom. Each gate halts the request by
+      # rendering; nothing later runs once one has.
+      def hitch_mcp_gate!
+        hitch_mcp_host_gate!
+        return if performed?
+
+        hitch_mcp_origin_gate!
+        return if performed?
+
+        hitch_mcp_method_gate!
+        return if performed?
+
+        hitch_mcp_authenticate!
+        return if performed?
+
+        hitch_mcp_rate_admission!
       end
 
       def hitch_mcp_host_gate!

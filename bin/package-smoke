@@ -70,15 +70,15 @@ REQUIRED_PACKAGE_FILES = %w[
   docs/upgrading/0.1.0.md
   docs/upgrading/0.2.0.md
   app/controllers/concerns/hitch/mcp/endpoint.rb
-  app/models/hitch/mcp/sdk_adapter.rb
   app/models/hitch/mcp/internal/sdk_adapter.rb
   app/models/hitch/mcp/internal/sdk_adapter/response_normalizer.rb
   app/models/hitch/mcp/internal/endpoint_error_reporter.rb
+  app/models/hitch/mcp/internal/registry_runtime.rb
+  app/models/hitch/mcp/internal/schema_contract.rb
   app/models/hitch/mcp/internal/verified_request.rb
   app/models/hitch/mcp/context.rb
   app/models/hitch/mcp/registry.rb
   app/models/hitch/mcp/tool.rb
-  app/models/hitch/mcp/verified_request.rb
   lib/generators/hitch/install/install_generator.rb
   lib/generators/hitch/install/templates/controller.rb.tt
   lib/generators/hitch/install/templates/initializer.rb
@@ -164,7 +164,7 @@ def smoke_runner(profile_name, expected_adapter)
 
     abort "MCP configuration did not load from the artifact" unless
       Hitch.configuration.mcp.is_a?(Hitch::MCP::Configuration)
-    sdk_adapter = Hitch::MCP.const_get(:SDKAdapter, false)
+    sdk_adapter = Hitch::MCP::Internal::SDKAdapter
     adapter_source = File.expand_path(sdk_adapter.instance_method(:call).source_location.fetch(0))
     abort "SDK adapter did not load from the built artifact" unless
       adapter_source == File.join(loaded_root, "app/models/hitch/mcp/internal/sdk_adapter.rb")

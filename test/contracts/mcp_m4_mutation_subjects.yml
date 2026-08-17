@@ -25,7 +25,7 @@ subjects:
   - domain: scope
     expression: Hitch::MCP::Registry.scopes_granted?
   - domain: schema
-    expression: Hitch::MCP::Registry::SchemaContract#call
+    expression: Hitch::MCP::Internal::SchemaContract#call
   - domain: schema
     expression: Hitch::MCP::Internal::SDKAdapter#reserved_server_context?
   - domain: policy

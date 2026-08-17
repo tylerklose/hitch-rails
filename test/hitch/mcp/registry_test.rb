@@ -256,7 +256,7 @@ class Hitch::MCP::RegistryTest < ActiveSupport::TestCase
   end
 
   test "schema contract fixes root type size and reserved input semantics" do
-    contract_class = Hitch::MCP::Registry.const_get(:SchemaContract, false)
+    contract_class = Hitch::MCP::Internal::SchemaContract
     hash_subclass = Class.new(Hash)
     valid = hash_subclass.new.merge("type" => "object")
     result = contract_class.new(valid, label: "schema", input: true).call
@@ -268,7 +268,7 @@ class Hitch::MCP::RegistryTest < ActiveSupport::TestCase
     end
     assert_equal "schema must be a JSON object", error.message
 
-    max_bytes = Hitch::MCP::Registry.const_get(:MAX_SCHEMA_BYTES, false)
+    max_bytes = Hitch::MCP::Internal::SchemaContract::MAX_SCHEMA_BYTES
     error = assert_raises(ArgumentError) do
       contract_class.new(
         { "description" => "x" * max_bytes },

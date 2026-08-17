@@ -1,10 +1,5 @@
 # frozen_string_literal: true
 
-require "json"
-require "json_schemer"
-require "set"
-require "uri"
-
 module Hitch
   module MCP
     # Explicit host allowlist for MCP tools. Subclasses declare named Tool
@@ -15,13 +10,6 @@ module Hitch
       OAUTH_SCOPE_PATTERN = /\A[\x21\x23-\x5B\x5D-\x7E]+\z/
       MAX_TOOL_NAME_LENGTH = 64
       MAX_SCOPE_BYTES = 64
-      MAX_SCHEMA_DEPTH = 64
-      MAX_SCHEMA_OBJECTS = 10_000
-      MAX_SCHEMA_BYTES = 1_048_576
-      JSON_SCHEMA_2020_12 = "https://json-schema.org/draft/2020-12/schema"
-      REFERENCE_KEYS = %w[$ref $dynamicRef].freeze
-      SAME_INSTANCE_SCHEMA_KEYS = %w[if then else].freeze
-      SAME_INSTANCE_SCHEMA_ARRAY_KEYS = %w[allOf anyOf oneOf].freeze
       ANNOTATION_KEYS = {
         "title" => :title,
         "readOnlyHint" => :read_only_hint,
@@ -55,213 +43,6 @@ module Hitch
 
         def call(server_context:, **arguments)
           tool_class.call(server_context:, **arguments)
-        end
-      end
-
-      class SchemaContract
-        def initialize(value, label:, input:)
-          @label = label
-          @input = input
-          @objects = 0
-          @seen = {}
-          @schema = copy_json(value, depth: 1)
-        end
-
-        def call
-          invalid!("must be a JSON object") unless @schema.instance_of?(Hash)
-          invalid!("exceeds #{MAX_SCHEMA_BYTES} serialized bytes") if serialized_bytes > MAX_SCHEMA_BYTES
-
-          validate_dialects_and_references!
-          validate_json_schema!
-          if input && explicitly_declares_property?(@schema, "server_context", Set.new)
-            invalid!("must not explicitly declare the top-level server_context property")
-          end
-
-          @schema
-        end
-
-        private
-
-        attr_reader :label, :input
-
-        def copy_json(value, depth:)
-          invalid!("nesting exceeds #{MAX_SCHEMA_DEPTH}") if depth > MAX_SCHEMA_DEPTH
-
-          copy = case value
-          when Hash
-            invalid!("contains a recursive Ruby object") if @seen.key?(value.object_id)
-
-            @objects += 1
-            invalid!("exceeds #{MAX_SCHEMA_OBJECTS} schema objects") if @objects > MAX_SCHEMA_OBJECTS
-            @seen[value.object_id] = true
-            value.each_with_object({}) do |(key, child), result|
-              normalized_key = case key
-              when String then key.dup
-              when Symbol then key.to_s
-              else invalid!("contains a non-string schema key")
-              end
-              invalid!("contains duplicate key #{normalized_key.inspect}") if result.key?(normalized_key)
-
-              result[normalized_key.freeze] = copy_json(child, depth: depth + 1)
-            end
-          when Array
-            invalid!("contains a recursive Ruby object") if @seen.key?(value.object_id)
-
-            @seen[value.object_id] = true
-            value.map { |child| copy_json(child, depth: depth + 1) }
-          when String
-            value.dup
-          when Symbol
-            value.to_s
-          when Float
-            invalid!("contains a non-finite number") unless value.finite?
-
-            value
-          when Integer, TrueClass, FalseClass, NilClass
-            value
-          else
-            invalid!("contains a non-JSON value")
-          end
-          copy.freeze
-        ensure
-          @seen.delete(value.object_id) if value.is_a?(Hash) || value.is_a?(Array)
-        end
-
-        def serialized_bytes
-          JSON.generate(@schema, max_nesting: false).bytesize
-        rescue JSON::GeneratorError
-          invalid!("cannot be serialized as JSON")
-        end
-
-        def validate_dialects_and_references!
-          each_schema_value(@schema) do |node|
-            next unless node.is_a?(Hash)
-
-            dialect = node["$schema"]
-            if dialect && dialect != JSON_SCHEMA_2020_12
-              invalid!("must use JSON Schema 2020-12")
-            end
-
-            REFERENCE_KEYS.each do |key|
-              next unless node.key?(key)
-
-              reference = node[key]
-              unless reference.is_a?(String) && reference.start_with?("#")
-                invalid!("supports only same-document #{key} values")
-              end
-              resolve_local_reference(reference)
-            end
-          end
-        end
-
-        def validate_json_schema!
-          resolver = lambda do |uri|
-            raise JSONSchemer::UnknownRef, uri.to_s
-          end
-          schemer = JSONSchemer.schema(
-            @schema,
-            meta_schema: JSON_SCHEMA_2020_12,
-            format: false,
-            ref_resolver: resolver,
-            regexp_resolver: "ruby"
-          )
-          errors = schemer.validate_schema.to_a
-          invalid!("is not a valid JSON Schema 2020-12 document") unless errors.empty?
-        rescue JSONSchemer::InvalidRefResolution, JSONSchemer::InvalidRefPointer,
-          JSONSchemer::UnknownRef, RegexpError, URI::InvalidURIError
-          invalid!("is not a valid JSON Schema 2020-12 document")
-        end
-
-        def explicitly_declares_property?(schema, property, visited)
-          return false unless schema.is_a?(Hash)
-          return false if visited.include?(schema.object_id)
-
-          visited.add(schema.object_id)
-          properties = schema["properties"]
-          return true if properties.is_a?(Hash) && properties.key?(property)
-
-          REFERENCE_KEYS.each do |key|
-            reference = schema[key]
-            return true if reference && explicitly_declares_property?(
-              resolve_local_reference(reference), property, visited
-            )
-          end
-
-          SAME_INSTANCE_SCHEMA_KEYS.each do |key|
-            return true if explicitly_declares_property?(schema[key], property, visited)
-          end
-          SAME_INSTANCE_SCHEMA_ARRAY_KEYS.each do |key|
-            return true if Array(schema[key]).any? do |child|
-              explicitly_declares_property?(child, property, visited)
-            end
-          end
-          dependent_schemas = schema["dependentSchemas"]
-          dependent_schemas.is_a?(Hash) && dependent_schemas.any? do |_trigger, child|
-            explicitly_declares_property?(child, property, visited)
-          end
-        end
-
-        def resolve_local_reference(reference)
-          fragment = reference.delete_prefix("#")
-          return @schema if fragment.empty?
-
-          decoded = URI::DEFAULT_PARSER.unescape(fragment)
-          invalid!("contains an invalid local reference") unless decoded.valid_encoding?
-
-          if decoded.start_with?("/")
-            decoded.split("/", -1).drop(1).reduce(@schema) do |node, token|
-              key = token.gsub(/~1/, "/").gsub(/~0/, "~")
-              case node
-              when Hash
-                invalid!("contains an unresolved local reference") unless node.key?(key)
-                node.fetch(key)
-              when Array
-                index = Integer(key, exception: false)
-                invalid!("contains an unresolved local reference") unless index && index >= 0 && index < node.length
-                node.fetch(index)
-              else
-                invalid!("contains an unresolved local reference")
-              end
-            end
-          else
-            anchor = find_anchor(@schema, decoded)
-            invalid!("contains an unresolved local reference") unless anchor
-            anchor
-          end
-        rescue ArgumentError
-          invalid!("contains an invalid local reference")
-        end
-
-        def find_anchor(value, name)
-          case value
-          when Hash
-            return value if value["$anchor"] == name || value["$dynamicAnchor"] == name
-
-            value.each_value do |child|
-              found = find_anchor(child, name)
-              return found if found
-            end
-          when Array
-            value.each do |child|
-              found = find_anchor(child, name)
-              return found if found
-            end
-          end
-          nil
-        end
-
-        def each_schema_value(value, &block)
-          yield value
-          case value
-          when Hash
-            value.each_value { |child| each_schema_value(child, &block) }
-          when Array
-            value.each { |child| each_schema_value(child, &block) }
-          end
-        end
-
-        def invalid!(reason)
-          raise ArgumentError, "#{label} #{reason}"
         end
       end
 
@@ -390,7 +171,7 @@ module Hitch
 
           name = validate_tool_name(tool_class.tool_name, label)
           description = validate_description(tool_class.description, label)
-          input_schema = SchemaContract.new(
+          input_schema = Internal::SchemaContract.new(
             tool_class.input_schema,
             label: "#{label} input_schema",
             input: true
@@ -398,7 +179,7 @@ module Hitch
           output_schema = if tool_class.output_schema.nil?
             nil
           else
-            SchemaContract.new(
+            Internal::SchemaContract.new(
               tool_class.output_schema,
               label: "#{label} output_schema",
               input: false
@@ -524,12 +305,9 @@ module Hitch
       end
 
       private_constant :Declaration, :Entry, :Snapshot, :CallResolution,
-        :RuntimeTool, :SchemaContract,
+        :RuntimeTool,
         :TOOL_NAME_PATTERN, :CONSTANT_NAME_PATTERN, :OAUTH_SCOPE_PATTERN,
-        :MAX_TOOL_NAME_LENGTH, :MAX_SCOPE_BYTES, :MAX_SCHEMA_DEPTH,
-        :MAX_SCHEMA_OBJECTS, :MAX_SCHEMA_BYTES, :JSON_SCHEMA_2020_12,
-        :REFERENCE_KEYS, :SAME_INSTANCE_SCHEMA_KEYS,
-        :SAME_INSTANCE_SCHEMA_ARRAY_KEYS, :ANNOTATION_KEYS
+        :MAX_TOOL_NAME_LENGTH, :MAX_SCOPE_BYTES, :ANNOTATION_KEYS
     end
   end
 end

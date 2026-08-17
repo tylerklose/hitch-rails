@@ -14,7 +14,7 @@ if Minitest::Test.respond_to?(:cover)
 
   class Hitch::MCP::RegistryTest
     cover "Hitch::MCP::Registry.validate_snapshot!"
-    cover "Hitch::MCP::Registry::SchemaContract#call"
+    cover "Hitch::MCP::Internal::SchemaContract#call"
     cover "Hitch::MCP::Registry.scopes_granted?"
   end
 

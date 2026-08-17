@@ -101,48 +101,19 @@ module Hitch
 
     Document = Struct.new(:client_id, :client_name, :redirect_uris, keyword_init: true)
 
-    # Guards the in-flight counter below. Process-wide: the cap bounds
-    # this process's share of outbound work, so a fleet ceiling is the
-    # configured value times the worker count.
-    @fetch_mutex = Mutex.new
-    @fetches_in_flight = 0
-
-    # Per-actor fetch counts for the current minute, and the mutex that
-    # makes check-and-increment atomic.
-    #
-    # Deliberately in-process rather than in Rails.cache. A cache-backed
-    # counter needs read, compare and write as one operation; done as
-    # three, N callers admitted by the concurrency cap each read the same
-    # value and each write value+1, so the counter advances by one while
-    # N fetches proceed — measured at 4x the configured limit with a cap
-    # of 4, not "the limit plus a few". Getting that right needs an
-    # atomic increment, which is store-specific and absent on some stores
-    # entirely.
-    #
-    # Keeping it in-process makes it atomic by construction, and drops
-    # the two failure modes the cache-backed version had to warn about:
-    # a cache outage and a store whose writes silently fail both left the
-    # limit not applying at all. The cost is that the bound is per
-    # process, so a fleet ceiling is the configured value times the
-    # worker count — the same property the concurrency cap already has,
-    # and now stated rather than implied.
-    @rate_mutex = Mutex.new
-    @rate_counts = {}
-    @rate_window = nil
+    # Process-wide by design: both throttle bounds are this process's share
+    # of outbound work (see Throttle).
+    @throttle = Throttle.new
 
     # Failure sentinels. Only HOST_FAILURE — nothing at that host
     # answered — may block the host's other documents; a document-level
     # failure (plain nil) must not, or one bogus URL would take an entire
     # CIMD-hosting domain down for everyone on it.
     HOST_FAILURE = :host_failure
-    # Refused because a cap was already spent — no fetch was attempted.
-    # Distinct from the two above because it says NOTHING about the URL
-    # or the host, and so must never be cached: writing a host failure
-    # here would turn cap exhaustion into a way to poison a legitimate
-    # host's entry for everyone.
-    CAPACITY_EXCEEDED = :capacity_exceeded
-    # Refused because this principal spent its minute budget. Same rule:
-    # no fetch happened, so nothing is known and nothing is cached.
+    # Refused because a cap was already spent — no fetch was attempted, so
+    # nothing is known and nothing may be cached (see Throttle).
+    CAPACITY_EXCEEDED = Throttle::CAPACITY_EXCEEDED
+    # Refused because this principal spent its minute budget. Same rule.
     RATE_LIMITED = :rate_limited
 
     # Result of a diagnostic fetch. Separate from Document deliberately:
@@ -267,7 +238,7 @@ module Hitch
 
       # Number of fetches in flight right now. Test seam.
       def fetches_in_flight
-        @fetch_mutex.synchronize { @fetches_in_flight.to_i }
+        @throttle.in_flight
       end
 
       # Operator-facing check that this host can actually reach and parse a
@@ -319,58 +290,12 @@ module Hitch
 
       private
 
-      # A plain counter under a mutex rather than a Semaphore, so the
-      # limit is read from config at acquisition time — a host may change
-      # it, and tests do.
-      def with_fetch_capacity
-        # nil disables, matching the rate-limit knob. Integers are honored
-        # literally — including 0, which blocks every fetch. Treating 0 as
-        # "disabled" would make the most restrictive-looking setting the
-        # least restrictive one.
-        limit = integer_setting(:client_id_metadata_max_concurrent_fetches)
-        return yield if limit.nil?
-
-        # The increment and the ensure that undoes it must not be
-        # separable by an asynchronous exception. Rack::Timeout, an outer
-        # Timeout.timeout, or Puma's force_shutdown_after all deliver via
-        # Thread#raise, and one landing between the two would leak the
-        # slot permanently — after `limit` of those, CIMD is dead for the
-        # life of the process, silently and with nothing to alert on.
-        #
-        # Not covered by a test, deliberately. Review measured the
-        # unmasked window at up to 30% leakage in an isolated harness,
-        # but in situ Ruby already defers async interrupts across much of
-        # Mutex#synchronize, so the window is far narrower: a test driving
-        # Thread#raise at it stayed green against a no-op stand-in for
-        # this mask across repeated runs, while hanging the suite and
-        # emitting thread-death noise. A test that cannot fail for the
-        # reason it exists is worse than none, so the mask rests on that
-        # measurement and on this comment.
-        Thread.handle_interrupt(Object => :never) do
-          acquired = @fetch_mutex.synchronize do
-            next false if @fetches_in_flight >= limit
-
-            @fetches_in_flight += 1
-            true
-          end
-
-          # Fails closed, and refuses rather than queues: queueing is what
-          # consumes the request thread this cap exists to protect.
-          next CAPACITY_EXCEEDED unless acquired
-
-          begin
-            Thread.handle_interrupt(Object => :immediate) { yield }
-          ensure
-            @fetch_mutex.synchronize { @fetches_in_flight -= 1 }
-          end
-        end
+      # The limit is read from config at acquisition time — a host may
+      # change it, and tests do.
+      def with_fetch_capacity(&block)
+        @throttle.with_capacity(integer_setting(:client_id_metadata_max_concurrent_fetches), &block)
       end
 
-      # Fixed 60-second window. Coarse on purpose: a sliding window buys
-      # precision that does not change what this bounds — the order of
-      # magnitude of traffic one principal can aim at a third party. Note
-      # a caller aligned to the boundary can spend two windows back to
-      # back and briefly reach twice the nominal rate.
       def charge_rate_limit(actor)
         limit = integer_setting(:client_id_metadata_fetches_per_minute)
         # nil disables. 0 and below block, matching the concurrency knob —
@@ -391,40 +316,12 @@ module Hitch
           return true
         end
 
-        window = Time.now.to_i / 60
-
-        # Check and increment under one lock. Split into read-then-write,
-        # every caller the concurrency cap admits reads the same value and
-        # writes value+1, so the count rises by one while N fetches go
-        # out — the limit multiplied by the concurrency cap rather than
-        # approached.
-        @rate_mutex.synchronize do
-          # The hash holds one window at a time and is dropped whole when
-          # the minute rolls over, so charging is O(1) and memory is
-          # bounded by the distinct principals seen within a single
-          # minute. Sweeping expired entries on every charge would make
-          # the common path scale with the number of actors instead.
-          if @rate_window != window
-            @rate_counts.clear
-            @rate_window = window
-          end
-
-          key = actor.to_s
-          spent = @rate_counts[key].to_i
-          next false if spent >= limit
-
-          @rate_counts[key] = spent + 1
-          true
-        end
+        @throttle.charge(actor, limit: limit)
       end
 
       # Test seam: current count for an actor in this minute.
       def fetches_charged_to(actor)
-        @rate_mutex.synchronize do
-          next 0 unless @rate_window == Time.now.to_i / 60
-
-          @rate_counts[actor.to_s].to_i
-        end
+        @throttle.charged_to(actor)
       end
 
       # Validates the rebuilt struct rather than relying on Document.new

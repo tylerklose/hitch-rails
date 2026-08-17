@@ -18,13 +18,12 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   teardown do
     Rails.cache = @cache
     Hitch.reset_configuration!
-    # Both of these are process-wide and nothing else resets them. Left
-    # alone, a test that fails mid-slot leaves every later CIMD test
-    # failing closed, and one that spends a rate budget silently
-    # throttles the next test using the same actor name — either way
-    # reported as an unrelated cascade.
-    CIMD.instance_variable_set(:@fetches_in_flight, 0)
-    CIMD.instance_variable_set(:@rate_counts, {})
+    # The throttle and the warn-once ledger are process-wide and nothing
+    # else resets them. Left alone, a test that fails mid-slot leaves every
+    # later CIMD test failing closed, and one that spends a rate budget
+    # silently throttles the next test using the same actor name — either
+    # way reported as an unrelated cascade.
+    CIMD.instance_variable_set(:@throttle, Hitch::ClientIdMetadata::Throttle.new)
     CIMD.instance_variable_set(:@warned, {})
   end
 

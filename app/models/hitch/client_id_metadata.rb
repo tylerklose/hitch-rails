@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "digest"
 require "uri"
 
 module Hitch
@@ -40,12 +39,6 @@ module Hitch
   # none, and DCR still works, so it is not something to switch on for an
   # adopter who has not considered it.
   class ClientIdMetadata
-    # Cached negatives are deliberately short-lived relative to positives:
-    # long enough that a hostile URL cannot drive one fetch per request,
-    # short enough that a client fixing a genuinely broken document isn't
-    # locked out for an hour.
-    FAILURE_CACHE_TTL = 60
-
     Document = Struct.new(:client_id, :client_name, :redirect_uris, keyword_init: true)
 
     # CIMD documents live on ordinary https endpoints. Allowing an
@@ -108,13 +101,13 @@ module Hitch
       def resolve(client_id, actor: nil)
         return nil unless reference?(client_id)
 
-        key = cache_key(client_id)
-        cached = cache_read(key)
+        key = Cache.key(client_id)
+        cached = Cache.read(key)
 
         unless cached.nil?
           return nil if cached == false
 
-          document = rehydrate(cached)
+          document = Cache.rehydrate(cached)
           return document if document
 
           # An entry we can't read is treated as a miss rather than
@@ -123,7 +116,7 @@ module Hitch
           # host configuring a coder that stringifies keys would
           # otherwise turn /oauth/authorize into a 500 for that
           # client_id until the TTL expired.
-          cache_delete(key)
+          Cache.delete(key)
         end
 
         # Shape is judged BEFORE either cap is touched. Rejecting a URL on
@@ -143,7 +136,7 @@ module Hitch
         # negative cache is defeated by appending ?n=1, ?n=2 — each a
         # distinct key and each a valid CIMD reference.
         host = target.host
-        return nil if cache_read(failure_key(host)) == false
+        return nil if Cache.read(Cache.failure_key(host)) == false
 
         # Both caps are consulted only on a genuine miss. A cached
         # resolution costs nothing outbound, so charging it against
@@ -167,11 +160,11 @@ module Hitch
           # [document, ttl] — the TTL is derived from the document's own
           # HTTP cache headers, clamped by config.
           document, ttl = outcome
-          cache_write(key, document.to_h, ttl) if ttl.positive?
+          Cache.write(key, document.to_h, ttl) if ttl.positive?
           document
         when HOST_FAILURE
-          cache_write(key, false, FAILURE_CACHE_TTL)
-          cache_write(failure_key(host), false, FAILURE_CACHE_TTL)
+          Cache.write(key, false, Cache::FAILURE_TTL)
+          Cache.write(Cache.failure_key(host), false, Cache::FAILURE_TTL)
           nil
         else
           # A document-level failure — 404, malformed JSON, a document
@@ -181,7 +174,7 @@ module Hitch
           # and poisoning the host on a per-document failure would let
           # anyone hold that whole domain offline by requesting a single
           # bogus URL on it once a minute.
-          cache_write(key, false, FAILURE_CACHE_TTL)
+          Cache.write(key, false, Cache::FAILURE_TTL)
           nil
         end
       end
@@ -274,37 +267,6 @@ module Hitch
         @throttle.charged_to(actor)
       end
 
-      # Validates the rebuilt struct rather than relying on Document.new
-      # to object. A keyword_init Struct accepts string keys without
-      # raising and yields a half-built Document with nil members — so
-      # the stringifying-coder case this guard exists for would sail
-      # straight through an ArgumentError rescue.
-      def rehydrate(cached)
-        document = Document.new(**cached)
-        return nil unless document.client_id.is_a?(String) && document.redirect_uris.is_a?(Array)
-
-        document
-      rescue ArgumentError, TypeError
-        nil
-      end
-
-      # Versioned so a change to Document's shape invalidates old entries
-      # instead of colliding with them.
-      def cache_key(client_id)
-        "hitch/cimd/v1/#{Digest::SHA256.hexdigest(client_id.to_s)}"
-      end
-
-      def failure_key(host)
-        "hitch/cimd/v1/failed-host/#{Digest::SHA256.hexdigest(normalized_host(host))}"
-      end
-
-      # "evil.example" and "evil.example." are the same DNS name and the
-      # same destination; without stripping the root label they would be
-      # two cache keys, which is one more outbound fetch than intended.
-      def normalized_host(host)
-        host.to_s.downcase.chomp(".")
-      end
-
       # Reads a numeric setting without trusting its type. The docs say
       # "nil disables", and the obvious wrong guess at that is `false` —
       # whose #to_i does not exist, which would raise NoMethodError
@@ -321,13 +283,6 @@ module Hitch
         end
       end
 
-      # A cache outage must not take the authorize endpoint with it.
-      def cache_read(key)
-        Rails.cache.read(key)
-      rescue StandardError
-        nil
-      end
-
       # Warns once per process per reason. These describe a standing
       # misconfiguration, not a per-request event; logging them on every
       # authorize would bury the thing it is warning about.
@@ -337,18 +292,6 @@ module Hitch
 
         @warned[reason] = true
         Rails.logger&.warn("[hitch] #{message}")
-      rescue StandardError
-        nil
-      end
-
-      def cache_write(key, value, ttl)
-        Rails.cache.write(key, value, expires_in: ttl)
-      rescue StandardError
-        nil
-      end
-
-      def cache_delete(key)
-        Rails.cache.delete(key)
       rescue StandardError
         nil
       end

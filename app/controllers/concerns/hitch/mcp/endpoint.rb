@@ -22,7 +22,6 @@ module Hitch
         Mcp-Name
       ].freeze
       LOOPBACK_ORIGIN = %r{\Ahttps?://(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?\z}
-      ACCEPT_TYPES = %w[application/json text/event-stream].freeze
       SERVER_INFO_KEY_MAP = {
         "name" => "name",
         "version" => "version",
@@ -205,12 +204,12 @@ module Hitch
       end
 
       def hitch_mcp_media_admitted!
-        unless hitch_mcp_json_content_type?
+        unless Internal::MediaType.json_content_type?(request.get_header("CONTENT_TYPE"))
           hitch_mcp_protocol_error!(415, -32600, "Invalid Request")
           return false
         end
 
-        unless hitch_mcp_accepts_required_types?
+        unless Internal::MediaType.accepts_required_types?(request.get_header("HTTP_ACCEPT"))
           hitch_mcp_protocol_error!(406, -32600, "Invalid Request")
           return false
         end
@@ -380,50 +379,6 @@ module Hitch
         values unless values.any? { |entry| entry.nil? || entry.empty? }
       end
 
-      def hitch_mcp_json_content_type?
-        value = request.get_header("CONTENT_TYPE")
-        return false unless value.is_a?(String) && value.valid_encoding?
-        return false if value.empty? || value.include?(",") || Internal::HeaderField::CONTROLS.match?(value)
-
-        media_type, *parameters = value.split(";", -1).map { |part| Internal::HeaderField.trim_ows(part) }
-        return false unless media_type&.downcase == "application/json"
-
-        parameters.all? { |parameter| parameter&.match?(/\A[A-Za-z0-9!#$%&'*+.^_`|~-]+=[^;\s]+\z/) }
-      end
-
-      def hitch_mcp_accepts_required_types?
-        value = request.get_header("HTTP_ACCEPT")
-        return false unless value.is_a?(String) && value.valid_encoding?
-        return false if value.empty? || Internal::HeaderField::CONTROLS.match?(value)
-
-        accepted = {}
-        value.split(",", -1).each do |entry|
-          media_type, quality = hitch_mcp_accept_entry(entry)
-          return false unless media_type
-
-          accepted[media_type] = true if ACCEPT_TYPES.include?(media_type) && quality.positive?
-        end
-        ACCEPT_TYPES.all? { |media_type| accepted[media_type] }
-      end
-
-      def hitch_mcp_accept_entry(entry)
-        media_type, *parameters = entry.split(";", -1).map { |part| Internal::HeaderField.trim_ows(part) }
-        return [ nil, nil ] unless media_type&.match?(/\A[A-Za-z0-9!#$%&'*+.^_`|~-]+\/[A-Za-z0-9!#$%&'*+.^_`|~-]+\z/)
-
-        quality = 1.0
-        quality_seen = false
-        parameters.each do |parameter|
-          name, raw_value = parameter.to_s.split("=", 2)
-          return [ nil, nil ] unless name && raw_value
-          next unless name.casecmp?("q")
-          return [ nil, nil ] if quality_seen || !raw_value.match?(/\A(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)\z/)
-
-          quality_seen = true
-          quality = raw_value.to_f
-        end
-        [ media_type.downcase, quality ]
-      end
-
       def hitch_mcp_bearer_token
         authorization = request.get_header("HTTP_AUTHORIZATION").to_s
         return if authorization.bytesize > MAX_BEARER_TOKEN_BYTES + 7
@@ -523,7 +478,6 @@ module Hitch
       private_constant :MAX_BEARER_TOKEN_BYTES,
         :ALLOWED_REQUEST_HEADERS,
         :LOOPBACK_ORIGIN,
-        :ACCEPT_TYPES,
         :SERVER_INFO_KEY_MAP
     end
   end

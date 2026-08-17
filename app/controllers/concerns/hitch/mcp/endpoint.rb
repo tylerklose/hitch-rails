@@ -22,7 +22,10 @@ module Hitch
       end
 
       def handle
-        return unless hitch_mcp_media_admitted!
+        return hitch_mcp_protocol_error!(415, -32600, "Invalid Request") unless
+          Internal::MediaType.json_content_type?(request.get_header("CONTENT_TYPE"))
+        return hitch_mcp_protocol_error!(406, -32600, "Invalid Request") unless
+          Internal::MediaType.accepts_required_types?(request.get_header("HTTP_ACCEPT"))
 
         max_request_bytes = Hitch.configuration.mcp.max_request_bytes
         raw_body = hitch_read_bounded_request_body(max_request_bytes)
@@ -179,20 +182,6 @@ module Hitch
       rescue NotImplementedError, StandardError
         Internal::EndpointErrorReporter.report(category: :request_admission)
         head :service_unavailable
-      end
-
-      def hitch_mcp_media_admitted!
-        unless Internal::MediaType.json_content_type?(request.get_header("CONTENT_TYPE"))
-          hitch_mcp_protocol_error!(415, -32600, "Invalid Request")
-          return false
-        end
-
-        unless Internal::MediaType.accepts_required_types?(request.get_header("HTTP_ACCEPT"))
-          hitch_mcp_protocol_error!(406, -32600, "Invalid Request")
-          return false
-        end
-
-        true
       end
 
       def hitch_mcp_dispatch!(verified_request)

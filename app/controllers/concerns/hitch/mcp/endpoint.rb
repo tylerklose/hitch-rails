@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "json"
-require "uri"
 
 module Hitch
   module MCP
@@ -13,7 +12,6 @@ module Hitch
       include Hitch::IssuerUrl
       include Hitch::RequestAdmission
 
-      MAX_BEARER_TOKEN_BYTES = 512
       SERVER_INFO_KEY_MAP = {
         "name" => "name",
         "version" => "version",
@@ -145,7 +143,7 @@ module Hitch
       end
 
       def hitch_mcp_authenticate!
-        raw_token = hitch_mcp_bearer_token
+        raw_token = Internal::BearerChallenge.token(request.get_header("HTTP_AUTHORIZATION"))
         return hitch_mcp_unauthorized! unless raw_token
 
         access_token = Hitch::AccessToken.find_by_token(raw_token)
@@ -317,45 +315,17 @@ module Hitch
         head :no_content
       end
 
-      def hitch_mcp_bearer_token
-        authorization = request.get_header("HTTP_AUTHORIZATION").to_s
-        return if authorization.bytesize > MAX_BEARER_TOKEN_BYTES + 7
-        return unless authorization.valid_encoding?
-        return if authorization.match?(/[\u0000-\u001F\u007F-\u009F]/)
-
-        match = authorization.match(/\ABearer ([A-Za-z0-9_-]{1,#{MAX_BEARER_TOKEN_BYTES}})\z/i)
-        match && match[1]
-      end
-
       def hitch_mcp_unauthorized!
-        response.headers["WWW-Authenticate"] = hitch_mcp_bearer_challenge
+        response.headers["WWW-Authenticate"] = Internal::BearerChallenge.challenge(issuer_url:)
         response.headers["Access-Control-Expose-Headers"] = "WWW-Authenticate"
         head :unauthorized
       end
 
       def hitch_mcp_insufficient_scope!(required_scopes)
-        response.headers["WWW-Authenticate"] = "Bearer error=\"insufficient_scope\", " \
-          "scope=\"#{required_scopes.join(' ')}\", " \
-          "resource_metadata=\"#{hitch_mcp_resource_metadata_url}\""
+        response.headers["WWW-Authenticate"] =
+          Internal::BearerChallenge.insufficient_scope(required_scopes, issuer_url:)
         response.headers["Access-Control-Expose-Headers"] = "WWW-Authenticate"
         head :forbidden
-      end
-
-      def hitch_mcp_bearer_challenge
-        # A generic 401 starts the least-privilege authorization flow with the
-        # host's base/default scope. Protected-resource metadata still
-        # advertises the complete supported set, and a known available tool
-        # names its complete static requirement in a later 403 step-up.
-        scope = Hitch.configuration.supported_scopes.first
-        %(Bearer resource_metadata="#{hitch_mcp_resource_metadata_url}", scope="#{scope}")
-      end
-
-      def hitch_mcp_resource_metadata_url
-        resource = URI.parse(Hitch.configuration.resource_uri.to_s)
-        path = resource.path.to_s
-        suffix = path.empty? || path == "/" ? "" : path
-        query = resource.query ? "?#{resource.query}" : ""
-        "#{issuer_url}/.well-known/oauth-protected-resource#{suffix}#{query}"
       end
 
       def hitch_mcp_append_vary!(value)
@@ -413,7 +383,7 @@ module Hitch
         @hitch_mcp_observation&.finish!(response:)
       end
 
-      private_constant :MAX_BEARER_TOKEN_BYTES, :SERVER_INFO_KEY_MAP
+      private_constant :SERVER_INFO_KEY_MAP
     end
   end
 end

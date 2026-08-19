@@ -137,8 +137,8 @@ module Hitch
 
         def validate_protocol_and_method_headers!(request, request_id)
           metadata = request.fetch("params").fetch("_meta")
-          protocol_version = single_header(headers.fetch(:protocol_version, nil))
-          method = single_header(headers.fetch(:method, nil))
+          protocol_version = HeaderField.single(headers.fetch(:protocol_version, nil))
+          method = HeaderField.single(headers.fetch(:method, nil))
 
           header_mismatch!(request_id) unless protocol_version == metadata.fetch("io.modelcontextprotocol/protocolVersion")
           header_mismatch!(request_id) unless method == request.fetch("method")
@@ -179,7 +179,7 @@ module Hitch
 
           if request.fetch("method") == "tools/call"
             expected_name = request.fetch("params").fetch("name")
-            header_mismatch!(request_id) unless single_header(supplied_name) == expected_name
+            header_mismatch!(request_id) unless HeaderField.single(supplied_name) == expected_name
           elsif !supplied_name.nil?
             header_mismatch!(request_id)
           end
@@ -192,10 +192,6 @@ module Hitch
           return unless arguments
 
           invalid_params!(request_id, 200) if arguments.key?("server_context")
-        end
-
-        def single_header(value)
-          HeaderField.single(value)
         end
 
         def parse_error!

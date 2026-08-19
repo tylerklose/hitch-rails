@@ -206,7 +206,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     running = Queue.new
     outcomes = Queue.new
 
-    stub_class_method(CIMD, :fetch_and_validate, lambda { |_id, *|
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, lambda { |_id, *|
       running << :in
       gate.pop # hold the slot until the test lets go
       nil
@@ -234,7 +234,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   test "a capacity refusal is never cached" do
     document = CIMD::Document.new(client_id: DOC_URL, client_name: "X", redirect_uris: [ "https://a.test/cb" ])
 
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { [ document, 3600 ] }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { [ document, 3600 ] }) do
       Hitch.configure { |c| c.client_id_metadata_max_concurrent_fetches = 0 }
       assert_nil CIMD.resolve(DOC_URL), "no capacity, so no fetch"
 
@@ -250,7 +250,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   test "a nil concurrency cap disables the cap, and zero blocks every fetch" do
     document = CIMD::Document.new(client_id: DOC_URL, client_name: "X", redirect_uris: [ "https://a.test/cb" ])
 
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { [ document, 3600 ] }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { [ document, 3600 ] }) do
       Hitch.configure { |c| c.client_id_metadata_max_concurrent_fetches = nil }
       assert_not_nil CIMD.resolve(DOC_URL)
 
@@ -267,13 +267,13 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     Hitch.configure { |c| c.client_id_metadata_fetches_per_minute = 3 }
     calls = 0
 
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { calls += 1; nil }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { calls += 1; nil }) do
       10.times { |i| CIMD.resolve("https://n#{i}.evil.example/doc.json", actor: "User:1") }
     end
     assert_equal 3, calls, "a wildcard DNS record must not buy unlimited outbound fetches"
 
     calls = 0
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { calls += 1; nil }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { calls += 1; nil }) do
       10.times { |i| CIMD.resolve("https://responsive.example/doc.json?n=#{i}", actor: "User:2") }
     end
     assert_equal 3, calls, "distinct URLs on one responsive host must not either"
@@ -283,7 +283,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     Hitch.configure { |c| c.client_id_metadata_fetches_per_minute = 2 }
     actors = []
 
-    stub_class_method(CIMD, :fetch_and_validate, ->(id, *) { actors << id; nil }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(id, *) { actors << id; nil }) do
       3.times { |i| CIMD.resolve("https://a.example/#{i}.json", actor: "User:1") }
       3.times { |i| CIMD.resolve("https://b.example/#{i}.json", actor: "User:2") }
     end
@@ -297,7 +297,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     document = CIMD::Document.new(client_id: DOC_URL, client_name: "X", redirect_uris: [ "https://a.test/cb" ])
     calls = 0
 
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { calls += 1; [ document, 3600 ] }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { calls += 1; [ document, 3600 ] }) do
       10.times { assert_not_nil CIMD.resolve(DOC_URL, actor: "User:1") }
     end
     assert_equal 1, calls
@@ -305,7 +305,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
 
   test "rate limiting is skipped without an actor or when disabled" do
     calls = 0
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { calls += 1; nil }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { calls += 1; nil }) do
       Hitch.configure { |c| c.client_id_metadata_fetches_per_minute = 1 }
       3.times { |i| CIMD.resolve("https://x#{i}.example/d.json") } # no actor
 
@@ -329,7 +329,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
 
     calls = 0
     Hitch.configure { |c| c.client_id_metadata_max_concurrent_fetches = 4 }
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { calls += 1; nil }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { calls += 1; nil }) do
       3.times { |i| CIMD.resolve("https://client.example/after#{i}.json", actor: "User:1") }
     end
     assert_equal 3, calls, "the refused requests must not have spent the budget they never used"
@@ -363,7 +363,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   # value must not be the one that removes the protection.
   test "a rate limit of zero blocks every fetch, and nil disables the limit" do
     calls = 0
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { calls += 1; nil }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { calls += 1; nil }) do
       Hitch.configure { |c| c.client_id_metadata_fetches_per_minute = 0 }
       3.times { |i| CIMD.resolve("https://z#{i}.example/d.json", actor: "User:1") }
       assert_equal 0, calls, "zero must block, not disable"
@@ -378,7 +378,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
 
   test "the in-flight counter is released when a fetch raises" do
     Hitch.configure { |c| c.client_id_metadata_max_concurrent_fetches = 2 }
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { raise "boom" }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { raise "boom" }) do
       assert_raises(RuntimeError) { CIMD.resolve(DOC_URL) }
     end
     assert_equal 0, CIMD.fetches_in_flight
@@ -421,7 +421,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     Hitch.configure { |c| c.client_id_metadata_fetches_per_minute = 2 }
     calls = 0
 
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { calls += 1; nil }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { calls += 1; nil }) do
       # Non-443 port, userinfo, fragment: all refused before either cap.
       assert_nil CIMD.resolve("https://client.example:8443/a.json", actor: "User:1")
       assert_nil CIMD.resolve("https://user:pw@client.example/b.json", actor: "User:1")
@@ -449,7 +449,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     assert_equal :not_a_reference, CIMD.diagnose("https://client.example").outcome
     assert_equal :rejected_shape, CIMD.diagnose("https://client.example:8443/d.json").outcome
 
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { CIMD::HOST_FAILURE }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { CIMD::HOST_FAILURE }) do
       result = CIMD.diagnose(DOC_URL)
       assert_equal :unreachable, result.outcome
       assert_match(/egress/, result.detail,
@@ -457,11 +457,11 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
       assert_not result.ok?
     end
 
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { nil }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { nil }) do
       assert_equal :invalid_document, CIMD.diagnose(DOC_URL).outcome
     end
 
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { [ document, 3600 ] }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { [ document, 3600 ] }) do
       result = CIMD.diagnose(DOC_URL)
       assert_equal :ok, result.outcome
       assert result.ok?
@@ -477,7 +477,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     Hitch.configure { |c| c.client_id_metadata_enabled = false }
     reached = false
 
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { reached = true; [ document, 3600 ] }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { reached = true; [ document, 3600 ] }) do
       assert_equal :ok, CIMD.diagnose(DOC_URL).outcome
     end
     assert reached, "the probe must actually attempt the fetch while the feature is off"
@@ -492,7 +492,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     document = CIMD::Document.new(client_id: DOC_URL, client_name: "X", redirect_uris: [ "https://a.test/cb" ])
     calls = 0
 
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { calls += 1; [ document, 3600 ] }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { calls += 1; [ document, 3600 ] }) do
       3.times { assert_equal :ok, CIMD.diagnose(DOC_URL).outcome }
       assert_equal 3, calls, "a probe must actually probe, not answer from cache"
 
@@ -505,7 +505,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   # whether this server supports CIMD. Only the second is advertised.
   test "diagnose does not spend a principal's fetch budget" do
     Hitch.configure { |c| c.client_id_metadata_fetches_per_minute = 2 }
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { CIMD::HOST_FAILURE }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { CIMD::HOST_FAILURE }) do
       5.times { CIMD.diagnose(DOC_URL) }
     end
     assert_equal 0, CIMD.send(:fetches_charged_to, "User:1")
@@ -721,7 +721,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     calls = 0
     document = CIMD::Document.new(client_id: DOC_URL, client_name: "X", redirect_uris: [ "https://a.test/cb" ])
 
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { calls += 1; [ document, 3600 ] }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { calls += 1; [ document, 3600 ] }) do
       3.times { assert_equal [ "https://a.test/cb" ], CIMD.resolve(DOC_URL).redirect_uris }
     end
     assert_equal 1, calls, "a cached document must not trigger a second outbound fetch"
@@ -732,7 +732,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   # authorize request — the authorization server becomes the amplifier.
   test "a failed resolution is cached too" do
     calls = 0
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { calls += 1; nil }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { calls += 1; nil }) do
       3.times { assert_nil CIMD.resolve(DOC_URL) }
     end
     assert_equal 1, calls, "a failing document must not trigger an outbound fetch per authorize request"
@@ -740,7 +740,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
 
   test "resolve returns nil without fetching when the feature is disabled" do
     Hitch.configure { |c| c.client_id_metadata_enabled = false }
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { flunk "must not fetch while disabled" }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { flunk "must not fetch while disabled" }) do
       assert_nil CIMD.resolve(DOC_URL)
     end
   end
@@ -759,7 +759,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   # backstop.
   test "an unreachable host is not refetched under a different path or query" do
     calls = 0
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { calls += 1; CIMD::HOST_FAILURE }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { calls += 1; CIMD::HOST_FAILURE }) do
       assert_nil CIMD.resolve("https://evil.example/doc.json")
       assert_nil CIMD.resolve("https://evil.example/doc.json?n=1")
       assert_nil CIMD.resolve("https://evil.example/doc.json?n=2")
@@ -775,7 +775,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   # once a minute.
   test "a document-level failure does not block other documents on the same host" do
     good = CIMD::Document.new(client_id: "https://shared.example/b.json", redirect_uris: [ "https://a.test/cb" ])
-    stub_class_method(CIMD, :fetch_and_validate, ->(id, *) { id.end_with?("a.json") ? nil : [ good, 3600 ] }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(id, *) { id.end_with?("a.json") ? nil : [ good, 3600 ] }) do
       assert_nil CIMD.resolve("https://shared.example/a.json")
       assert_not_nil CIMD.resolve("https://shared.example/b.json"),
         "a co-tenant document must still resolve after a sibling failed"
@@ -784,7 +784,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
 
   test "a host that does not answer at all does block its other documents" do
     calls = 0
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { calls += 1; CIMD::HOST_FAILURE }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { calls += 1; CIMD::HOST_FAILURE }) do
       assert_nil CIMD.resolve("https://dead.example/a.json")
       assert_nil CIMD.resolve("https://dead.example/b.json")
     end
@@ -793,7 +793,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
 
   test "a trailing dot is the same host for negative-caching purposes" do
     calls = 0
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { calls += 1; CIMD::HOST_FAILURE }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { calls += 1; CIMD::HOST_FAILURE }) do
       assert_nil CIMD.resolve("https://dead.example/a.json")
       assert_nil CIMD.resolve("https://dead.example./a.json")
       assert_nil CIMD.resolve("https://DEAD.example/a.json")
@@ -813,7 +813,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
 
   test "a failing host does not poison an unrelated host" do
     hosts = []
-    stub_class_method(CIMD, :fetch_and_validate, ->(id, *) { hosts << URI.parse(id).host; nil }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(id, *) { hosts << URI.parse(id).host; nil }) do
       CIMD.resolve("https://evil.example/doc.json")
       CIMD.resolve("https://good.example/doc.json")
     end

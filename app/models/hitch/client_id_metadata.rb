@@ -149,7 +149,7 @@ module Hitch
         # slots into a way to drain every victim's own budget while they
         # retry, locking them out past the point where the slots free up.
         outcome = with_fetch_capacity do
-          charge_rate_limit(actor) ? fetch_and_validate(client_id, target) : RATE_LIMITED
+          charge_rate_limit(actor) ? Fetcher.call(client_id, target) : RATE_LIMITED
         end
 
         case outcome
@@ -216,7 +216,7 @@ module Hitch
                                detail: "must be https on port #{ALLOWED_PORT}, with no userinfo and no fragment")
         end
 
-        case (outcome = with_fetch_capacity { fetch_and_validate(client_id, target) })
+        case (outcome = with_fetch_capacity { Fetcher.call(client_id, target) })
         when Array
           Diagnosis.new(outcome: :ok, detail: "resolved #{outcome.first.redirect_uris.length} redirect_uri(s)")
         when CAPACITY_EXCEEDED
@@ -297,7 +297,7 @@ module Hitch
       end
 
       # Parses a client_id into the URI to fetch, or nil when its shape
-      # rules it out. Deliberately separate from fetch_and_validate and
+      # rules it out. Deliberately separate from the Fetcher call and
       # called before the caps: none of these checks costs a packet, so
       # none of them should cost a token.
       def fetch_target(client_id)
@@ -310,11 +310,6 @@ module Hitch
         # Unreachable in practice: both callers gate on document_url?,
         # which already parsed this exact string.
         nil
-      end
-
-      # The seam the resolution tests stub: one outbound fetch attempt.
-      def fetch_and_validate(client_id, uri)
-        Fetcher.call(client_id, uri)
       end
     end
   end

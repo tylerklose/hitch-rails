@@ -19,8 +19,8 @@ HITCH_DOCTOR_FORMAT=json bin/rails hitch:doctor
 The only accepted formats are `human` and `json`. The process exits zero when
 all findings are `pass`, `skip`, or `warn`; any `fail` finding exits one after
 the complete report is printed. Warnings identify a supported but non-golden
-posture, such as an unshared cache store in development/test, an empty
-explicit Registry, or a deprecated endpoint on a noncanonical path.
+posture, such as an unshared cache store in development/test or an empty
+explicit Registry.
 
 ## Stable check categories
 
@@ -52,11 +52,11 @@ these IDs in this order:
    never uses Hitch's application quota-key namespace. A store that cannot
    count, or one that cannot count across processes, fails in production and
    warns elsewhere; auth-only mode skips it.
-10. `package` — the loaded gem contains the required runtime, generators,
-    operator documents, tasks, and migrations, with no test/evidence files.
-11. `legacy_endpoint` — the deprecated `Hitch::ServerEndpoint` does not own the
-    canonical resource path. A noncanonical legacy route warns during a staged
-    migration; a canonical one fails.
+
+Every check names something the host can act on. Gem-self-diagnosis (packaged
+file integrity) lives in this repository's CI, not here. The `versions` bounds
+are read from the loaded gemspec, so the report can never disagree with the
+gem's declared support window.
 
 Each check has `status`, stable `code`, human `summary`, and bounded structural
 `details`. Exception messages, credentials, bearer values, request bodies,

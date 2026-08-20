@@ -6,7 +6,7 @@ require "json"
 require "rake"
 
 class Hitch::DoctorTaskTest < ActiveSupport::TestCase
-  Doctor = Hitch.const_get(:Doctor, false)
+  Doctor = Hitch::Doctor
 
   setup do
     configure_host
@@ -31,7 +31,6 @@ class Hitch::DoctorTaskTest < ActiveSupport::TestCase
     assert_match(/\AHitch doctor v1: WARNING\n/, output)
     Doctor::CHECK_IDS.each { |id| assert_match(/\b#{Regexp.escape(id)}\b/, output) }
     assert_includes output, "unshared"
-    assert_includes output, "present_noncanonical"
   end
 
   test "real task emits one stable machine document" do

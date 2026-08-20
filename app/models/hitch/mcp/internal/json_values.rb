@@ -28,7 +28,7 @@ module Hitch
         #   keys:       :as_is, :string (String only), :stringify_symbols,
         #               :preserve (String copied, Symbol kept), or :to_s
         #   symbols:    Symbol values — :keep, :to_s, or :reject
-        #   foreign:    values outside the JSON universe — :keep or :reject
+        #   foreign:    values outside the JSON universe — :keep, :to_s, or :reject
         #   finite:     reject non-finite Floats
         #   duplicates: keys that collide after normalization — :replace or :reject
         #   freeze:     deep-freeze the copy
@@ -100,9 +100,7 @@ module Hitch
             when Integer, TrueClass, FalseClass
               value
             else
-              invalid!(:foreign, nil) if @foreign == :reject
-
-              value
+              foreign_value(value)
             end
             @freeze ? copied.freeze : copied
           end
@@ -162,6 +160,15 @@ module Hitch
             when :to_s then value.to_s
             when :reject then invalid!(:foreign, nil)
             else raise ArgumentError, "unknown symbols policy #{@symbols.inspect}"
+            end
+          end
+
+          def foreign_value(value)
+            case @foreign
+            when :keep then value
+            when :to_s then value.to_s
+            when :reject then invalid!(:foreign, nil)
+            else raise ArgumentError, "unknown foreign policy #{@foreign.inspect}"
             end
           end
 

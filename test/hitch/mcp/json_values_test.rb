@@ -129,6 +129,11 @@ class Hitch::MCP::JsonValuesTest < ActiveSupport::TestCase
     handler, calls = capture_invalid
     assert_same INVALID, JSON_VALUES.copy({ "v" => foreign }, foreign: :reject, on_invalid: handler)
     assert_equal [ [ :foreign, nil ] ], calls
+
+    coercible = Class.new { def to_s = "coerced-store-output" }.new
+    coerced = JSON_VALUES.copy({ "v" => coercible, "n" => nil }, foreign: :to_s, freeze: true)
+    assert_equal({ "v" => "coerced-store-output", "n" => nil }, coerced)
+    assert_predicate coerced.fetch("v"), :frozen?
   end
 
   test "finite policy rejects only non-finite floats" do

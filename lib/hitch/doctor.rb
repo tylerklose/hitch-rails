@@ -18,8 +18,6 @@ module Hitch
       hosts
       origins
       rate_limit_store
-      package
-      legacy_endpoint
     ].freeze
     Check = Data.define(:id, :status, :code, :summary, :details) do
       def initialize(id:, status:, code:, summary:, details: {})
@@ -69,23 +67,6 @@ module Hitch
         hitch_clients
         hitch_client_redirect_uris
       ].freeze
-      REQUIRED_PACKAGE_FILES = %w[
-        app/controllers/concerns/hitch/mcp/endpoint.rb
-        app/models/hitch/mcp/registry.rb
-        app/models/hitch/mcp/rate_limit_key.rb
-        app/models/hitch/mcp/tool.rb
-        docs/operator/doctor.md
-        docs/operator/rate_limiting.md
-        docs/public_api/0.2.0.md
-        docs/removing.md
-        docs/upgrading/0.2.0.md
-        lib/generators/hitch/install/install_generator.rb
-        lib/generators/hitch/tool_generator.rb
-        lib/hitch/doctor.rb
-        lib/hitch/mcp/test_helper.rb
-        lib/tasks/hitch.rake
-      ].freeze
-      FORBIDDEN_PACKAGE_PATH = %r{\A(?:test|spec|tmp|log)/}
 
       def versions
         {
@@ -287,47 +268,6 @@ module Hitch
         end
       end
 
-      def package_facts
-        specification = Gem.loaded_specs["hitch-rails"]
-        raise "hitch-rails loaded specification is unavailable" unless specification
-
-        root = specification.full_gem_path
-        files = specification.files.sort
-        if files.empty?
-          files = Dir.glob("**/*", File::FNM_DOTMATCH, base: root).select do |path|
-            File.file?(File.join(root, path))
-          end.sort
-        end
-        required = REQUIRED_PACKAGE_FILES + Dir[Hitch::Engine.root.join("db/migrate/*.rb")].map do |path|
-          "db/migrate/#{File.basename(path)}"
-        end
-        {
-          "artifact_version" => specification.version.to_s,
-          "missing_required_files" => required.uniq.sort - files,
-          "missing_on_disk_files" => files.reject { |path| File.file?(File.join(root, path)) },
-          "forbidden_files" => files.grep(FORBIDDEN_PACKAGE_PATH)
-        }
-      end
-
-      def legacy_facts
-        resource_path = URI.parse(Hitch.configuration.resource_uri.to_s).path
-        resource_path = "/" if resource_path.empty?
-        routes = Rails.application.routes.routes.to_a
-        legacy_routes = routes.filter_map.with_index do |route, index|
-          next unless legacy_endpoint_route?(route)
-
-          {
-            "index" => index,
-            "path" => normalized_route_path(route),
-            "controller" => route.defaults[:controller].to_s
-          }
-        end
-        {
-          "routes" => legacy_routes,
-          "canonical_routes" => legacy_routes.select { |route| route.fetch("path") == resource_path }
-        }
-      end
-
       private
 
       def application_get(path, resource)
@@ -383,19 +323,12 @@ module Hitch
       end
 
       def modern_endpoint_route?(route)
-        controller_uses?(route, Hitch::MCP::Endpoint) && route.defaults[:action].to_s == "handle"
-      end
-
-      def legacy_endpoint_route?(route)
-        controller_uses?(route, Hitch::ServerEndpoint)
-      end
-
-      def controller_uses?(route, concern)
         controller = route.defaults[:controller].to_s
         return false if controller.empty?
+        return false unless route.defaults[:action].to_s == "handle"
 
         controller_class = "#{controller}_controller".camelize.constantize
-        controller_class.ancestors.include?(concern)
+        controller_class.ancestors.include?(Hitch::MCP::Endpoint)
       rescue NameError
         false
       end
@@ -429,22 +362,14 @@ module Hitch
         end
       end
 
+      # Bounds hostile store output: keys and non-JSON values are coerced to
+      # strings, so a broken store cannot put rich objects into the report.
+      # Cyclic input raises (and the check reports probe_error) instead of
+      # recursing without a floor.
       def copy_json(value)
-        copy = case value
-        when Hash
-          value.each_with_object({}) do |(key, child), result|
-            result[key.to_s.freeze] = copy_json(child)
-          end
-        when Array
-          value.map { |child| copy_json(child) }
-        when String
-          value.dup
-        when Integer, Float, TrueClass, FalseClass, NilClass
-          value
-        else
-          value.to_s
-        end
-        copy.freeze
+        Hitch::MCP::Internal::JsonValues.copy(
+          value, keys: :to_s, symbols: :to_s, foreign: :to_s, freeze: true
+        )
       end
 
       private
@@ -477,9 +402,7 @@ module Hitch
         registry_check,
         hosts_check,
         origins_check,
-        rate_limit_store_check,
-        package_check,
-        legacy_endpoint_check
+        rate_limit_store_check
       ]
       raise "Hitch doctor check set drifted" unless checks.map(&:id) == CHECK_IDS
 
@@ -499,10 +422,13 @@ module Hitch
 
     def versions_check
       versions = system.versions
+      # The one authority on supported versions is the gemspec itself.
+      specification = Gem.loaded_specs.fetch("hitch-rails")
+      dependencies = specification.dependencies.to_h { |dependency| [ dependency.name, dependency.requirement ] }
       requirements = {
-        "ruby" => Gem::Requirement.new(">= 3.3", "< 4.1"),
-        "rails" => Gem::Requirement.new(">= 7.2", "< 8.2"),
-        "mcp" => Gem::Requirement.new(">= 1.1", "< 2")
+        "ruby" => specification.required_ruby_version,
+        "rails" => dependencies.fetch("rails"),
+        "mcp" => dependencies.fetch("mcp")
       }
       unsupported = requirements.filter_map do |name, requirement|
         value = versions[name]
@@ -678,37 +604,6 @@ module Hitch
       probe_failure("rate_limit_store", error)
     end
 
-    def package_check
-      facts = system.package_facts
-      incomplete = facts.fetch("missing_required_files").any? || facts.fetch("missing_on_disk_files").any? ||
-        facts.fetch("forbidden_files").any?
-      return fail_check("package", "incomplete", "Loaded Hitch package contents are incomplete or unsafe", facts) if incomplete
-
-      pass("package", "complete", "Loaded Hitch package contains the required runtime and operator files", facts)
-    rescue StandardError => error
-      probe_failure("package", error)
-    end
-
-    def legacy_endpoint_check
-      facts = system.legacy_facts
-      return fail_check(
-        "legacy_endpoint",
-        "canonical",
-        "The deprecated ServerEndpoint still owns the canonical MCP resource path",
-        facts
-      ) if facts.fetch("canonical_routes").any?
-      return warning(
-        "legacy_endpoint",
-        "present_noncanonical",
-        "Deprecated ServerEndpoint routes remain outside the canonical resource path",
-        facts
-      ) if facts.fetch("routes").any?
-
-      pass("legacy_endpoint", "absent", "No deprecated ServerEndpoint route remains", facts)
-    rescue StandardError => error
-      probe_failure("legacy_endpoint", error)
-    end
-
     def pass(id, code, summary, details = {})
       Check.new(id:, status: "pass", code:, summary:, details:)
     end
@@ -731,6 +626,4 @@ module Hitch
 
     private_constant :Check, :Report, :System
   end
-
-  private_constant :Doctor
 end

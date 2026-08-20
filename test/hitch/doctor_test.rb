@@ -8,7 +8,7 @@ require "set"
 require "tmpdir"
 
 class Hitch::DoctorTest < ActiveSupport::TestCase
-  Doctor = Hitch.const_get(:Doctor, false)
+  Doctor = Hitch::Doctor
   SCENARIO_PATH = Rails.root.join("../lattice/doctor_scenarios.json").expand_path
   SCENARIOS = JSON.parse(SCENARIO_PATH.read).fetch("scenarios").freeze
   HEALTHY_FULL = {
@@ -21,9 +21,7 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     "registry" => "populated",
     "hosts" => "accepted",
     "origins" => "exact",
-    "rate_limit_store" => "shared",
-    "package" => "complete",
-    "legacy" => "absent"
+    "rate_limit_store" => "shared"
   }.freeze
   HEALTHY_AUTH_ONLY = {
     "runtime" => "auth_only",
@@ -35,9 +33,7 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     "registry" => "invalid",
     "hosts" => "accepted",
     "origins" => "deny_default",
-    "rate_limit_store" => "unshared",
-    "package" => "complete",
-    "legacy" => "absent"
+    "rate_limit_store" => "unshared"
   }.freeze
 
   class FixtureSystem
@@ -177,25 +173,6 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
       }
     end
 
-    def package_facts
-      missing = values.fetch("package") == "missing" ? [ "lib/hitch/doctor.rb" ] : []
-      {
-        "artifact_version" => "0.2.0.pre.4",
-        "missing_required_files" => missing,
-        "missing_on_disk_files" => [],
-        "forbidden_files" => []
-      }
-    end
-
-    def legacy_facts
-      routes = case values.fetch("legacy")
-      when "absent" then []
-      when "noncanonical" then [ { "index" => 1, "path" => "/old_mcp", "controller" => "old_mcp" } ]
-      when "canonical" then [ { "index" => 1, "path" => "/mcp", "controller" => "old_mcp" } ]
-      end
-      { "routes" => routes, "canonical_routes" => routes.select { |route| route.fetch("path") == "/mcp" } }
-    end
-
     private
 
     attr_reader :values
@@ -246,7 +223,7 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
 
     assert_equal "Hitch doctor v1: OK", human.lines.first.chomp
     assert_includes human, "PASS versions"
-    assert_includes human, "Summary: pass=11 warn=0 fail=0 skip=0"
+    assert_includes human, "Summary: pass=9 warn=0 fail=0 skip=0"
     assert_equal [ "schema", "status", "checks" ], machine.keys
     assert_equal "hitch.doctor.v1", machine.fetch("schema")
     assert_equal Doctor::CHECK_IDS, machine.fetch("checks").map { |check| check.fetch("id") }
@@ -509,61 +486,6 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     assert_equal "shadowed", check.code
   end
 
-  # The regex once read %r{A(?:test|spec|tmp|log)/} — the missing \A made it
-  # match a literal "A", so packaged test/spec/tmp/log files were never
-  # flagged while innocent "Atest/"-style paths were.
-  test "the package leak check flags test spec tmp and log files by path root" do
-    system = Doctor.const_get(:System, false).new
-    specification = Struct.new(:version, :full_gem_path, :files).new(
-      Gem::Version.new("0.2.0"),
-      Dir.pwd,
-      %w[
-        lib/hitch/doctor.rb
-        lib/Atest/helper.rb
-        test/models/leak_test.rb
-        spec/leak_spec.rb
-        tmp/leak.json
-        log/leak.log
-      ]
-    )
-    loaded_specs = Gem.loaded_specs.merge("hitch-rails" => specification)
-
-    stub_class_method(Gem, :loaded_specs, -> { loaded_specs }) do
-      forbidden = system.package_facts.fetch("forbidden_files")
-
-      assert_equal %w[log/leak.log spec/leak_spec.rb test/models/leak_test.rb tmp/leak.json], forbidden
-    end
-  end
-
-  test "installed package fallback inspects disk when the loaded gemspec omits files" do
-    system_class = Doctor.const_get(:System, false)
-    system = system_class.new
-    required = system_class.const_get(:REQUIRED_PACKAGE_FILES, false) +
-      Dir[Hitch::Engine.root.join("db/migrate/*.rb")].map { |path| "db/migrate/#{File.basename(path)}" }
-
-    Dir.mktmpdir("hitch-doctor-package") do |root|
-      required.each do |relative_path|
-        absolute_path = File.join(root, relative_path)
-        FileUtils.mkdir_p(File.dirname(absolute_path))
-        File.write(absolute_path, "fixture\n")
-      end
-      specification = Struct.new(:version, :full_gem_path, :files).new(
-        Gem::Version.new("0.2.0.pre.4"),
-        root,
-        []
-      )
-      loaded_specs = Gem.loaded_specs.merge("hitch-rails" => specification)
-
-      stub_class_method(Gem, :loaded_specs, -> { loaded_specs }) do
-        facts = system.package_facts
-
-        assert_empty facts.fetch("missing_required_files")
-        assert_empty facts.fetch("missing_on_disk_files")
-        assert_empty facts.fetch("forbidden_files")
-      end
-    end
-  end
-
   private
 
   def expected_overall(report)
@@ -590,10 +512,7 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
       [ "rate_limit_store", "warn", "unshared" ],
       [ "rate_limit_store", "warn", "uncountable" ],
       [ "rate_limit_store", "fail", "unshared" ],
-      [ "rate_limit_store", "fail", "uncountable" ],
-      [ "package", "fail", "incomplete" ],
-      [ "legacy_endpoint", "warn", "present_noncanonical" ],
-      [ "legacy_endpoint", "fail", "canonical" ]
+      [ "rate_limit_store", "fail", "uncountable" ]
     ]
   end
 

@@ -46,17 +46,14 @@ module Hitch
       abort "Refusing to overwrite existing OUTPUT_FILE"
     end
   end
-
-  private_constant :ClientCredentialTask
 end
 
 namespace :hitch do
-  desc "Diagnose Hitch configuration, routes, schema, registry, admission store, and package contents"
+  desc "Diagnose Hitch configuration, routes, schema, registry, and admission store"
   task doctor: :environment do
-    doctor = Hitch.const_get(:Doctor, false)
     format = ENV.fetch("HITCH_DOCTOR_FORMAT", "human")
-    report = doctor.call
-    puts doctor.render(report, format:)
+    report = Hitch::Doctor.call
+    puts Hitch::Doctor.render(report, format:)
     exit(1) if report.failure?
   rescue ArgumentError => error
     abort error.message
@@ -68,7 +65,7 @@ namespace :hitch do
       client_id = ENV["CLIENT_ID"].presence || abort("CLIENT_ID is required")
       redirect_uri = ENV["REDIRECT_URI"].presence || abort("REDIRECT_URI is required")
 
-      Hitch.const_get(:ClientCredentialTask, false).disclose do
+      Hitch::ClientCredentialTask.disclose do
         Hitch::Client.register_confidential!(
           client_id: client_id,
           client_name: ENV["NAME"],
@@ -81,7 +78,7 @@ namespace :hitch do
     task rotate_secret: :environment do
       client_id = ENV["CLIENT_ID"].presence || abort("CLIENT_ID is required")
 
-      Hitch.const_get(:ClientCredentialTask, false).disclose do
+      Hitch::ClientCredentialTask.disclose do
         client = Hitch::Client.find_by(client_id: client_id)
         abort "Confidential client not found" unless client&.confidential_client?
 

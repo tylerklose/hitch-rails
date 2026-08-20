@@ -66,7 +66,10 @@ module Hitch
     end
 
     # Deprecated: use #scope?. Kept through the 0.2 line.
-    alias_method :has_scope?, :scope?
+    def has_scope?(scope)
+      Hitch.deprecator.warn("AccessToken#has_scope? is deprecated; use #scope? instead")
+      scope?(scope)
+    end
 
     def self.create_authorization!(principal:, client_id:, client_name:, code_challenge:, code_challenge_method:, scopes: "mcp", redirect_uri: nil, resource_uri: nil)
       raw_code = SecureRandom.urlsafe_base64(32)

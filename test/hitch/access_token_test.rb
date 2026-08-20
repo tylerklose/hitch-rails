@@ -231,9 +231,9 @@ class Hitch::AccessTokenTest < ActiveSupport::TestCase
     assert record.scope?("mcp")
     refute record.scope?("write")
 
-    # Deprecated spelling still answers until it is removed.
-    assert record.has_scope?("mcp")
-    refute record.has_scope?("write")
+    # Deprecated spelling still answers, and says so, until it is removed.
+    assert assert_deprecated(/has_scope\?/, Hitch.deprecator) { record.has_scope?("mcp") }
+    refute assert_deprecated(/has_scope\?/, Hitch.deprecator) { record.has_scope?("write") }
   end
 
   test "cleanup_expired! drops orphaned pending codes" do

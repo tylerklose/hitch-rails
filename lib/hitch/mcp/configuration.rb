@@ -64,8 +64,10 @@ module Hitch
           raise ArgumentError, "mcp.server_info must be a Hash"
         end
 
-        @normalized_server_info = nil
+        # New value first: a reader interleaving between these two writes
+        # re-memoizes at worst the NEW value, never pins the old one.
         @server_info = value
+        @normalized_server_info = nil
       end
 
       def scope_resolver=(value)

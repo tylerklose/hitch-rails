@@ -54,7 +54,7 @@ authorization substrate.
   `Hitch::MCP::TestHelper` builds authenticated JSON-RPC integration requests
   and mints real access tokens with `mint_mcp_token`. The read-only
   `hitch:doctor` reports configuration, discovery, routing, migrations,
-  Registry, ingress, admission-store, and package findings without exposing
+  Registry, ingress, and admission-store findings without exposing
   credentials.
 
 ### Changed

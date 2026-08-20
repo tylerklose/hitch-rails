@@ -134,10 +134,16 @@ module Hitch
         # version, and both supported SDK lines default their stable version to
         # 2026-07-28 — the value we used to pin. mcp 1.2.0 rejects pinning a
         # modern version outright.
+        # validate_tool_call_results stays explicitly false (also the SDK
+        # default on both supported lines): Hitch's ResultNormalizer already
+        # schema-validates every structured result inside framework-owned
+        # Tool.call, before the SDK sees it, so the SDK pass was a second
+        # validation of the same bytes. Hitch's is the one that stays — the
+        # boundary posture is to not trust the SDK's.
         def sdk_configuration
           ::MCP::Configuration.new(
             validate_tool_call_arguments: true,
-            validate_tool_call_results: true,
+            validate_tool_call_results: false,
             exception_reporter: ->(_exception, _data) { },
             around_request: ->(_data, &handler) { handler.call },
             instrumentation_callback: ->(_data) { }

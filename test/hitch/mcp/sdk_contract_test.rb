@@ -14,7 +14,7 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
     test_tools_only_method_allowlist_precedes_sdk
     test_sdk_1_1_final_discover_normalizer_issue_389
     test_sdk_error_details_are_not_public
-    test_sdk_output_validation_is_explicitly_enabled
+    test_hitch_owns_the_one_output_schema_validation
     test_hostile_global_callbacks_receive_no_hitch_request_data
     test_sdk_callbacks_cannot_observe_arguments_or_body
     test_streamable_http_transport_is_not_used
@@ -47,6 +47,7 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
       @implementation = implementation || method(:default_implementation)
       implementation = @implementation
       @tool_class = Class.new(Hitch::MCP::Tool)
+      @tool_class.output_schema(output_schema) if output_schema
       @tool_class.define_singleton_method(:authorize!) do |_context, arguments:|
       end
       @tool_class.define_singleton_method(:perform) do |context, arguments:|
@@ -64,23 +65,6 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
       Hitch::MCP::Result.text("ok")
     end
   end
-
-  RawToolDefinition = Data.define(:name, :description, :input_schema, :output_schema, :implementation) do
-    def initialize(
-      name: "echo",
-      description: "Raw SDK backstop tool",
-      input_schema: { "type" => "object" },
-      output_schema: nil,
-      &implementation
-    )
-      super(name:, description:, input_schema:, output_schema:, implementation:)
-    end
-
-    def call(server_context:, **arguments)
-      implementation.call(arguments:, context: server_context.fetch(:hitch_context))
-    end
-  end
-  private_constant :RawToolDefinition
 
   test "handle requires structural symbol keys" do
     raw_server = ::MCP::Server.new(name: "raw", version: "1", capabilities: { tools: {} })
@@ -238,18 +222,18 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
     refute_includes JSON.generate(tool_error), "secret_argument_name"
   end
 
-  test "SDK output validation is explicitly enabled" do
-    invalid_tool = RawToolDefinition.new(
-      output_schema: {
-        "type" => "object",
-        "required" => [ "value" ],
-        "properties" => { "value" => { "type" => "integer" } }
-      }
-    ) do |arguments:, context:|
-      ::MCP::Tool::Response.new(
-        [ { type: "text", text: "invalid" } ],
-        structured_content: { "value" => "not-an-integer" }
-      )
+  test "hitch owns the one output schema validation" do
+    # The SDK's validate_tool_call_results pass is off (pinned in the
+    # configuration test below): ResultNormalizer validates every structured
+    # result inside framework-owned Tool.call before the SDK sees it, so an
+    # invalid structured result fails with the exact bytes it always had.
+    output_schema = {
+      "type" => "object",
+      "required" => [ "value" ],
+      "properties" => { "value" => { "type" => "integer" } }
+    }
+    invalid_tool = ToolDefinition.new(output_schema:) do |arguments:, context:|
+      Hitch::MCP::Result.structured({ "value" => "not-an-integer" })
     end
 
     response = call_adapter(
@@ -258,9 +242,11 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
       tools: [ invalid_tool ]
     )
 
-    assert_equal(-32603, response.dig(:error, :code))
-    assert_equal "Internal error", response.dig(:error, :message)
-    refute response.fetch(:error).key?(:data)
+    assert_nil response[:error]
+    result = response.fetch(:result)
+    assert_equal true, result.fetch(:isError)
+    assert_equal [ { type: "text", text: "Tool execution failed" } ], result.fetch(:content)
+    refute result.key?(:structuredContent)
     refute_includes JSON.generate(response), "not-an-integer"
   end
 
@@ -417,7 +403,9 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
     # never serves. The unpinned default differs per SDK line and is unused.
     assert_equal false, configuration.protocol_version?
     assert_equal true, configuration.validate_tool_call_arguments
-    assert_equal true, configuration.validate_tool_call_results
+    # Explicitly false, not merely defaulted: Hitch's ResultNormalizer is the
+    # one output-schema validation, and this survives an SDK default change.
+    assert_equal false, configuration.validate_tool_call_results
     assert_equal true, configuration.exception_reporter?
     assert_equal true, configuration.around_request?
     assert_equal true, configuration.instrumentation_callback?
@@ -441,7 +429,7 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
       validate_tool_call_arguments validate_tool_call_results
     ], captured.keys.sort
     assert_equal true, captured.fetch(:validate_tool_call_arguments)
-    assert_equal true, captured.fetch(:validate_tool_call_results)
+    assert_equal false, captured.fetch(:validate_tool_call_results)
     assert_nil captured.fetch(:exception_reporter).call(RuntimeError.new, {})
     assert_equal :handled, captured.fetch(:around_request).call({}) { :handled }
     assert_nil captured.fetch(:instrumentation_callback).call({})

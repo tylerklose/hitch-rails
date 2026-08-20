@@ -57,10 +57,10 @@ probes:
   - id: output_validation_default
     status: reproduced
     observation: SDK tool-result validation defaults to disabled.
-    decision: Set validate_tool_call_results true and independently validate/cap Hitch Result before SDK return.
+    decision: Keep validate_tool_call_results explicitly false; Hitch's ResultNormalizer schema-validates and caps every structured Result inside framework-owned Tool.call, the one output-schema validation.
     references:
       - https://github.com/modelcontextprotocol/ruby-sdk/tree/v1.1.0#tool-output-schemas
-    runtime_test: test_sdk_output_validation_is_explicitly_enabled
+    runtime_test: test_hitch_owns_the_one_output_schema_validation
   - id: callback_configuration_merge
     status: reproduced
     observation: Partial per-server callback configuration inherits global exception, around-request, or instrumentation callbacks.

@@ -11,7 +11,7 @@ tests:
       - test_tools_only_method_allowlist_precedes_sdk
       - test_sdk_1_1_final_discover_normalizer_issue_389
       - test_sdk_error_details_are_not_public
-      - test_sdk_output_validation_is_explicitly_enabled
+      - test_hitch_owns_the_one_output_schema_validation
       - test_hostile_global_callbacks_receive_no_hitch_request_data
       - test_sdk_callbacks_cannot_observe_arguments_or_body
       - test_streamable_http_transport_is_not_used

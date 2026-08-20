@@ -256,6 +256,9 @@ class Hitch::MCP::JsonValuesTest < ActiveSupport::TestCase
 
     error = assert_raises(ArgumentError) { JSON_VALUES.copy({ "k" => :sym }, symbols: :bogus) }
     assert_equal "unknown symbols policy :bogus", error.message
+
+    error = assert_raises(ArgumentError) { JSON_VALUES.copy({ "k" => Object.new }, foreign: :bogus) }
+    assert_equal "unknown foreign policy :bogus", error.message
   end
 
   private

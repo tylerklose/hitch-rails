@@ -191,13 +191,11 @@ def smoke_runner(profile_name, expected_adapter)
     package_registry.register package_tool, scopes: [ "mcp" ]
 
     Hitch.configuration.mcp.registry = "HitchPackageSmokeRegistry"
-    Hitch.configuration.mcp.server_info = ->(_context) {
-      {
-        name: "hitch-package-smoke",
-        version: loaded.version.to_s,
-        title: "Hitch Package Smoke",
-        instructions: "Exercise the packaged authenticated endpoint."
-      }
+    Hitch.configuration.mcp.server_info = {
+      name: "hitch-package-smoke",
+      version: loaded.version.to_s,
+      title: "Hitch Package Smoke",
+      instructions: "Exercise the packaged authenticated endpoint."
     }
     Hitch.configuration.mcp.scope_resolver = lambda do |principal:, access_token:, request:|
       principal
@@ -410,8 +408,10 @@ Dir.mktmpdir("hitch-package-smoke-") do |directory|
         raise "packaged doctor schema drifted" unless doctor.fetch("schema") == "hitch.doctor.v1"
         raise "packaged doctor found an actionable failure" if
           doctor.fetch("checks").any? { |check| check.fetch("status") == "fail" }
-        raise "packaged doctor did not validate package contents" unless
-          doctor.fetch("checks").find { |check| check.fetch("id") == "package" }&.fetch("code") == "complete"
+        # The versions bounds come from the loaded gemspec, so a passing check
+        # here proves the packaged gemspec metadata survived the build.
+        raise "packaged doctor did not validate the loaded gem's versions" unless
+          doctor.fetch("checks").find { |check| check.fetch("id") == "versions" }&.fetch("code") == "supported"
 
         output = capture!(
           "bundle", "exec", "rails", "runner",

@@ -487,8 +487,11 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
     end
 
     assert_same context, received_context
-    assert_equal [ { hitch_context: context } ], server_contexts
-    assert_deeply_frozen server_contexts.fetch(0)
+    assert_equal 1, server_contexts.length
+    server_context = server_contexts.fetch(0)
+    assert_equal %i[hitch_context hitch_dispatch], server_context.keys.sort
+    assert_same context, server_context.fetch(:hitch_context)
+    assert_deeply_frozen server_context
   end
 
   test "tool name host subset documents SDK 1.1 divergence" do
@@ -505,6 +508,71 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
       tools: [ ToolDefinition.new(name: "a" * 64) ]
     )
     assert_equal "a" * 64, response.dig(:result, :tools, 0, :name)
+  end
+
+  test "adapter reuses a definition's prebuilt SDK tool wrapper" do
+    definition = ToolDefinition.new
+    sdk_tool = adapter_class.build_sdk_tool(
+      name: definition.name,
+      description: definition.description,
+      input_schema: definition.input_schema
+    )
+    definition.define_singleton_method(:sdk_tool) { sdk_tool }
+
+    captured_tools = nil
+    original_new = ::MCP::Server.method(:new)
+    stub_class_method(::MCP::Server, :new, lambda { |**arguments|
+      captured_tools = arguments.fetch(:tools)
+      original_new.call(**arguments)
+    }) do
+      2.times do
+        response = call_adapter(
+          method: "tools/call",
+          params: { "name" => "echo", "arguments" => {} },
+          tools: [ definition ]
+        )
+        assert_nil response[:error]
+        assert_equal 1, captured_tools.length
+        assert_same sdk_tool, captured_tools.fetch(0)
+      end
+    end
+  end
+
+  test "one memoized SDK tool serves concurrent requests without sharing context" do
+    started = Queue.new
+    release = Queue.new
+    shared = ToolDefinition.new do |arguments:, context:|
+      started << true
+      release.pop
+      # Echoing the principal into the result is the leak detector: a shared
+      # or stale context would answer one request with the other's principal.
+      Hitch::MCP::Result.text(context)
+    end
+    sdk_tool = adapter_class.build_sdk_tool(
+      name: shared.name,
+      description: shared.description,
+      input_schema: shared.input_schema
+    )
+    shared.define_singleton_method(:sdk_tool) { sdk_tool }
+
+    threads = %w[principal-a principal-b].map do |principal|
+      Thread.new do
+        call_adapter(
+          method: "tools/call",
+          params: { "name" => "echo", "arguments" => {} },
+          tools: [ shared ],
+          context: principal
+        ).dig(:result, :content, 0, :text)
+      end
+    end
+    # Both invocations sit inside the one shared wrapper before either
+    # finishes, so the two requests demonstrably overlap in time. The pops
+    # time out rather than hang so a broken build fails instead of stalling.
+    overlapped = 2.times.map { !started.pop(timeout: 5).nil? }
+    2.times { release << true }
+
+    assert_equal [ true, true ], overlapped, "both requests must reach the shared wrapper concurrently"
+    assert_equal %w[principal-a principal-b], threads.map(&:value)
   end
 
   test "fresh server per request isolates principals" do

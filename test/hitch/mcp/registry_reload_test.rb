@@ -221,8 +221,18 @@ class Hitch::MCP::RegistryReloadTest < ActiveSupport::TestCase
     end
   end
 
+  # The snapshot must never retain a reloadable host class — resolution goes
+  # through class names so each prepare cycle serves fresh constants. The one
+  # class it may hold is the framework-built anonymous SDK tool wrapper,
+  # rebuilt with every snapshot from frozen entry data.
   def refute_contains_class(value)
-    refute_kind_of Class, value
+    if value.is_a?(Class)
+      assert_nil value.name
+      assert_operator value, :<, ::MCP::Tool
+      refute_operator value, :<, Hitch::MCP::Tool
+      return
+    end
+
     children = case value
     when Hash then value.flat_map { |key, child| [ key, child ] }
     when Array then value

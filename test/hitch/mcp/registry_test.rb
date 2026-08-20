@@ -64,6 +64,22 @@ class Hitch::MCP::RegistryTest < ActiveSupport::TestCase
     refute_contains_class snapshot
   end
 
+  test "each prepare builds the SDK tool wrapper once and replaces it wholesale" do
+    registry = define_registry([ define_tool, [ "mcp" ] ])
+    @configuration.registry = registry.name
+
+    first = prepare_registry.entries.fetch(0).sdk_tool
+    assert_operator first, :<, ::MCP::Tool
+    # Stable across snapshot reads: requests reuse the compiled wrapper.
+    assert_same first, registry_snapshot.entries.fetch(0).sdk_tool
+
+    # A new prepare cycle publishes a new wrapper — the memo's only key is
+    # the snapshot itself.
+    second = prepare_registry.entries.fetch(0).sdk_tool
+    refute_same first, second
+    assert_equal first.to_h, second.to_h
+  end
+
   test "configuration accepts only a copied nonempty String and clears its snapshot" do
     registry = define_registry([ define_tool, [ "mcp" ] ])
     name = +registry.name
@@ -352,7 +368,12 @@ class Hitch::MCP::RegistryTest < ActiveSupport::TestCase
     end
   end
 
+  # Both walkers make one exception for the framework-built anonymous SDK tool
+  # wrapper each entry carries: it is rebuilt with every snapshot from frozen
+  # entry data, unlike the reloadable host classes these invariants exist for.
   def assert_deeply_frozen(value)
+    return if sdk_tool_wrapper?(value)
+
     assert_predicate value, :frozen?
     children = case value
     when Hash then value.flat_map { |key, child| [ key, child ] }
@@ -364,7 +385,11 @@ class Hitch::MCP::RegistryTest < ActiveSupport::TestCase
   end
 
   def refute_contains_class(value)
-    refute_kind_of Class, value
+    if value.is_a?(Class)
+      assert sdk_tool_wrapper?(value), "snapshot retained a class: #{value.inspect}"
+      return
+    end
+
     children = case value
     when Hash then value.flat_map { |key, child| [ key, child ] }
     when Array then value
@@ -372,5 +397,9 @@ class Hitch::MCP::RegistryTest < ActiveSupport::TestCase
     else []
     end
     children.each { |child| refute_contains_class(child) }
+  end
+
+  def sdk_tool_wrapper?(value)
+    value.is_a?(Class) && value.name.nil? && value < ::MCP::Tool && !(value < Hitch::MCP::Tool)
   end
 end

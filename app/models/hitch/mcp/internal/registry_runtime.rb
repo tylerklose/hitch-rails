@@ -31,7 +31,11 @@ module Hitch
           :input_schema,
           :output_schema,
           :annotations,
-          :scopes
+          :scopes,
+          # The SDK tool wrapper (anonymous ::MCP::Tool subclass) compiled once
+          # here at prepare time instead of per tool per request. It holds only
+          # frozen entry data — never the reloadable host tool class.
+          :sdk_tool
         )
         Snapshot = Data.define(:registry_name, :entries)
         CallResolution = Data.define(:status, :tool, :required_scopes)
@@ -41,6 +45,7 @@ module Hitch
           def input_schema = entry.input_schema
           def output_schema = entry.output_schema
           def annotations = entry.annotations
+          def sdk_tool = entry.sdk_tool
 
           def call(server_context:, **arguments)
             tool_class.call(server_context:, **arguments)
@@ -182,7 +187,10 @@ module Hitch
               input_schema:,
               output_schema:,
               annotations:,
-              scopes:
+              scopes:,
+              sdk_tool: SDKAdapter.build_sdk_tool(
+                name:, description:, input_schema:, output_schema:, annotations:
+              )
             )
           end
 

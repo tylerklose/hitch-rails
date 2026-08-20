@@ -2,7 +2,7 @@
   "model_name": "hitch_doctor",
   "_intent_notes": [
     "Pairwise operator-diagnostic model for M5.3.",
-    "Every row executes all nine stable doctor categories against an immutable fixture system.",
+    "Every row executes all ten stable doctor categories against an immutable fixture system.",
     "Auth-only mode must skip MCP registry and admission-store checks regardless of irrelevant fixture values.",
     "Forced rows pin the healthy full runtime, healthy auth-only mode, and every actionable failure category."
   ],
@@ -84,6 +84,14 @@
         "uncountable",
         "error"
       ]
+    },
+    {
+      "name": "legacy",
+      "values": [
+        "absent",
+        "noncanonical",
+        "canonical"
+      ]
     }
   ],
   "constraints": [
@@ -130,6 +138,10 @@
         {
           "parameter": "rate_limit_store",
           "value": "shared"
+        },
+        {
+          "parameter": "legacy",
+          "value": "absent"
         }
       ]
     },
@@ -176,6 +188,10 @@
         {
           "parameter": "rate_limit_store",
           "value": "unshared"
+        },
+        {
+          "parameter": "legacy",
+          "value": "absent"
         }
       ]
     },
@@ -366,6 +382,16 @@
         {
           "parameter": "rate_limit_store",
           "value": "uncountable"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Deprecated endpoint owns the canonical resource.",
+      "assignments": [
+        {
+          "parameter": "legacy",
+          "value": "canonical"
         }
       ]
     }

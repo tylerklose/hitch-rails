@@ -21,7 +21,8 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     "registry" => "populated",
     "hosts" => "accepted",
     "origins" => "exact",
-    "rate_limit_store" => "shared"
+    "rate_limit_store" => "shared",
+    "legacy" => "absent"
   }.freeze
   HEALTHY_AUTH_ONLY = {
     "runtime" => "auth_only",
@@ -33,7 +34,8 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     "registry" => "invalid",
     "hosts" => "accepted",
     "origins" => "deny_default",
-    "rate_limit_store" => "unshared"
+    "rate_limit_store" => "unshared",
+    "legacy" => "absent"
   }.freeze
 
   class FixtureSystem
@@ -173,14 +175,23 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
       }
     end
 
+    def legacy_facts
+      routes = case values.fetch("legacy")
+      when "absent" then []
+      when "noncanonical" then [ { "index" => 1, "path" => "/old_mcp", "controller" => "old_mcp" } ]
+      when "canonical" then [ { "index" => 1, "path" => "/mcp", "controller" => "old_mcp" } ]
+      end
+      { "routes" => routes, "canonical_routes" => routes.select { |route| route.fetch("path") == "/mcp" } }
+    end
+
     private
 
     attr_reader :values
   end
 
   test "Lattice fixtures exercise all stable categories and actionable outcomes" do
-    assert_equal 27, SCENARIOS.length
-    assert_equal (1..27).to_a, SCENARIOS.map { |scenario| scenario.fetch("id") }
+    assert_equal 30, SCENARIOS.length
+    assert_equal (1..30).to_a, SCENARIOS.map { |scenario| scenario.fetch("id") }
     seen = Set.new
 
     SCENARIOS.each do |scenario|
@@ -223,7 +234,7 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
 
     assert_equal "Hitch doctor v1: OK", human.lines.first.chomp
     assert_includes human, "PASS versions"
-    assert_includes human, "Summary: pass=9 warn=0 fail=0 skip=0"
+    assert_includes human, "Summary: pass=10 warn=0 fail=0 skip=0"
     assert_equal [ "schema", "status", "checks" ], machine.keys
     assert_equal "hitch.doctor.v1", machine.fetch("schema")
     assert_equal Doctor::CHECK_IDS, machine.fetch("checks").map { |check| check.fetch("id") }
@@ -512,7 +523,9 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
       [ "rate_limit_store", "warn", "unshared" ],
       [ "rate_limit_store", "warn", "uncountable" ],
       [ "rate_limit_store", "fail", "unshared" ],
-      [ "rate_limit_store", "fail", "uncountable" ]
+      [ "rate_limit_store", "fail", "uncountable" ],
+      [ "legacy_endpoint", "warn", "present_noncanonical" ],
+      [ "legacy_endpoint", "fail", "canonical" ]
     ]
   end
 

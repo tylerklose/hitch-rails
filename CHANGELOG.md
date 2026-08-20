@@ -91,12 +91,13 @@ authorization substrate.
 - **`AccessToken#scope?` replaces `#has_scope?`.** The old spelling remains
   as a deprecated alias through the 0.2 line; update host callers to
   `token.scope?("write")`.
-- **Doctor reports only host-actionable checks.** The `package` and
-  `legacy_endpoint` checks are gone from `hitch:doctor` (human and
-  `hitch.doctor.v1` JSON): packaged-file integrity is gem-self-diagnosis and
-  now runs in this repository's CI. The `versions` check reads its
-  Ruby/Rails/MCP bounds from the loaded gemspec instead of hand-copied
-  literals (same current values).
+- **Doctor reports only host-actionable checks.** The `package` check is gone
+  from `hitch:doctor` (human and `hitch.doctor.v1` JSON): packaged-file
+  integrity is gem-self-diagnosis and now runs in this repository's CI. The
+  `versions` check reads its Ruby/Rails/MCP bounds from the loaded gemspec
+  instead of hand-copied literals (same current values). `Hitch::Doctor` and
+  the client-credential rake helper are now ordinary (undocumented) constants;
+  the private_constant/const_get indirection in `hitch.rake` is gone.
 - **`config.mcp.server_info` is a static Hash validated at boot.** It was a
   callable receiving a per-request `Hitch::MCP::Context`. A malformed value
   now fails at boot/prepare, alongside registry validation, instead of

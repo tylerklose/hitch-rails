@@ -42,13 +42,11 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
       configuration.supported_scopes = [ "mcp" ]
       configuration.mcp.max_request_bytes = MAX_REQUEST_BYTES
       configuration.mcp.registry = "McpToolRegistry"
-      configuration.mcp.server_info = ->(_context) {
-        {
-          name: "hitch-wire",
-          version: "0.2.0",
-          title: "Hitch Wire",
-          instructions: "Use the authenticated private slice."
-        }
+      configuration.mcp.server_info = {
+        name: "hitch-wire",
+        version: "0.2.0",
+        title: "Hitch Wire",
+        instructions: "Use the authenticated private slice."
       }
       configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
       configuration.mcp.request_limit = { to: 120, within: 60 }
@@ -240,23 +238,27 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "server info failures are generic and do no registry or sdk work" do
-    [
-      ->(_context) { raise "server-info-secret" },
-      ->(_context) { { name: "first", "name" => "second", version: "1" } }
-    ].each do |server_info|
-      Hitch.configuration.mcp.server_info = server_info
-      McpController.reset_wire_metrics!
-
-      body = base_body("server-info", "server/discover")
-      post "/mcp", params: JSON.generate(body), headers: base_headers("server/discover")
-
-      assert_response :ok
-      assert_equal(-32603, JSON.parse(response.body).dig("error", "code"))
-      refute_includes response.body, "server-info-secret"
-      assert_equal 0, McpController.wire_metrics.fetch(:registry, 0)
-      assert_equal 0, McpController.wire_metrics.fetch(:sdk, 0)
+  test "server info is validated at configuration and stays generic on the wire" do
+    # Callables are rejected at assignment: the value is static now.
+    assert_raises(ArgumentError) do
+      Hitch.configuration.mcp.server_info = ->(_context) { { name: "server-info-secret", version: "1" } }
     end
+
+    # A malformed Hash fails on the validated read. At boot that read runs in
+    # the engine's to_prepare hook; assigned after boot, as here, the request
+    # path hits it first and the wire stays generic with no registry or SDK
+    # work.
+    Hitch.configuration.mcp.server_info = { name: "first", "name" => "server-info-secret", version: "1" }
+    McpController.reset_wire_metrics!
+
+    body = base_body("server-info", "server/discover")
+    post "/mcp", params: JSON.generate(body), headers: base_headers("server/discover")
+
+    assert_response :ok
+    assert_equal(-32603, JSON.parse(response.body).dig("error", "code"))
+    refute_includes response.body, "server-info-secret"
+    assert_equal 0, McpController.wire_metrics.fetch(:registry, 0)
+    assert_equal 0, McpController.wire_metrics.fetch(:sdk, 0)
   end
 
   test "final request id values survive the SDK compatibility boundary" do

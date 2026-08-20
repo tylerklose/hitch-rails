@@ -122,6 +122,9 @@ module Hitch
       configuration.mcp.validate!
 
       configuration.mcp.prepare_registry!(supported_scopes: configuration.supported_scopes)
+      # Forces server_info normalization so a malformed value fails here,
+      # alongside registry validation, rather than on the first request.
+      configuration.mcp.server_info
       configuration.mcp.validate_rate_limit_store!
     end
 

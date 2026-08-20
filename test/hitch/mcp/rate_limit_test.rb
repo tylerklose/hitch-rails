@@ -150,7 +150,7 @@ class Hitch::MCP::RateLimitTest < ActiveSupport::TestCase
   def configured_runtime(to:, within:, store: nil)
     Hitch::MCP::Configuration.new.tap do |configuration|
       configuration.registry = "McpToolRegistry"
-      configuration.server_info = ->(_context) { { name: "rate-test", version: "0.2.0" } }
+      configuration.server_info = { name: "rate-test", version: "0.2.0" }
       configuration.scope_resolver = ->(principal:, access_token:, request:) { principal }
       configuration.request_limit = { to:, within: }
       configuration.rate_limit_store = store

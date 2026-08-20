@@ -101,7 +101,7 @@ class MCPRateLimitTest < ActionDispatch::IntegrationTest
       configuration.allowed_origins = [ "https://allowed.example" ]
       configuration.supported_scopes = [ "mcp" ]
       configuration.mcp.registry = "McpToolRegistry"
-      configuration.mcp.server_info = ->(_context) { { name: "hitch-rate", version: "0.2.0" } }
+      configuration.mcp.server_info = { name: "hitch-rate", version: "0.2.0" }
       configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
       configuration.mcp.request_limit = { to:, within: }
       configuration.mcp.rate_limit_store = ActiveSupport::Cache::MemoryStore.new

@@ -88,6 +88,11 @@ authorization substrate.
   (`ALLOWED_PORT` stays; `FAILURE_CACHE_TTL` is now
   `Hitch::ClientIdMetadata::Cache::FAILURE_TTL`). Host code referencing the
   old constants gets `NameError`.
+- **`config.mcp.server_info` is a static Hash validated at boot.** It was a
+  callable receiving a per-request `Hitch::MCP::Context`. A malformed value
+  now fails at boot/prepare, alongside registry validation, instead of
+  returning a generic protocol error on the first request; assigning a
+  callable raises `ArgumentError`.
 
 ## [0.1.0] - 2026-08-01
 

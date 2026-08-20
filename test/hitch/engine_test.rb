@@ -242,7 +242,7 @@ class Hitch::EngineTest < ActiveSupport::TestCase
     Hitch.reset_configuration!
     Hitch.configure do |configuration|
       configuration.resource_uri = "https://dummy.test/mcp"
-      configuration.mcp.server_info = ->(_context) { { name: "dummy", version: "1" } }
+      configuration.mcp.server_info = { name: "dummy", version: "1" }
     end
     assert_nothing_raised { configuration_initializer.run(Rails.application) }
   ensure

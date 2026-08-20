@@ -12,13 +12,11 @@ Hitch.configure do |config|
   config.brand_name = "Dummy"
   config.mcp.enabled = true
   config.mcp.registry = "McpToolRegistry"
-  config.mcp.server_info = ->(_context) {
-    {
-      name: "hitch-dummy",
-      version: "0.2.0",
-      title: "Hitch Dummy",
-      instructions: "Use only tools available to the signed-in principal."
-    }
+  config.mcp.server_info = {
+    name: "hitch-dummy",
+    version: "0.2.0",
+    title: "Hitch Dummy",
+    instructions: "Use only tools available to the signed-in principal."
   }
   config.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
   config.mcp.request_limit = {

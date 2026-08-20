@@ -191,7 +191,7 @@ class MCPRateLimitCacheStoreTest < ActionDispatch::IntegrationTest
   test "production boot succeeds with no Redis configuration" do
     configuration = Hitch::MCP::Configuration.new
     configuration.registry = "McpToolRegistry"
-    configuration.server_info = ->(_context) { { name: "solid-cache-app", version: "1.0.0" } }
+    configuration.server_info = { name: "solid-cache-app", version: "1.0.0" }
     configuration.scope_resolver = ->(principal:, access_token:, request:) { principal }
     configuration.request_limit = { to: 120, within: 60 }
 
@@ -232,7 +232,7 @@ class MCPRateLimitCacheStoreTest < ActionDispatch::IntegrationTest
       configuration.allowed_origins = [ "https://allowed.example" ]
       configuration.supported_scopes = [ "mcp" ]
       configuration.mcp.registry = "McpToolRegistry"
-      configuration.mcp.server_info = ->(_context) { { name: "hitch-rate", version: "0.2.0" } }
+      configuration.mcp.server_info = { name: "hitch-rate", version: "0.2.0" }
       configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
       configuration.mcp.request_limit = { to:, within: }
       configuration.mcp.rate_limit_store = store

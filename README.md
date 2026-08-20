@@ -98,7 +98,7 @@ the same block when you need to:
 ```ruby
 config.allowed_hosts = []                # additional exact proxy hosts
 config.supported_scopes = [ "mcp" ]
-config.mcp.server_info = ->(_context) { { name: "your-app", version: "1.0.0" } }
+config.mcp.server_info = { name: "your-app", version: "1.0.0" }
 config.mcp.scope_resolver = ->(principal:, access_token:, request:) {
   principal.account                      # what tools see as context.scope
 }

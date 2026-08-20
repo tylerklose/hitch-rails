@@ -112,7 +112,7 @@ class MCPRateLimitCrossProcessContractTest < ActiveSupport::TestCase
       configuration.allowed_origins = []
       configuration.supported_scopes = [ "mcp" ]
       configuration.mcp.registry = "McpToolRegistry"
-      configuration.mcp.server_info = ->(_context) { { name: "hitch-cross-process", version: "0.2.0" } }
+      configuration.mcp.server_info = { name: "hitch-cross-process", version: "0.2.0" }
       configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
       configuration.mcp.request_limit = { to: REQUEST_LIMIT, within: WINDOW_SECONDS }
       configuration.mcp.rate_limit_store = ActiveSupport::Cache::RedisCacheStore.new(url: @redis_url)

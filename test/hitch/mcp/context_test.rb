@@ -177,22 +177,45 @@ class Hitch::MCP::ContextEndpointTest < ActionDispatch::IntegrationTest
   RESOURCE = "https://dummy.test/mcp"
   PROTOCOL_VERSION = "2026-07-28"
 
+  # The one tool whose perform captures the endpoint-built public Context, so
+  # the isolation assertions below observe the object hosts actually receive.
+  class ProbeTool < Hitch::MCP::Tool
+    CAPTURED = []
+
+    tool_name "context.probe"
+    description "Capture the invocation context for assertions"
+    input_schema(type: "object", additionalProperties: false)
+
+    def self.available_to?(context)
+      !context.principal.nil?
+    end
+
+    def self.authorize!(_context, arguments:)
+    end
+
+    def self.perform(context, arguments:)
+      CAPTURED << context
+      Hitch::MCP::Result.text("ok")
+    end
+  end
+
+  class ProbeRegistry < Hitch::MCP::Registry
+    register ProbeTool, scopes: [ "mcp" ]
+  end
+
   setup do
     Hitch::AccessToken.delete_all
     Hitch::Client.delete_all
     User.delete_all
     Hitch.reset_configuration!
-    @contexts = []
+    ProbeTool::CAPTURED.clear
     Hitch.configure do |configuration|
       configuration.resource_uri = RESOURCE
       configuration.allowed_hosts = []
       configuration.allowed_origins = []
       configuration.supported_scopes = %w[mcp read]
-      configuration.mcp.registry = "McpToolRegistry"
-      configuration.mcp.server_info = lambda { |context|
-        @contexts << context
-        { name: "hitch-context", version: "0.2.0" }
-      }
+      configuration.mcp.registry = ProbeRegistry.name
+      configuration.mcp.server_info = { name: "hitch-context", version: "0.2.0" }
       configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { nil }
       configuration.mcp.request_limit = { to: 120, within: 60 }
     end
@@ -222,14 +245,14 @@ class Hitch::MCP::ContextEndpointTest < ActionDispatch::IntegrationTest
       "client_id" => "attacker-client",
       "resource" => "https://attacker.test/mcp"
     )
-    post_discover(first_token, "first", first_meta, remote_ip: "198.51.100.10")
+    post_probe(first_token, "first", first_meta, remote_ip: "198.51.100.10")
     assert_response :ok
 
-    post_discover(second_token, "second", required_meta, remote_ip: "198.51.100.11")
+    post_probe(second_token, "second", required_meta, remote_ip: "198.51.100.11")
     assert_response :ok
 
-    assert_equal 2, @contexts.length
-    first, second = @contexts
+    assert_equal 2, ProbeTool::CAPTURED.length
+    first, second = ProbeTool::CAPTURED
     assert_instance_of Hitch::MCP::Context, first
     assert_instance_of Hitch::MCP::Context, second
     refute_same first, second
@@ -269,12 +292,12 @@ class Hitch::MCP::ContextEndpointTest < ActionDispatch::IntegrationTest
     }
   end
 
-  def post_discover(token, id, meta, remote_ip:)
+  def post_probe(token, id, meta, remote_ip:)
     body = {
       "jsonrpc" => "2.0",
       "id" => "context-#{id}",
-      "method" => "server/discover",
-      "params" => { "_meta" => meta }
+      "method" => "tools/call",
+      "params" => { "name" => "context.probe", "arguments" => {}, "_meta" => meta }
     }
     post "/mcp", params: JSON.generate(body), headers: {
       "Host" => "dummy.test",
@@ -282,7 +305,8 @@ class Hitch::MCP::ContextEndpointTest < ActionDispatch::IntegrationTest
       "Content-Type" => "application/json",
       "Accept" => "application/json, text/event-stream",
       "MCP-Protocol-Version" => PROTOCOL_VERSION,
-      "Mcp-Method" => "server/discover",
+      "Mcp-Method" => "tools/call",
+      "Mcp-Name" => "context.probe",
       "User-Agent" => "hitch-context-test",
       "REMOTE_ADDR" => remote_ip
     }

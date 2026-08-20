@@ -128,7 +128,7 @@ class Hitch::MCP::RegistryReloadTest < ActiveSupport::TestCase
       configuration.supported_scopes = [ "mcp" ]
       configuration.mcp.enabled = true
       configuration.mcp.registry = "McpToolRegistry"
-      configuration.mcp.server_info = ->(_context) { { name: "dummy", version: "1" } }
+      configuration.mcp.server_info = { name: "dummy", version: "1" }
       configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
       configuration.mcp.request_limit = { to: 120, within: 60 }
     end
@@ -153,13 +153,33 @@ class Hitch::MCP::RegistryReloadTest < ActiveSupport::TestCase
       configuration.resource_uri = "https://dummy.test/mcp"
       configuration.mcp.enabled = true
       configuration.mcp.registry = "MissingMcpToolRegistry"
-      configuration.mcp.server_info = ->(_context) { { name: "dummy", version: "1" } }
+      configuration.mcp.server_info = { name: "dummy", version: "1" }
       configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
       configuration.mcp.request_limit = { to: 120, within: 60 }
     end
 
     assert_raises(ArgumentError) { Rails.application.reloader.prepare! }
     assert_raises(ArgumentError) { fresh_configuration.mcp.registry_snapshot! }
+  ensure
+    Hitch.instance_variable_set(:@configuration, original_configuration) if defined?(original_configuration)
+  end
+
+  test "Rails to_prepare fails closed for a malformed server_info" do
+    original_configuration = Hitch.configuration
+    fresh_configuration = Hitch::Configuration.new
+    Hitch.instance_variable_set(:@configuration, fresh_configuration)
+    Hitch.configure do |configuration|
+      configuration.resource_uri = "https://dummy.test/mcp"
+      configuration.supported_scopes = [ "mcp" ]
+      configuration.mcp.enabled = true
+      configuration.mcp.registry = "McpToolRegistry"
+      configuration.mcp.server_info = { name: "dummy" }
+      configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
+      configuration.mcp.request_limit = { to: 120, within: 60 }
+    end
+
+    error = assert_raises(ArgumentError) { Rails.application.reloader.prepare! }
+    assert_includes error.message, "mcp.server_info"
   ensure
     Hitch.instance_variable_set(:@configuration, original_configuration) if defined?(original_configuration)
   end

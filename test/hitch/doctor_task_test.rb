@@ -88,7 +88,7 @@ class Hitch::DoctorTaskTest < ActiveSupport::TestCase
       configuration.dynamic_client_registration_enabled = true
       configuration.mcp.enabled = true
       configuration.mcp.registry = "McpToolRegistry"
-      configuration.mcp.server_info = ->(_context) { { name: "hitch-dummy", version: "0.2.0" } }
+      configuration.mcp.server_info = { name: "hitch-dummy", version: "0.2.0" }
       configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
       configuration.mcp.request_limit = { to: 120, within: 60 }
       configuration.mcp.rate_limit_store = ActiveSupport::Cache::MemoryStore.new

@@ -433,9 +433,7 @@ class MCPListingTest < ActionDispatch::IntegrationTest
       configuration.allowed_origins = []
       configuration.supported_scopes = %w[mcp admin]
       configuration.mcp.registry = registry_name
-      configuration.mcp.server_info = ->(_context) {
-        { name: "hitch-listing", version: "0.2.0" }
-      }
+      configuration.mcp.server_info = { name: "hitch-listing", version: "0.2.0" }
       configuration.mcp.scope_resolver = lambda do |principal:, access_token:, request:|
         @resolver_mutex.synchronize do
           @resolver_calls << { principal:, access_token:, request: }

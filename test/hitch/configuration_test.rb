@@ -27,18 +27,29 @@ class Hitch::ConfigurationTest < ActiveSupport::TestCase
     assert_raises(ArgumentError) { configuration.mcp.enabled = nil }
   end
 
-  test "MCP endpoint configuration validates callable server info and integer byte caps" do
+  test "MCP endpoint configuration validates hash server info and integer byte caps" do
     configuration = Hitch.configuration.mcp
-    server_info = ->(_context) { { name: "example", version: "1" } }
 
-    configuration.server_info = server_info
+    configuration.server_info = { name: "example", version: "1", title: "Example" }
     configuration.max_request_bytes = 2_048
     configuration.max_result_bytes = 4_096
 
-    assert_same server_info, configuration.server_info
+    info = configuration.server_info
+    assert_equal({ "name" => "example", "version" => "1", "title" => "Example" }, info)
+    assert_predicate info, :frozen?
+    assert_same info, configuration.server_info
     assert_equal 2_048, configuration.max_request_bytes
     assert_equal 4_096, configuration.max_result_bytes
-    assert_raises(ArgumentError) { configuration.server_info = { name: "example" } }
+
+    # Callables are no longer accepted: the value is static and validated at
+    # configuration, not per request.
+    assert_raises(ArgumentError) { configuration.server_info = ->(_context) { { name: "x", version: "1" } } }
+
+    # A malformed Hash passes the structural setter and fails on the read the
+    # engine's to_prepare hook forces, so a bad value stops the boot.
+    configuration.server_info = { name: "example" }
+    assert_raises(ArgumentError) { configuration.server_info }
+
     [ 0, -1, 1.0, "1024", nil ].each do |invalid|
       assert_raises(ArgumentError) { configuration.max_request_bytes = invalid }
       assert_raises(ArgumentError) { configuration.max_result_bytes = invalid }
@@ -56,9 +67,9 @@ class Hitch::ConfigurationTest < ActiveSupport::TestCase
     assert_equal 1_048_576, configuration.max_result_bytes
     assert_same ActionController::Base.cache_store, configuration.rate_limit_store
 
-    info = configuration.server_info.call(nil)
-    assert_equal "dummy", info.fetch(:name)
-    assert info.fetch(:version).is_a?(String)
+    info = configuration.server_info
+    assert_equal "dummy", info.fetch("name")
+    assert info.fetch("version").is_a?(String)
   end
 
   test "MCP request limit normalizes a copied whole-second fixed window" do
@@ -104,7 +115,7 @@ class Hitch::ConfigurationTest < ActiveSupport::TestCase
   test "production MCP runtime refuses a store that cannot count across processes" do
     configuration = Hitch.configuration.mcp
     configuration.registry = "McpToolRegistry"
-    configuration.server_info = ->(_context) { { name: "example", version: "1" } }
+    configuration.server_info = { name: "example", version: "1" }
     configuration.scope_resolver = ->(principal:, access_token:, request:) { principal }
     configuration.request_limit = { to: 10, within: 60 }
     configuration.rate_limit_store = ActiveSupport::Cache::MemoryStore.new

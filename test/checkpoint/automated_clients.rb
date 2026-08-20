@@ -235,7 +235,7 @@ module HitchCheckpoint
           config.dynamic_client_registration_enabled = false
           config.mcp.enabled = true
           config.mcp.registry = "McpToolRegistry"
-          config.mcp.server_info = ->(_context) { { name: "hitch-m5-smoke", version: "1.0.0" } }
+          config.mcp.server_info = { name: "hitch-m5-smoke", version: "1.0.0" }
           config.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
           config.mcp.request_limit = { to: 1_000, within: 60 }
           config.mcp.rate_limit_store = ActiveSupport::Cache::RedisCacheStore.new(

@@ -255,7 +255,7 @@ class MCPToolAuthorizationLatticeTest < ActionDispatch::IntegrationTest
       configuration.allowed_origins = []
       configuration.supported_scopes = %w[mcp invoke]
       configuration.mcp.registry = "HitchMcpToolAuthorizationLatticeFixtures::Registry"
-      configuration.mcp.server_info = ->(_context) { { name: "hitch-lattice", version: "0.2.0" } }
+      configuration.mcp.server_info = { name: "hitch-lattice", version: "0.2.0" }
       configuration.mcp.scope_resolver = lambda do |principal:, access_token:, request:|
         @scope_calls += 1
         principal

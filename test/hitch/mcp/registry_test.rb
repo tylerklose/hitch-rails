@@ -218,7 +218,9 @@ class Hitch::MCP::RegistryTest < ActiveSupport::TestCase
 
     assert @configuration.validate!
     assert_raises(ArgumentError) { @configuration.scope_resolver = Object.new }
-    assert_raises(ArgumentError) { @configuration.server_info = { name: "fixture" } }
+    assert_raises(ArgumentError) { @configuration.server_info = ->(_context) { { name: "fixture" } } }
+    @configuration.server_info = { name: "fixture" }
+    assert_raises(ArgumentError) { @configuration.server_info }
   end
 
   test "runtime accepts only the exact internal snapshot type" do

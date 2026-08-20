@@ -187,7 +187,7 @@ module Hitch
       def hitch_mcp_dispatch!(verified_request)
         scope = hitch_mcp_resolve_scope
         context = hitch_mcp_context(verified_request, scope:)
-        server_info = Internal::ServerInfo.normalize(Hitch.configuration.mcp.server_info.call(context))
+        server_info = Hitch.configuration.mcp.server_info
 
         snapshot = Hitch.configuration.mcp.registry_snapshot!
         tools = hitch_mcp_tools(verified_request:, context:, snapshot:)

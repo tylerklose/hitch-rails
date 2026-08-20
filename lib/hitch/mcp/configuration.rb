@@ -6,12 +6,6 @@ module Hitch
       DEFAULT_MAX_REQUEST_BYTES = 1_048_576
       DEFAULT_MAX_RESULT_BYTES = 1_048_576
       DEFAULT_REQUEST_LIMIT = { to: 120, within: 60 }.freeze
-      DEFAULT_SERVER_INFO = lambda do |_context|
-        {
-          name: Rails.application.class.module_parent_name.underscore.dasherize,
-          version: "1.0.0"
-        }
-      end
       SETTING = "mcp.rate_limit_store"
 
       attr_reader :enabled, :registry, :scope_resolver, :request_limit,
@@ -23,6 +17,7 @@ module Hitch
         @registry_snapshot = nil
         @registry_mutex = Mutex.new
         @server_info = nil
+        @normalized_server_info = nil
         @scope_resolver = nil
         @request_limit = DEFAULT_REQUEST_LIMIT
         @rate_limit_store = nil
@@ -51,15 +46,25 @@ module Hitch
         @registry
       end
 
+      # Returns the validated, frozen, string-keyed identity hash. Normalized
+      # lazily so the reloadable validator constant is only touched after
+      # boot; the engine's to_prepare hook forces this read, so a malformed
+      # value fails the boot rather than the first request.
       def server_info
-        @server_info || DEFAULT_SERVER_INFO
+        @normalized_server_info ||= Hitch::MCP::Internal::ServerInfo.normalize(
+          @server_info || {
+            "name" => Rails.application.class.module_parent_name.underscore.dasherize,
+            "version" => "1.0.0"
+          }
+        )
       end
 
       def server_info=(value)
-        unless value.nil? || value.respond_to?(:call)
-          raise ArgumentError, "mcp.server_info must be callable"
+        unless value.nil? || value.is_a?(Hash)
+          raise ArgumentError, "mcp.server_info must be a Hash"
         end
 
+        @normalized_server_info = nil
         @server_info = value
       end
 

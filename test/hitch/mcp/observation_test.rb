@@ -478,7 +478,7 @@ class Hitch::MCP::ObservationTest < ActionDispatch::IntegrationTest
       configuration.allowed_origins = [ "https://allowed.example" ]
       configuration.supported_scopes = %w[mcp admin]
       configuration.mcp.registry = "HitchMcpObservationFixtures::Registry"
-      configuration.mcp.server_info = ->(_context) { { name: "hitch-observation", version: "0.2.0" } }
+      configuration.mcp.server_info = { name: "hitch-observation", version: "0.2.0" }
       configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
       configuration.mcp.request_limit = { to: 1_000, within: 60 }
       configuration.mcp.rate_limit_store = ActiveSupport::Cache::MemoryStore.new

@@ -172,7 +172,7 @@ class McpContractArtifactsTest < ActiveSupport::TestCase
     domains = subjects.map { |subject| subject.fetch("domain") }.uniq
 
     assert manifests.all? { |manifest| manifest.fetch("schema_version") == 1 }
-    assert_equal 19, expressions.length
+    assert_equal 20, expressions.length
     assert_equal expressions.uniq, expressions
     assert_equal manifests.flat_map { |manifest| manifest.fetch("required_domains") }, domains
     assert_empty expressions - declarations

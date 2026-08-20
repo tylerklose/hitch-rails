@@ -315,7 +315,7 @@ module Hitch
     private
 
     def loopback_resource_uri_allowed?
-      Rails.env.development? || Rails.env.test?
+      Rails.env.local?
     end
 
     def validate_hosts(values)

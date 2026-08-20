@@ -168,7 +168,7 @@ class Hitch::MCPTestHelperTest < ActiveSupport::TestCase
     record = Hitch::AccessToken.find_by!(token_digest: Digest::SHA256.hexdigest(token))
     assert_predicate record, :accessible?
     assert_equal principal, record.principal
-    assert record.has_scope?("mcp")
+    assert record.scope?("mcp")
     assert record.valid_for_resource?(resource)
   end
 

@@ -45,13 +45,12 @@ module Hitch
       application_type = optional_string_metadata(metadata, "application_type")
       return if performed?
 
-      credentials = register_client(
+      client, client_secret = register_client(
         auth_method,
         client_name: metadata["client_name"],
         redirect_uris: candidate_uris,
         application_type: application_type
       )
-      client = credentials.respond_to?(:client) ? credentials.client : credentials
 
       response_body = {
         client_id: client.client_id,
@@ -77,9 +76,9 @@ module Hitch
         # `client_secret_expires_at` when a secret is issued — REQUIRED.
         client.application_type ? { application_type: client.application_type } : {}
       )
-      if credentials.respond_to?(:client_secret)
+      if client_secret
         response_body.merge!(
-          client_secret: credentials.client_secret,
+          client_secret: client_secret,
           client_secret_issued_at: client.client_secret_issued_at.to_i,
           client_secret_expires_at: 0
         )
@@ -111,6 +110,10 @@ module Hitch
       nil
     end
 
+    # Returns [client, client_secret]; the secret is nil for public clients.
+    # Client.register! returns the record and register_confidential! returns
+    # one-time Credentials (its documented contract), so this is where the
+    # two shapes become one.
     def register_client(auth_method, client_name:, redirect_uris:, application_type:)
       attributes = {
         client_id: SecureRandom.uuid,
@@ -122,9 +125,10 @@ module Hitch
       }
 
       if auth_method == "client_secret_basic"
-        Hitch::Client.register_confidential!(**attributes)
+        credentials = Hitch::Client.register_confidential!(**attributes)
+        [ credentials.client, credentials.client_secret ]
       else
-        Hitch::Client.register!(**attributes)
+        [ Hitch::Client.register!(**attributes), nil ]
       end
     end
   end

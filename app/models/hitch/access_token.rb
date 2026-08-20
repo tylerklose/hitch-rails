@@ -58,12 +58,15 @@ module Hitch
 
     # Space-delimited scope check per OAuth 2.1 §3.3. Hosts call this to
     # gate operations behind a specific scope the client requested at
-    # consent — e.g. `token.has_scope?("write")` before mutating ops.
-    def has_scope?(scope)
+    # consent — e.g. `token.scope?("write")` before mutating ops.
+    def scope?(scope)
       return false if scopes.blank? || scope.blank?
 
       scopes.split(/\s+/).include?(scope.to_s)
     end
+
+    # Deprecated: use #scope?. Kept through the 0.2 line.
+    alias_method :has_scope?, :scope?
 
     def self.create_authorization!(principal:, client_id:, client_name:, code_challenge:, code_challenge_method:, scopes: "mcp", redirect_uri: nil, resource_uri: nil)
       raw_code = SecureRandom.urlsafe_base64(32)

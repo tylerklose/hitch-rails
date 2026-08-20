@@ -88,7 +88,7 @@ module Hitch
     # halts before this method parses a credential or emits a discovery URL.
     # On success sets `mcp_token` and proceeds; on failure renders the 401
     # discovery challenge and halts. Scope *authorization* is the host's
-    # call after this (e.g. `mcp_token.has_scope?("write")`).
+    # call after this (e.g. `mcp_token.scope?("write")`).
     def require_mcp_token!
       token = bearer_token
       return mcp_unauthorized! unless token

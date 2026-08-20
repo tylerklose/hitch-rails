@@ -97,7 +97,7 @@ class OAuthSecurityPocTest < ActionDispatch::IntegrationTest
   #
   # Exploit: client requests scope="admin" (or any string). The server
   # supports only "mcp", but persists "admin" on the token unchanged.
-  # The moment any consumer gates on token.has_scope?("admin") — which
+  # The moment any consumer gates on token.scope?("admin") — which
   # the gem's own docstring advertises as the pattern — the client has
   # self-elevated. RFC 6749 §3.3 lets the AS narrow scope; granting
   # unknown scopes verbatim is the flaw.

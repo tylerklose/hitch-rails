@@ -85,7 +85,7 @@ module Hitch
     end
 
     def loopback_origins_allowed?
-      Rails.env.development? || Rails.env.test?
+      Rails.env.local?
     end
 
     def append_vary_header(value)

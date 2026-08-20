@@ -88,6 +88,9 @@ authorization substrate.
   (`ALLOWED_PORT` stays; `FAILURE_CACHE_TTL` is now
   `Hitch::ClientIdMetadata::Cache::FAILURE_TTL`). Host code referencing the
   old constants gets `NameError`.
+- **`AccessToken#scope?` replaces `#has_scope?`.** The old spelling remains
+  as a deprecated alias through the 0.2 line; update host callers to
+  `token.scope?("write")`.
 - **Doctor reports only host-actionable checks.** The `package` and
   `legacy_endpoint` checks are gone from `hitch:doctor` (human and
   `hitch.doctor.v1` JSON): packaged-file integrity is gem-self-diagnosis and

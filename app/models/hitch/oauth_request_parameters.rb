@@ -2,7 +2,9 @@
 
 module Hitch
   class OauthRequestParameters
-    class Invalid < ArgumentError; end
+    # Deliberately not an ArgumentError: the rescue below converts decoding
+    # ArgumentErrors into Invalid, and must never catch its own product.
+    class Invalid < StandardError; end
 
     FORM_MEDIA_TYPE = "application/x-www-form-urlencoded"
 
@@ -26,9 +28,7 @@ module Hitch
 
         [ name.to_sym, values.first&.dup&.freeze ]
       end.freeze
-    rescue ArgumentError => error
-      raise if error.is_a?(Invalid)
-
+    rescue ArgumentError
       raise Invalid, "OAuth parameters are not valid form encoding"
     end
 

@@ -212,22 +212,26 @@ class Hitch::AccessTokenTest < ActiveSupport::TestCase
     refute_includes active_ids, revoked.id
   end
 
-  test "has_scope? matches space-delimited scope values" do
+  test "scope? matches space-delimited scope values" do
     record = mint
     record.update!(scopes: "read write mcp")
 
-    assert record.has_scope?("read")
-    assert record.has_scope?("write")
-    assert record.has_scope?("mcp")
-    refute record.has_scope?("admin")
-    refute record.has_scope?("rea")
-    refute record.has_scope?(nil)
-    refute record.has_scope?("")
+    assert record.scope?("read")
+    assert record.scope?("write")
+    assert record.scope?("mcp")
+    refute record.scope?("admin")
+    refute record.scope?("rea")
+    refute record.scope?(nil)
+    refute record.scope?("")
   end
 
-  test "has_scope? handles single-scope rows" do
+  test "scope? handles single-scope rows" do
     record = mint
     record.update!(scopes: "mcp")
+    assert record.scope?("mcp")
+    refute record.scope?("write")
+
+    # Deprecated spelling still answers until it is removed.
     assert record.has_scope?("mcp")
     refute record.has_scope?("write")
   end

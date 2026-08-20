@@ -28,7 +28,7 @@ module Hitch
           return false if origin.empty? || origin.include?(",") || HeaderField::CONTROLS.match?(origin)
           return true if Hitch.configuration.allowed_origins.include?(origin)
 
-          (Rails.env.development? || Rails.env.test?) && LOOPBACK_ORIGIN.match?(origin)
+          Rails.env.local? && LOOPBACK_ORIGIN.match?(origin)
         end
 
         def preflight_allowed?(requested_method:, requested_headers:)

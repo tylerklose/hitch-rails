@@ -51,15 +51,6 @@ module HitchCheckpoint
       }
     end
 
-    def evidence
-      {
-        "typescript" => runtime.fetch("typescript").except("executable"),
-        "python" => runtime.fetch("python").except("python", "executable"),
-        "matrix" => runtime.fetch("matrix"),
-        "redis" => @redis.evidence
-      }
-    end
-
     def run(app:, profile_name:, environment:)
       scenarios = @scenarios.select { |scenario| scenario.dig("values", "database") == profile_name }
       raise "automated client matrix has no #{profile_name} scenarios" unless scenarios.length == 4

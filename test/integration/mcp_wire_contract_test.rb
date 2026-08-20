@@ -261,6 +261,33 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
     assert_equal 0, McpController.wire_metrics.fetch(:sdk, 0)
   end
 
+  test "a request halted by authentication never consumes rate-limit quota" do
+    calls = []
+    store = ActiveSupport::Cache::MemoryStore.new
+    original_increment = store.method(:increment)
+    store.define_singleton_method(:increment) do |name, amount = 1, **options|
+      calls << name
+      original_increment.call(name, amount, **options)
+    end
+    Hitch.configuration.mcp.rate_limit_store = store
+    body = base_body("halted-auth", "server/discover")
+
+    post "/mcp", params: JSON.generate(body),
+      headers: base_headers("server/discover").merge(
+        "Authorization" => "Bearer wrong-token",
+        "X-Hitch-Wire-Admission" => "runtime"
+      )
+
+    assert_response :unauthorized
+    assert_empty calls
+
+    post "/mcp", params: JSON.generate(body),
+      headers: base_headers("server/discover").merge("X-Hitch-Wire-Admission" => "runtime")
+
+    assert_response :ok
+    assert_equal 1, calls.length
+  end
+
   test "final request id values survive the SDK compatibility boundary" do
     [ "a/b", "日本語", 1.5, 10**100 ].each do |request_id|
       body = base_body("request-id", "server/discover")

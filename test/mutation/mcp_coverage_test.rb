@@ -12,6 +12,10 @@ if Minitest::Test.respond_to?(:cover)
     cover "Hitch::MCP::Endpoint#hitch_mcp_admit_authenticated_request"
   end
 
+  class MCPWireContractTest
+    cover "Hitch::MCP::Endpoint#hitch_mcp_gate!"
+  end
+
   class Hitch::MCP::RegistryTest
     cover "Hitch::MCP::Internal::RegistryRuntime.validate_snapshot!"
     cover "Hitch::MCP::Internal::SchemaContract#call"

@@ -48,7 +48,6 @@ module HitchCheckpoint
 
       @platform, digest_key = locked_platform
       @image = @redis_lock.fetch("image")
-      @index_digest = @redis_lock.fetch("index_digest")
       @platform_digest = @redis_lock.fetch(digest_key)
       repository = @image.sub(/:[^\/:]+\z/, "")
       @pinned_image = "#{repository}@#{@platform_digest}"
@@ -75,27 +74,7 @@ module HitchCheckpoint
       @url = "redis://127.0.0.1:#{port}/#{REDIS_DATABASE}"
       @redis = Redis.new(url:, timeout: 0.25, connect_timeout: 0.25, reconnect_attempts: 0)
       wait_until_ready!
-      @server_version = @redis.info("server").fetch("redis_version")
       self
-    end
-
-    def evidence
-      raise "pinned Redis has not started" unless @server_version
-
-      {
-        "image" => @image,
-        "index_digest" => @index_digest,
-        "platform" => @platform,
-        "platform_digest" => @platform_digest,
-        "resolved_reference" => @pinned_image,
-        "resolution" => @image_resolution,
-        "server_version" => @server_version,
-        "gem_requirement" => @redis_lock.fetch("gem_requirement"),
-        "gem_version" => Redis::VERSION,
-        "database" => REDIS_DATABASE,
-        "network" => "ephemeral_loopback_port",
-        "persistence" => "disabled"
-      }.freeze
     end
 
     def stop!
@@ -148,10 +127,7 @@ module HitchCheckpoint
     end
 
     def resolve_pinned_image!
-      if local_pinned_image_matches_platform?
-        @image_resolution = "verified_local_digest"
-        return
-      end
+      return if local_pinned_image_matches_platform?
 
       capture!(
         "docker", "pull", "--platform", @platform, @pinned_image,
@@ -160,8 +136,6 @@ module HitchCheckpoint
       unless local_pinned_image_matches_platform?
         raise "pinned Redis image does not match locked platform #{@platform}"
       end
-
-      @image_resolution = "pulled_exact_digest"
     end
 
     def local_pinned_image_matches_platform?

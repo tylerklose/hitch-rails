@@ -1,11 +1,14 @@
 schema_version: 1
 owner_issue: M8
 required_domains:
+  - endpoint_gate
   - endpoint_redaction
   - tool_redaction
   - observation_correlation
   - json_copy
 subjects:
+  - domain: endpoint_gate
+    expression: Hitch::MCP::Endpoint#hitch_mcp_gate!
   - domain: endpoint_redaction
     expression: Hitch::MCP::Internal::EndpointErrorReporter.reporting_context
   - domain: tool_redaction

@@ -38,6 +38,13 @@ module Hitch
       NPM_VERSION = "11.1.0"
       PATCH_SHA256 = "35403574632cf54ca6b133abfa5d52c91499972f17d55904890853ca130d2597"
 
+      # Opt-in: run an unpinned local checkout of the conformance runner instead
+      # of the pinned upstream clone plus reviewed patch. For validating an
+      # upstream branch that would make the patch unnecessary. Never set in CI —
+      # evidence produced this way is stamped unpinned and is not conformance
+      # evidence.
+      LOCAL_RUNNER_ENV = "HITCH_CONFORMANCE_LOCAL_RUNNER"
+
       SOURCE_SHA256 = {
         "package-lock.json" => "cc83986778543b99cc7ef22680ed932cab899d068b90ee3d676a7eeab4ae9cf3",
         "package.json" => "29ef755c66311589bf731763045790aba83adaa462334363c5edad194aa4420b",
@@ -81,7 +88,7 @@ module Hitch
           @workspace_log_path = root.join("test/dummy/log/test.log")
           @workspace_log_snapshot = file_snapshot(@workspace_log_path)
 
-          checkout_upstream!
+          local_runner? ? stage_local_runner! : checkout_upstream!
           install_upstream!
           fixture = prepare_fixture!
           start_server!
@@ -90,7 +97,7 @@ module Hitch
           result = base_summary(official)
 
           if profile == "resource-aware-grants"
-            apply_and_test_extension!
+            apply_and_test_extension! unless local_runner?
             result[:reviewed_resource_indicator_extension_public] =
               run_extended_grant!("public", @fixtures.join("public-settings.json"), fixture)
             result[:reviewed_resource_indicator_extension_confidential] =
@@ -123,8 +130,8 @@ module Hitch
           upstream: {
             repository: REPOSITORY.delete_suffix(".git"),
             package: "@modelcontextprotocol/conformance",
-            version: PACKAGE_VERSION,
-            commit: COMMIT,
+            version: local_runner? ? "unpinned-local-checkout" : PACKAGE_VERSION,
+            commit: local_runner? ? "unpinned-local-checkout" : COMMIT,
             package_lock_sha256: SOURCE_SHA256.fetch("package-lock.json"),
             node: NODE_VERSION,
             npm: NPM_VERSION
@@ -156,6 +163,30 @@ module Hitch
         raise Failure,
           "HITCH_CONFORMANCE_RAW_DIR is unsupported because upstream raw output contains live credentials; " \
           "use HITCH_CONFORMANCE_EVIDENCE_DIR for sanitized summaries and hashes"
+      end
+
+      def local_runner
+        @local_runner ||= ENV[LOCAL_RUNNER_ENV].to_s.strip
+      end
+
+      def local_runner?
+        !local_runner.empty?
+      end
+
+      # Copies the working tree — not a git clone — so in-progress edits are
+      # what gets exercised. Build inputs only; node_modules and dist are
+      # rebuilt by install_upstream!.
+      def stage_local_runner!
+        source = Pathname(local_runner).expand_path
+        raise Failure, "#{LOCAL_RUNNER_ENV} is not a directory: #{source}" unless source.directory?
+        raise Failure, "#{LOCAL_RUNNER_ENV} has no package.json: #{source}" unless source.join("package.json").file?
+
+        FileUtils.mkdir_p(@checkout)
+        run!(
+          "stage local runner", {}, "rsync", "-a",
+          "--exclude", ".git", "--exclude", "node_modules", "--exclude", "dist",
+          "#{source}/", "#{@checkout}/"
+        )
       end
 
       def checkout_upstream!

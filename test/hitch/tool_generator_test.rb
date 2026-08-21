@@ -264,6 +264,29 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
     assert_match(/4 runs, \d+ assertions, 0 failures, 0 errors, 0 skips/, stdout)
   end
 
+  # Omitting a hint is not silence: the SDK defaults idempotentHint to false
+  # and openWorldHint to true and emits all four either way. A generated
+  # read-only tool must not tell clients the opposite of what it is.
+  test "generated annotations reach the wire saying what the tool actually is" do
+    prepare_registry
+    invoke_generator
+
+    assert_equal(
+      { destructiveHint: false, idempotentHint: true, openWorldHint: false, readOnlyHint: true },
+      wire_annotations("app/tools/mcp_tools/weather_lookup.rb")
+    )
+  end
+
+  test "generated deny-default annotations reach the wire the same way" do
+    prepare_registry
+    invoke_generator(arguments_tail: [ "--deny-default" ])
+
+    assert_equal(
+      { destructiveHint: true, idempotentHint: false, openWorldHint: true, readOnlyHint: false },
+      wire_annotations("app/tools/mcp_tools/weather_lookup.rb")
+    )
+  end
+
   private
 
   def invoke_generator(name_mode: "simple_snake", namespace_mode: "default",
@@ -378,5 +401,18 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
 
   def scenario_label(scenario)
     "scenario #{scenario.fetch('id')}: #{scenario.fetch('values')}"
+  end
+
+  # Reads the generated declaration back through the SDK, which is where the
+  # defaults that inverted two hints actually apply.
+  def wire_annotations(relative_path)
+    hints = read(relative_path).scan(/(\w+_hint):\s*(true|false)/)
+      .to_h { |name, value| [ name.to_sym, value == "true" ] }
+    Hitch::MCP::Internal::SDKAdapter.build_sdk_tool(
+      name: "generated.probe",
+      description: "probe",
+      input_schema: { "type" => "object" },
+      annotations: hints
+    ).annotations.to_h.sort.to_h
   end
 end

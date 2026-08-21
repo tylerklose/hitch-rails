@@ -19,7 +19,10 @@ module Hitch
 
         class << self
           def call(error:, phase:, context:, tool_name:)
-            report(error:, phase:, tool_name:) unless expected_denial?(error, phase)
+            unless expected_denial?(error, phase)
+              report(error:, phase:, tool_name:)
+              log_local_diagnosis(error:, phase:, tool_name:)
+            end
             generic_response
           rescue StandardError, SystemStackError
             generic_response
@@ -29,6 +32,25 @@ module Hitch
 
           def expected_denial?(error, phase)
             phase == :authorization && error.is_a?(Forbidden)
+          end
+
+          # A client must learn nothing from a host tool failure; the
+          # developer who wrote that tool must learn everything. Those are two
+          # audiences and only the first is a threat, so in development and
+          # test the real exception goes to the local log. The response above
+          # is unchanged, the sanitized report is unchanged, and production
+          # stays silent.
+          def log_local_diagnosis(error:, phase:, tool_name:)
+            return unless Rails.env.local?
+
+            category = ResultNormalizer.failure_category(error)
+            lines = [
+              "[hitch] MCP tool #{tool_name.inspect} failed during #{phase}" \
+                "#{" (#{category})" if category}",
+              "  #{error.class}: #{error.message}"
+            ]
+            lines.concat(Array(error.backtrace).first(5).map { |line| "    #{line}" })
+            Rails.logger&.error(lines.join("\n"))
           end
 
           def report(error:, phase:, tool_name:)

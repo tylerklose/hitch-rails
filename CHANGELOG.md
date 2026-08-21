@@ -55,7 +55,9 @@ an authenticated MCP server per the MCP 2026-07-28 authorization profile.
   against the registered output schema and size-capped after serialization.
   Only an explicit `Result.error` message reaches the wire; every other
   failure is generic and reports sanitized structural context through
-  `Rails.error`. The endpoint is stateless POST/OPTIONS and performs no
+  `Rails.error`. In development and test the real exception is also written
+  to the local log, so a tool is debuggable without the client ever learning
+  anything. The endpoint is stateless POST/OPTIONS and performs no
   notification/202 response shaping.
 - Request admission through the host cache store: one fixed-window quota per
   principal/client counted via `increment` on `config.cache_store` (or

@@ -232,6 +232,68 @@ class Hitch::MCP::ToolTest < ActiveSupport::TestCase
 
   private
 
+  # A tool failure reaches the client as one flat generic error on purpose.
+  # That is the wire's contract, not the developer's: locally the real
+  # exception has to be readable, or the only way to debug a tool is to
+  # bisect it by hand.
+  test "a failing tool tells the developer locally and the client nothing" do
+    tool = build_tool(
+      authorize: ->(_context, arguments:) { nil },
+      perform: ->(_context, arguments:) { raise ArgumentError, "the real bug" }
+    )
+    response = nil
+
+    log = capture_hitch_log { response = call_tool(tool) }
+
+    assert_generic_tool_error(response)
+    assert_includes log, "failed during execution"
+    assert_includes log, "ArgumentError: the real bug"
+    assert_includes log, "tool_test.rb"
+  end
+
+  # The commonest first mistake: returning a bare value instead of a Result.
+  # The exception for it is generic, so the category is what names it.
+  test "a tool that forgets Result names the category locally" do
+    tool = build_tool(
+      authorize: ->(_context, arguments:) { nil },
+      perform: ->(_context, arguments:) { "not a Result" }
+    )
+
+    log = capture_hitch_log { call_tool(tool) }
+
+    assert_includes log, "failed during result (invalid_result_type)"
+  end
+
+  test "production is silent, and so is an ordinary denial" do
+    raising = build_tool(
+      authorize: ->(_context, arguments:) { nil },
+      perform: ->(_context, arguments:) { raise ArgumentError, "the real bug" }
+    )
+    denying = build_tool(
+      authorize: ->(_context, arguments:) { raise Hitch::MCP::Forbidden, "private reason" },
+      perform: ->(_context, arguments:) { flunk "perform must not run" }
+    )
+
+    production = ActiveSupport::EnvironmentInquirer.new("production")
+    production_log = stub_class_method(Rails, :env, -> { production }) do
+      capture_hitch_log { call_tool(raising) }
+    end
+    assert_equal "", production_log
+
+    # A denial is the policy working, not a failure to diagnose.
+    assert_equal "", capture_hitch_log { call_tool(denying) }
+  end
+
+  def capture_hitch_log
+    buffer = StringIO.new
+    original = Rails.logger
+    Rails.logger = ActiveSupport::Logger.new(buffer)
+    yield
+    buffer.string
+  ensure
+    Rails.logger = original
+  end
+
   def build_tool(authorize: nil, perform:)
     Class.new(Hitch::MCP::Tool).tap do |tool|
       if authorize

@@ -244,7 +244,8 @@ class Hitch::MCP::ToolTest < ActiveSupport::TestCase
     log = capture_hitch_log { response = call_tool(tool) }
 
     assert_generic_tool_error(response)
-    assert_includes log, "failed during execution"
+    # The name is what tells a developer WHICH tool broke.
+    assert_includes log, %(MCP tool "policy.tool" failed during execution)
     assert_includes log, "ArgumentError: the real bug"
     assert_includes log, "tool_test.rb"
   end
@@ -259,7 +260,20 @@ class Hitch::MCP::ToolTest < ActiveSupport::TestCase
 
     log = capture_hitch_log { call_tool(tool) }
 
-    assert_includes log, "failed during result (invalid_result_type)"
+    assert_includes log, %(MCP tool "policy.tool" failed during result (invalid_result_type))
+  end
+
+  # The endpoint boundary logs too — a host whose available_to? or
+  # scope_resolver blows up used to get "Internal error" and an empty log.
+  test "the endpoint boundary reports locally as well" do
+    log = capture_hitch_log do
+      Hitch::MCP::Internal::LocalDiagnosis.report(
+        "MCP request failed during dispatch", ArgumentError.new("resolver blew up")
+      )
+    end
+
+    assert_includes log, "[hitch] MCP request failed during dispatch"
+    assert_includes log, "ArgumentError: resolver blew up"
   end
 
   test "production is silent, and so is an ordinary denial" do
@@ -294,8 +308,9 @@ class Hitch::MCP::ToolTest < ActiveSupport::TestCase
     Rails.logger = original
   end
 
-  def build_tool(authorize: nil, perform:)
+  def build_tool(authorize: nil, perform:, tool_name: "policy.tool")
     Class.new(Hitch::MCP::Tool).tap do |tool|
+      tool.tool_name tool_name
       if authorize
         tool.define_singleton_method(:authorize!) do |context, arguments:|
           authorize.call(context, arguments:)

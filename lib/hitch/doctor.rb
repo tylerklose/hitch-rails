@@ -26,7 +26,7 @@ module Hitch
     REMEDIES = {
       "unsupported" => "Match Hitch's supported window, or upgrade Hitch.",
       "invalid" => "Run the failing setting's validation directly: Hitch.configuration.validate!",
-      "unresolvable" => "Fix the tool class named by the boot error; " \
+      "unresolvable" => "Boot the app to see which tool failed; " \
         "Hitch.configuration.validate! does not build the registry and will report success.",
       "mismatch" => "resource_uri must equal the URI clients send as `resource`, byte for byte.",
       "missing_endpoint" => "Add `match \"/mcp\", to: \"mcp#handle\", via: :all` to config/routes.rb.",
@@ -207,16 +207,22 @@ module Hitch
         }
       end
 
+      # with_connection, not ActiveRecord::Base.connection: the latter is soft
+      # deprecated and raises outright on a host that sets
+      # config.active_record.permanent_connection_checkout = :disallowed,
+      # which turned a healthy install into a failing diagnostic.
       def migration_facts
-        connection = ActiveRecord::Base.connection
         installed = ActiveRecord::Base.connection_pool.migration_context.get_all_versions.map(&:to_s)
         required = Dir[Hitch::Engine.root.join("db/migrate/*.rb")].map do |path|
           File.basename(path).split("_", 2).first
         end.sort
+        missing_tables = ActiveRecord::Base.with_connection do |connection|
+          REQUIRED_TABLES.reject { |table| connection.data_source_exists?(table) }
+        end
         {
           "required_versions" => required,
           "missing_versions" => required - installed,
-          "missing_tables" => REQUIRED_TABLES.reject { |table| connection.data_source_exists?(table) }
+          "missing_tables" => missing_tables
         }
       end
 

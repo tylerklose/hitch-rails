@@ -10,9 +10,11 @@ require "uri"
 module Hitch
   module MCP
     module TestHelper
-      # Public: host test suites pin this. One name for the value, not a
-      # second copy of it.
-      PROTOCOL_VERSION = Internal::Protocol::VERSION
+      # Public: host test suites pin this. Spelled out rather than read from
+      # Internal::Protocol, which lives in app/models and is not loaded when a
+      # host requires this file before booting Rails. A test asserts the two
+      # never drift.
+      PROTOCOL_VERSION = "2026-07-28"
 
       TOKEN_PATTERN = /\A[A-Za-z0-9\-._~+\/]+=*\z/
 

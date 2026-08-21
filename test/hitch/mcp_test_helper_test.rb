@@ -27,6 +27,23 @@ class Hitch::MCPTestHelperTest < ActiveSupport::TestCase
     @helper = Harness.new
   end
 
+  # TestHelper spells the version out so the file loads before Rails boots.
+  # These two are the same fact and must not drift.
+  test "the public version constant matches the protocol Hitch speaks" do
+    assert_equal Hitch::MCP::Internal::Protocol::VERSION, Hitch::MCP::TestHelper::PROTOCOL_VERSION
+  end
+
+  # A host requires this from spec_helper, above `require config/environment`.
+  test "the test helper loads without Rails booted" do
+    loaded = system(
+      RbConfig.ruby, "-I#{Hitch::Engine.root.join('lib')}",
+      "-e", 'require "hitch/mcp/test_helper"',
+      out: File::NULL, err: File::NULL
+    )
+
+    assert loaded, "lib/hitch/mcp/test_helper.rb must load standalone"
+  end
+
   test "mcp_headers returns the exact modern call headers for the current resource" do
     with_resource("https://tools.example.test:8443/mcp") do
       headers = @helper.mcp_headers(

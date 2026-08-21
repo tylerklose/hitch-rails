@@ -176,7 +176,7 @@ module Hitch
             ).call
             if declares_server_context?(input_schema)
               raise ArgumentError,
-                "#{label} input_schema must not declare a top-level server_context property"
+                "#{label} input_schema must not name server_context at the top level"
             end
             output_schema = if tool_class.output_schema.nil?
               nil
@@ -207,7 +207,11 @@ module Hitch
           # refuses it as an argument, so a schema naming it can never be
           # satisfied: every call would fail with "Missing required
           # arguments". Caught once at boot instead of on every request.
-          # Top level only — a nested server_context is ordinary tool data.
+          #
+          # Top level only. A nested server_context is ordinary tool data, and
+          # one reached through $ref or allOf is not caught here — chasing
+          # those was 28 lines of recursion for a key nobody names by
+          # accident.
           def declares_server_context?(schema)
             properties = schema["properties"]
             (properties.is_a?(Hash) && properties.key?("server_context")) ||

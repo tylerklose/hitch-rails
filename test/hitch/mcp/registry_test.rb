@@ -223,7 +223,7 @@ class Hitch::MCP::RegistryTest < ActiveSupport::TestCase
       error = assert_raises(ArgumentError) do
         Hitch::MCP::Internal::RegistryRuntime.__send__(:validate_snapshot!, invalid)
       end
-      assert_equal "MCP registry is unavailable", error.message
+      assert_equal "MCP registry is unavailable: no snapshot has been prepared", error.message
     end
   end
 

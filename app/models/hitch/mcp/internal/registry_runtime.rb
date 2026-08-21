@@ -70,8 +70,10 @@ module Hitch
               registry_name: registry_name.dup.freeze,
               entries: entries.sort_by(&:name).freeze
             )
-          rescue NameError
-            raise ArgumentError, "mcp.registry or one of its tools could not be resolved"
+          # Names what failed to resolve. A host reading this at boot has a
+          # typo in one line of one file, and the line is the message.
+          rescue NameError => error
+            raise ArgumentError, "mcp.registry could not be built: #{error.message}"
           end
 
           def runtime_listing(snapshot:, context:)
@@ -113,18 +115,19 @@ module Hitch
             unless tool_class.is_a?(Class) && tool_class < Tool &&
                 tool_class.name == entry.class_name && tool_class.tool_name == entry.name &&
                 tool_class.method(:call).owner == Tool.singleton_class
-              raise ArgumentError, "MCP registry is unavailable"
+              raise ArgumentError,
+                "MCP registry is unavailable: #{entry.class_name} no longer matches its registered snapshot"
             end
 
             available = tool_class.available_to?(context)
             unless available == true || available == false
-              raise ArgumentError, "MCP tool availability must return a Boolean"
+              raise ArgumentError, "#{entry.class_name}.available_to? must return true or false"
             end
             return unless available
 
             RuntimeTool.new(entry:, tool_class:)
           rescue NameError
-            raise ArgumentError, "MCP registry is unavailable"
+            raise ArgumentError, "MCP registry is unavailable: #{entry.class_name} could not be resolved"
           end
 
           def scopes_granted?(required_scopes, context)
@@ -141,15 +144,21 @@ module Hitch
           end
 
           def validate_snapshot!(snapshot)
-            raise ArgumentError, "MCP registry is unavailable" unless snapshot.instance_of?(Snapshot)
+            unless snapshot.instance_of?(Snapshot)
+              raise ArgumentError, "MCP registry is unavailable: no snapshot has been prepared"
+            end
           end
 
           def build_entry(declaration, index:, supported_scopes:)
-            label = "mcp.registry entry #{index + 1}"
             class_name = declaration.class_name
             unless class_name.is_a?(String) && CONSTANT_NAME_PATTERN.match?(class_name)
-              raise ArgumentError, "#{label} must register a named Hitch::MCP::Tool class"
+              raise ArgumentError,
+                "mcp.registry entry #{index + 1} must register a named Hitch::MCP::Tool class"
             end
+
+            # Named from here on. Counting registry entries at someone whose
+            # registry is a list of class names makes them count too.
+            label = "mcp.registry tool #{class_name}"
 
             tool_class = resolve_named_constant(class_name, "#{label} tool")
             unless tool_class.is_a?(Class) && tool_class < Tool
@@ -266,7 +275,7 @@ module Hitch
             end
 
             constant = name.split("::").reduce(Object) do |namespace, part|
-              raise NameError, part unless namespace.is_a?(Module)
+              raise NameError, "#{label} #{name} is not a resolvable constant" unless namespace.is_a?(Module)
 
               namespace.const_get(part, false)
             end

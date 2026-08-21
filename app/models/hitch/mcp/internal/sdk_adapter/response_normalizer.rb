@@ -8,9 +8,7 @@ module Hitch
     module Internal
       class SDKAdapter
         class ResponseNormalizer
-          PROTOCOL_VERSION = "2026-07-28"
           SERVER_INFO_META_KEY = "io.modelcontextprotocol/serverInfo"
-          GENERIC_TOOL_ERROR = "Tool execution failed"
 
           class << self
             def call(response:, method:, server_info:, request_id:, tool_response:)
@@ -99,7 +97,7 @@ module Hitch
             result.delete(:_meta)
             result.delete("_meta")
             result[:content] = [
-              { type: "text", text: explicit_text || GENERIC_TOOL_ERROR }
+              { type: "text", text: explicit_text || Protocol::GENERIC_TOOL_ERROR }
             ]
             result[:isError] = true
           end
@@ -107,7 +105,7 @@ module Hitch
           def normalize_discovery(result)
             result.delete(:serverInfo)
             result.delete("serverInfo")
-            result[:supportedVersions] = [ PROTOCOL_VERSION ]
+            result[:supportedVersions] = [ Protocol::VERSION ]
             result[:capabilities] = { tools: {} }
           end
 

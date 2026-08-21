@@ -6,14 +6,11 @@ module Hitch
   module MCP
     module Internal
       class SDKAdapter
-        SUPPORTED_METHODS = %w[server/discover tools/list tools/call].freeze
         STRUCTURAL_PARAMS = {
           "server/discover" => [],
           "tools/list" => %w[cursor],
           "tools/call" => %w[name arguments]
         }.freeze
-        MAX_TOOL_NAME_LENGTH = 64
-        TOOL_NAME_PATTERN = /\A[A-Za-z0-9_.-]+\z/
         SDK_REQUEST_ID = "hitch_request"
 
         class << self
@@ -42,13 +39,11 @@ module Hitch
           end
 
           def validate_tool_name!(name)
-            valid = name.is_a?(String) &&
-              name.length.between?(1, MAX_TOOL_NAME_LENGTH) &&
-              TOOL_NAME_PATTERN.match?(name)
-            return name if valid
+            return name if Protocol.tool_name?(name)
 
             raise ArgumentError,
-              "tool name must be 1-#{MAX_TOOL_NAME_LENGTH} ASCII letters, digits, underscore, dot, or dash"
+              "tool name must be 1-#{Protocol::MAX_TOOL_NAME_LENGTH} ASCII letters, digits, " \
+                "underscore, dot, or dash"
           end
         end
 
@@ -61,7 +56,7 @@ module Hitch
         end
 
         def call
-          return method_not_found unless SUPPORTED_METHODS.include?(request_method)
+          return method_not_found unless Protocol::METHODS.include?(request_method)
           return invalid_params if reserved_server_context?
 
           response = build_server.handle(structural_request)

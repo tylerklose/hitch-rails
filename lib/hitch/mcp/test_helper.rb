@@ -10,12 +10,9 @@ require "uri"
 module Hitch
   module MCP
     module TestHelper
-      PROTOCOL_VERSION = "2026-07-28"
-      METHODS = %w[server/discover tools/list tools/call].freeze
-      TOOL_NAME_PATTERN = /\A[A-Za-z0-9_.-]{1,64}\z/
       TOKEN_PATTERN = /\A[A-Za-z0-9\-._~+\/]+=*\z/
 
-      def mcp_headers(token:, method:, name: nil, protocol_version: PROTOCOL_VERSION)
+      def mcp_headers(token:, method:, name: nil, protocol_version: Internal::Protocol::VERSION)
         resource = mcp_test_resource_uri!
         mcp_test_headers(
           resource:,
@@ -27,7 +24,7 @@ module Hitch
       end
 
       def post_mcp(method:, token:, params: {}, id: "hitch-test", client_info: nil,
-        capabilities: {}, protocol_version: PROTOCOL_VERSION)
+        capabilities: {}, protocol_version: Internal::Protocol::VERSION)
         resource = mcp_test_resource_uri!
         normalized_params = mcp_test_json_hash(params, "params")
         raise ArgumentError, "params must not supply _meta" if normalized_params.key?("_meta")
@@ -145,11 +142,12 @@ module Hitch
       end
 
       def mcp_test_validate_method_and_name!(method, name)
-        raise ArgumentError, "method is not a supported Hitch MCP method" unless METHODS.include?(method)
+        raise ArgumentError, "method is not a supported Hitch MCP method" unless
+          Internal::Protocol::METHODS.include?(method)
 
         if method == "tools/call"
           raise ArgumentError, "name is required for tools/call" unless
-            name.is_a?(String) && TOOL_NAME_PATTERN.match?(name)
+            Internal::Protocol.tool_name?(name)
         elsif !name.nil?
           raise ArgumentError, "name is only valid for tools/call"
         end
@@ -182,7 +180,7 @@ module Hitch
         raise ArgumentError, "#{label} is not plain JSON data"
       end
 
-      private_constant :METHODS, :TOKEN_PATTERN, :TOOL_NAME_PATTERN
+      private_constant :TOKEN_PATTERN
     end
   end
 end

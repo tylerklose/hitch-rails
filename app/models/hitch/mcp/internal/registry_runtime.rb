@@ -7,10 +7,8 @@ module Hitch
       # prepare time and resolves listings and calls against it per request.
       # The snapshot retains only class names and frozen data.
       class RegistryRuntime
-        TOOL_NAME_PATTERN = /\A[A-Za-z0-9_.-]+\z/
         CONSTANT_NAME_PATTERN = /\A[A-Z][A-Za-z0-9_]*(?:::[A-Z][A-Za-z0-9_]*)*\z/
         OAUTH_SCOPE_PATTERN = /\A[\x21\x23-\x5B\x5D-\x7E]+\z/
-        MAX_TOOL_NAME_LENGTH = 64
         MAX_SCOPE_BYTES = 64
         ANNOTATION_KEYS = {
           "title" => :title,
@@ -195,12 +193,10 @@ module Hitch
           end
 
           def validate_tool_name(value, label)
-            valid = value.is_a?(String) &&
-              value.length.between?(1, MAX_TOOL_NAME_LENGTH) &&
-              TOOL_NAME_PATTERN.match?(value)
-            unless valid
+            unless Protocol.tool_name?(value)
               raise ArgumentError,
-                "#{label} tool_name must be 1-#{MAX_TOOL_NAME_LENGTH} ASCII letters, digits, underscore, dot, or dash"
+                "#{label} tool_name must be 1-#{Protocol::MAX_TOOL_NAME_LENGTH} ASCII letters, " \
+                  "digits, underscore, dot, or dash"
             end
 
             value.dup.freeze

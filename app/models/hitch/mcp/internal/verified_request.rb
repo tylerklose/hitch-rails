@@ -8,8 +8,6 @@ module Hitch
       # Builds the one immutable request value that may cross into the SDK.
       # HTTP media and body-size admission happen before this object sees bytes.
       class VerifiedRequest
-        PROTOCOL_VERSION = "2026-07-28"
-        SUPPORTED_METHODS = %w[server/discover tools/list tools/call].freeze
         CLIENT_INFO_KEY = "io.modelcontextprotocol/clientInfo"
         CLIENT_INFO_STRING_KEYS = %w[name version title description websiteUrl].freeze
 
@@ -145,7 +143,7 @@ module Hitch
           header_mismatch!(request_id) unless protocol_version == metadata.fetch("io.modelcontextprotocol/protocolVersion")
           header_mismatch!(request_id) unless method == request.fetch("method")
 
-          return if protocol_version == PROTOCOL_VERSION
+          return if protocol_version == Protocol::VERSION
 
           failure!(
             400,
@@ -153,15 +151,15 @@ module Hitch
             "Unsupported protocol version",
             request_id: request_id,
             data: {
-              "supportedVersions" => [ PROTOCOL_VERSION ],
-              "supported" => [ PROTOCOL_VERSION ],
+              "supportedVersions" => [ Protocol::VERSION ],
+              "supported" => [ Protocol::VERSION ],
               "requested" => protocol_version
             }
           )
         end
 
         def validate_method!(request, request_id)
-          return if SUPPORTED_METHODS.include?(request.fetch("method"))
+          return if Protocol::METHODS.include?(request.fetch("method"))
 
           failure!(404, -32601, "Method not found", request_id: request_id)
         end

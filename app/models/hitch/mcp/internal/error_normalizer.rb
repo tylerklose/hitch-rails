@@ -8,9 +8,7 @@ module Hitch
       # Reports only a synthetic failure with fixed structural context, then
       # returns the same generic tool error for every non-explicit failure.
       class ErrorNormalizer
-        GENERIC_TOOL_ERROR = "Tool execution failed"
         SOURCE = "hitch.mcp.tool"
-        TOOL_NAME_PATTERN = /\A[A-Za-z0-9_.-]{1,64}\z/
         PHASE_CATEGORIES = {
           context: "context_handoff",
           arguments: "argument_normalization",
@@ -44,7 +42,7 @@ module Hitch
           def reporting_context(error:, phase:, tool_name:)
             category = ResultNormalizer.failure_category(error) || PHASE_CATEGORIES.fetch(phase, "tool_boundary")
             context = { hitch_mcp_category: category.to_s.freeze }
-            if tool_name.instance_of?(String) && TOOL_NAME_PATTERN.match?(tool_name)
+            if Protocol.tool_name?(tool_name)
               context[:hitch_mcp_tool] = tool_name.dup.freeze
             end
             request_id = Observation.current_request_id
@@ -54,7 +52,7 @@ module Hitch
 
           def generic_response
             ::MCP::Tool::Response.new(
-              [ { type: "text", text: GENERIC_TOOL_ERROR } ],
+              [ { type: "text", text: Protocol::GENERIC_TOOL_ERROR } ],
               error: true
             )
           end

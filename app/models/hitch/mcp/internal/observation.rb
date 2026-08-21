@@ -15,7 +15,6 @@ module Hitch
         IDENTITY_SALT = "hitch/mcp/observation/v1"
         CURRENT_REQUEST_KEY = :hitch_mcp_observation_request
         REQUEST_ID_PATTERN = /\A[0-9a-f]{32}\z/
-        TOOL_NAME_PATTERN = /\A[A-Za-z0-9_.-]{1,64}\z/
         PRINCIPAL_TYPE_PATTERN = /\A[A-Za-z_][A-Za-z0-9_:]{0,254}\z/
         PROTOCOL_OUTCOMES = {
           -32_700 => "parse_error",
@@ -78,7 +77,7 @@ module Hitch
 
           def verified!(request)
             method = JsonValues.read(request, "method")
-            @method = method.dup.freeze if %w[server/discover tools/list tools/call].include?(method)
+            @method = method.dup.freeze if Protocol::METHODS.include?(method)
             nil
           rescue StandardError, SystemStackError
             Observation.report_failure(REQUEST_EVENT, "verified_request")
@@ -86,7 +85,7 @@ module Hitch
           end
 
           def tool_resolved!(name)
-            @tool_name = name.dup.freeze if name.is_a?(String) && TOOL_NAME_PATTERN.match?(name)
+            @tool_name = name.dup.freeze if Protocol.tool_name?(name)
             nil
           end
 
@@ -102,7 +101,7 @@ module Hitch
 
           def start_invocation(tool_name:)
             return if @finished
-            return unless tool_name.is_a?(String) && TOOL_NAME_PATTERN.match?(tool_name)
+            return unless Protocol.tool_name?(tool_name)
 
             InvocationState.new(request_id:, tool_name:)
           end
@@ -325,7 +324,7 @@ module Hitch
 
         private_constant :RequestState, :InvocationState,
           :REQUEST_EVENT, :INVOCATION_EVENT, :IDENTITY_SALT,
-          :CURRENT_REQUEST_KEY, :TOOL_NAME_PATTERN, :PRINCIPAL_TYPE_PATTERN,
+          :CURRENT_REQUEST_KEY, :PRINCIPAL_TYPE_PATTERN,
           :REQUEST_ID_PATTERN, :PROTOCOL_OUTCOMES, :HTTP_OUTCOMES,
           :HTTP_TERMINAL_OUTCOMES
       end

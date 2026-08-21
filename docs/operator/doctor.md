@@ -52,9 +52,6 @@ these IDs in this order:
    never uses Hitch's application quota-key namespace. A store that cannot
    count, or one that cannot count across processes, fails in production and
    warns elsewhere; auth-only mode skips it.
-10. `legacy_endpoint` — the deprecated `Hitch::ServerEndpoint` does not own the
-    canonical resource path. A noncanonical legacy route warns during a staged
-    migration; a canonical one fails.
 
 Every check names something the host can act on. Gem-self-diagnosis (packaged
 file integrity) lives in this repository's CI, not here. The `versions` bounds

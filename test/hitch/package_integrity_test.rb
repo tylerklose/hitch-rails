@@ -17,7 +17,6 @@ class Hitch::PackageIntegrityTest < ActiveSupport::TestCase
     docs/operator/rate_limiting.md
     docs/public_api/0.2.0.md
     docs/removing.md
-    docs/upgrading/0.2.0.md
     lib/generators/hitch/install/install_generator.rb
     lib/generators/hitch/tool_generator.rb
     lib/hitch/doctor.rb

@@ -142,6 +142,15 @@ class CorsAndHostTest < ActionDispatch::IntegrationTest
     assert_response :not_found
   end
 
+  test "path-aware protected-resource metadata (RFC 9728 §3.1) is served" do
+    get "/.well-known/oauth-protected-resource/mcp"
+
+    assert_response :ok
+    body = JSON.parse(response.body)
+    assert_equal "https://canonical.example/mcp", body["resource"]
+    assert_equal [ "mcp" ], body["scopes_supported"]
+  end
+
   test "ordinary responses vary on Origin and reflect only an allowed origin" do
     get "/.well-known/oauth-protected-resource", headers: { "Origin" => ORIGIN }
     assert_equal ORIGIN, response.headers["Access-Control-Allow-Origin"]

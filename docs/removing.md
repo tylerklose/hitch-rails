@@ -21,8 +21,7 @@ the gem must not silently delete OAuth audit data or principal bindings.
    generators wrote.
 6. Remove the `mount Hitch::Engine` line — destroy leaves it in place, since
    it cannot tell a generated mount from one that pre-dates the install —
-   and any host controller inclusions of `Hitch::ServerEndpoint` or
-   `Hitch::CorsSupport`.
+   and any host controller inclusions of `Hitch::CorsSupport`.
 7. Remove the Gemfile entry and bundle again.
 
 `hitch:doctor` has no repair or uninstall mode. It is safe to use as a final

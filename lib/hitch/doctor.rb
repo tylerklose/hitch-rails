@@ -18,7 +18,6 @@ module Hitch
       hosts
       origins
       rate_limit_store
-      legacy_endpoint
     ].freeze
     Check = Data.define(:id, :status, :code, :summary, :details) do
       def initialize(id:, status:, code:, summary:, details: {})
@@ -269,24 +268,6 @@ module Hitch
         end
       end
 
-      def legacy_facts
-        resource_path = URI.parse(Hitch.configuration.resource_uri.to_s).path
-        resource_path = "/" if resource_path.empty?
-        routes = Rails.application.routes.routes.to_a
-        legacy_routes = routes.filter_map.with_index do |route, index|
-          next unless controller_uses?(route, Hitch::ServerEndpoint)
-
-          {
-            "index" => index,
-            "path" => normalized_route_path(route),
-            "controller" => route.defaults[:controller].to_s
-          }
-        end
-        {
-          "routes" => legacy_routes,
-          "canonical_routes" => legacy_routes.select { |route| route.fetch("path") == resource_path }
-        }
-      end
 
       private
 
@@ -425,8 +406,7 @@ module Hitch
         registry_check,
         hosts_check,
         origins_check,
-        rate_limit_store_check,
-        legacy_endpoint_check
+        rate_limit_store_check
       ]
       raise "Hitch doctor check set drifted" unless checks.map(&:id) == CHECK_IDS
 
@@ -626,29 +606,6 @@ module Hitch
     # when a store never overrode increment; the report must survive that.
     rescue NotImplementedError, StandardError => error
       probe_failure("rate_limit_store", error)
-    end
-
-    # Host-actionable even though the concern it looks for is Hitch's own:
-    # it checks the HOST's routes, and it is the one diagnostic that catches
-    # "you forgot to swap the route" during a staged ServerEndpoint migration.
-    def legacy_endpoint_check
-      facts = system.legacy_facts
-      return fail_check(
-        "legacy_endpoint",
-        "canonical",
-        "The deprecated ServerEndpoint still owns the canonical MCP resource path",
-        facts
-      ) if facts.fetch("canonical_routes").any?
-      return warning(
-        "legacy_endpoint",
-        "present_noncanonical",
-        "Deprecated ServerEndpoint routes remain outside the canonical resource path",
-        facts
-      ) if facts.fetch("routes").any?
-
-      pass("legacy_endpoint", "absent", "No deprecated ServerEndpoint route remains", facts)
-    rescue StandardError => error
-      probe_failure("legacy_endpoint", error)
     end
 
     def pass(id, code, summary, details = {})

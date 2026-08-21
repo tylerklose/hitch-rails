@@ -2,131 +2,119 @@
   "meta": {
     "model_name": "hitch_doctor",
     "strength": 2,
-    "test_count": 30,
-    "exhaustive_count": 41472,
-    "reduction": "1382.4x",
+    "test_count": 27,
+    "exhaustive_count": 13824,
+    "reduction": "512x",
     "coverage": "100.0%",
     "seed": 42
   },
   "coverage_curve": [
     {
       "scenario": 1,
-      "cumulative_pct": 12.8
+      "cumulative_pct": 13.0
     },
     {
       "scenario": 2,
-      "cumulative_pct": 23.3
+      "cumulative_pct": 24.3
     },
     {
       "scenario": 3,
-      "cumulative_pct": 35.7
+      "cumulative_pct": 37.1
     },
     {
       "scenario": 4,
-      "cumulative_pct": 45.9
+      "cumulative_pct": 48.1
     },
     {
       "scenario": 5,
-      "cumulative_pct": 52.7
+      "cumulative_pct": 55.7
     },
     {
       "scenario": 6,
-      "cumulative_pct": 58.7
+      "cumulative_pct": 62.6
     },
     {
       "scenario": 7,
-      "cumulative_pct": 65.3
+      "cumulative_pct": 68.1
     },
     {
       "scenario": 8,
-      "cumulative_pct": 70.6
+      "cumulative_pct": 72.5
     },
     {
       "scenario": 9,
-      "cumulative_pct": 75.5
+      "cumulative_pct": 77.1
     },
     {
       "scenario": 10,
-      "cumulative_pct": 78.3
+      "cumulative_pct": 80.0
     },
     {
       "scenario": 11,
-      "cumulative_pct": 81.1
+      "cumulative_pct": 82.9
     },
     {
       "scenario": 12,
-      "cumulative_pct": 83.9
+      "cumulative_pct": 85.8
     },
     {
       "scenario": 13,
-      "cumulative_pct": 86.2
+      "cumulative_pct": 87.8
     },
     {
       "scenario": 14,
-      "cumulative_pct": 87.9
+      "cumulative_pct": 89.9
     },
     {
       "scenario": 15,
-      "cumulative_pct": 89.5
+      "cumulative_pct": 91.0
     },
     {
       "scenario": 16,
-      "cumulative_pct": 91.1
-    },
-    {
-      "scenario": 17,
       "cumulative_pct": 92.5
     },
     {
+      "scenario": 17,
+      "cumulative_pct": 93.3
+    },
+    {
       "scenario": 18,
-      "cumulative_pct": 93.7
+      "cumulative_pct": 94.8
     },
     {
       "scenario": 19,
-      "cumulative_pct": 94.6
+      "cumulative_pct": 95.4
     },
     {
       "scenario": 20,
-      "cumulative_pct": 95.3
+      "cumulative_pct": 95.9
     },
     {
       "scenario": 21,
-      "cumulative_pct": 96.0
+      "cumulative_pct": 96.5
     },
     {
       "scenario": 22,
-      "cumulative_pct": 96.3
+      "cumulative_pct": 96.8
     },
     {
       "scenario": 23,
-      "cumulative_pct": 96.7
+      "cumulative_pct": 97.1
     },
     {
       "scenario": 24,
-      "cumulative_pct": 97.0
-    },
-    {
-      "scenario": 25,
       "cumulative_pct": 97.7
     },
     {
+      "scenario": 25,
+      "cumulative_pct": 98.3
+    },
+    {
       "scenario": 26,
-      "cumulative_pct": 97.9
+      "cumulative_pct": 99.4
     },
     {
       "scenario": 27,
-      "cumulative_pct": 98.1
-    },
-    {
-      "scenario": 28,
-      "cumulative_pct": 99.3
-    },
-    {
-      "scenario": 29,
-      "cumulative_pct": 99.8
-    },
-    {
-      "scenario": 30,
       "cumulative_pct": 100.0
     }
   ],
@@ -143,8 +131,7 @@
         "registry": "populated",
         "hosts": "accepted",
         "origins": "exact",
-        "rate_limit_store": "shared",
-        "legacy": "absent"
+        "rate_limit_store": "shared"
       }
     },
     {
@@ -159,8 +146,7 @@
         "registry": "invalid",
         "hosts": "accepted",
         "origins": "deny_default",
-        "rate_limit_store": "unshared",
-        "legacy": "absent"
+        "rate_limit_store": "unshared"
       }
     },
     {
@@ -170,13 +156,12 @@
         "environment": "test",
         "configuration": "invalid",
         "discovery": "mismatch",
-        "route": "shadowed",
+        "route": "after_engine",
         "migrations": "missing",
-        "registry": "populated",
+        "registry": "empty",
         "hosts": "blocked",
         "origins": "deny_default",
-        "rate_limit_store": "uncountable",
-        "legacy": "canonical"
+        "rate_limit_store": "error"
       }
     },
     {
@@ -186,61 +171,57 @@
         "environment": "production",
         "configuration": "invalid",
         "discovery": "mismatch",
-        "route": "missing",
-        "migrations": "missing",
-        "registry": "empty",
+        "route": "wrong_verbs",
+        "migrations": "current",
+        "registry": "invalid",
         "hosts": "blocked",
         "origins": "http",
-        "rate_limit_store": "uncountable",
-        "legacy": "noncanonical"
+        "rate_limit_store": "uncountable"
       }
     },
     {
       "id": 5,
       "values": {
         "runtime": "auth_only",
-        "environment": "test",
+        "environment": "production",
         "configuration": "invalid",
         "discovery": "mismatch",
         "route": "missing",
-        "migrations": "current",
-        "registry": "empty",
-        "hosts": "accepted",
+        "migrations": "missing",
+        "registry": "populated",
+        "hosts": "blocked",
         "origins": "exact",
-        "rate_limit_store": "error",
-        "legacy": "canonical"
+        "rate_limit_store": "unshared"
       }
     },
     {
       "id": 6,
       "values": {
-        "runtime": "auth_only",
+        "runtime": "full",
         "environment": "test",
-        "configuration": "invalid",
+        "configuration": "valid",
         "discovery": "coherent",
         "route": "shadowed",
         "migrations": "missing",
-        "registry": "invalid",
+        "registry": "empty",
         "hosts": "blocked",
         "origins": "exact",
-        "rate_limit_store": "shared",
-        "legacy": "noncanonical"
+        "rate_limit_store": "uncountable"
       }
     },
     {
       "id": 7,
       "values": {
         "runtime": "full",
-        "environment": "production",
-        "configuration": "valid",
+        "environment": "test",
+        "configuration": "invalid",
         "discovery": "coherent",
         "route": "after_engine",
         "migrations": "missing",
-        "registry": "populated",
-        "hosts": "blocked",
+        "registry": "empty",
+        "hosts": "accepted",
         "origins": "http",
-        "rate_limit_store": "error",
-        "legacy": "noncanonical"
+        "rate_limit_store": "shared"
       }
     },
     {
@@ -251,44 +232,41 @@
         "configuration": "valid",
         "discovery": "coherent",
         "route": "wrong_verbs",
-        "migrations": "missing",
-        "registry": "invalid",
+        "migrations": "current",
+        "registry": "populated",
         "hosts": "accepted",
-        "origins": "http",
-        "rate_limit_store": "unshared",
-        "legacy": "canonical"
+        "origins": "deny_default",
+        "rate_limit_store": "error"
       }
     },
     {
       "id": 9,
       "values": {
-        "runtime": "full",
-        "environment": "test",
+        "runtime": "auth_only",
+        "environment": "production",
         "configuration": "valid",
         "discovery": "mismatch",
         "route": "invalid_mount",
-        "migrations": "missing",
+        "migrations": "current",
         "registry": "empty",
-        "hosts": "blocked",
-        "origins": "http",
-        "rate_limit_store": "uncountable",
-        "legacy": "absent"
+        "hosts": "accepted",
+        "origins": "exact",
+        "rate_limit_store": "shared"
       }
     },
     {
       "id": 10,
       "values": {
-        "runtime": "full",
+        "runtime": "auth_only",
         "environment": "test",
-        "configuration": "invalid",
+        "configuration": "valid",
         "discovery": "coherent",
-        "route": "wrong_verbs",
+        "route": "ordered",
         "migrations": "missing",
         "registry": "invalid",
-        "hosts": "blocked",
-        "origins": "deny_default",
-        "rate_limit_store": "unshared",
-        "legacy": "noncanonical"
+        "hosts": "accepted",
+        "origins": "http",
+        "rate_limit_store": "error"
       }
     },
     {
@@ -297,14 +275,13 @@
         "runtime": "full",
         "environment": "test",
         "configuration": "invalid",
-        "discovery": "mismatch",
-        "route": "ordered",
-        "migrations": "current",
+        "discovery": "coherent",
+        "route": "invalid_mount",
+        "migrations": "missing",
         "registry": "invalid",
-        "hosts": "blocked",
-        "origins": "http",
-        "rate_limit_store": "unshared",
-        "legacy": "absent"
+        "hosts": "accepted",
+        "origins": "exact",
+        "rate_limit_store": "uncountable"
       }
     },
     {
@@ -313,14 +290,13 @@
         "runtime": "auth_only",
         "environment": "production",
         "configuration": "invalid",
-        "discovery": "coherent",
-        "route": "invalid_mount",
+        "discovery": "mismatch",
+        "route": "shadowed",
         "migrations": "current",
         "registry": "populated",
         "hosts": "blocked",
-        "origins": "exact",
-        "rate_limit_store": "uncountable",
-        "legacy": "canonical"
+        "origins": "http",
+        "rate_limit_store": "unshared"
       }
     },
     {
@@ -328,15 +304,14 @@
       "values": {
         "runtime": "full",
         "environment": "production",
-        "configuration": "invalid",
-        "discovery": "mismatch",
-        "route": "after_engine",
-        "migrations": "current",
+        "configuration": "valid",
+        "discovery": "coherent",
+        "route": "wrong_verbs",
+        "migrations": "missing",
         "registry": "empty",
-        "hosts": "blocked",
-        "origins": "deny_default",
-        "rate_limit_store": "unshared",
-        "legacy": "absent"
+        "hosts": "accepted",
+        "origins": "exact",
+        "rate_limit_store": "unshared"
       }
     },
     {
@@ -346,13 +321,12 @@
         "environment": "production",
         "configuration": "valid",
         "discovery": "mismatch",
-        "route": "shadowed",
+        "route": "after_engine",
         "migrations": "current",
-        "registry": "empty",
+        "registry": "populated",
         "hosts": "accepted",
-        "origins": "exact",
-        "rate_limit_store": "uncountable",
-        "legacy": "absent"
+        "origins": "deny_default",
+        "rate_limit_store": "uncountable"
       }
     },
     {
@@ -362,13 +336,12 @@
         "environment": "test",
         "configuration": "valid",
         "discovery": "coherent",
-        "route": "ordered",
+        "route": "missing",
         "migrations": "missing",
-        "registry": "empty",
+        "registry": "populated",
         "hosts": "blocked",
-        "origins": "deny_default",
-        "rate_limit_store": "error",
-        "legacy": "canonical"
+        "origins": "http",
+        "rate_limit_store": "error"
       }
     },
     {
@@ -376,15 +349,14 @@
       "values": {
         "runtime": "full",
         "environment": "test",
-        "configuration": "valid",
-        "discovery": "mismatch",
-        "route": "wrong_verbs",
-        "migrations": "current",
+        "configuration": "invalid",
+        "discovery": "coherent",
+        "route": "ordered",
+        "migrations": "missing",
         "registry": "empty",
-        "hosts": "accepted",
-        "origins": "exact",
-        "rate_limit_store": "unshared",
-        "legacy": "noncanonical"
+        "hosts": "blocked",
+        "origins": "deny_default",
+        "rate_limit_store": "unshared"
       }
     },
     {
@@ -392,35 +364,78 @@
       "values": {
         "runtime": "full",
         "environment": "test",
-        "configuration": "invalid",
-        "discovery": "coherent",
-        "route": "after_engine",
+        "configuration": "valid",
+        "discovery": "mismatch",
+        "route": "shadowed",
         "migrations": "missing",
         "registry": "invalid",
         "hosts": "accepted",
-        "origins": "exact",
-        "rate_limit_store": "uncountable",
-        "legacy": "absent"
+        "origins": "deny_default",
+        "rate_limit_store": "uncountable"
       }
     },
     {
       "id": 18,
       "values": {
-        "runtime": "full",
-        "environment": "test",
-        "configuration": "valid",
+        "runtime": "auth_only",
+        "environment": "production",
+        "configuration": "invalid",
         "discovery": "mismatch",
         "route": "after_engine",
         "migrations": "missing",
         "registry": "invalid",
         "hosts": "blocked",
-        "origins": "http",
-        "rate_limit_store": "shared",
-        "legacy": "canonical"
+        "origins": "deny_default",
+        "rate_limit_store": "shared"
       }
     },
     {
       "id": 19,
+      "values": {
+        "runtime": "full",
+        "environment": "test",
+        "configuration": "valid",
+        "discovery": "coherent",
+        "route": "wrong_verbs",
+        "migrations": "current",
+        "registry": "populated",
+        "hosts": "accepted",
+        "origins": "deny_default",
+        "rate_limit_store": "shared"
+      }
+    },
+    {
+      "id": 20,
+      "values": {
+        "runtime": "full",
+        "environment": "test",
+        "configuration": "valid",
+        "discovery": "mismatch",
+        "route": "ordered",
+        "migrations": "current",
+        "registry": "invalid",
+        "hosts": "accepted",
+        "origins": "http",
+        "rate_limit_store": "uncountable"
+      }
+    },
+    {
+      "id": 21,
+      "values": {
+        "runtime": "full",
+        "environment": "test",
+        "configuration": "valid",
+        "discovery": "coherent",
+        "route": "missing",
+        "migrations": "current",
+        "registry": "empty",
+        "hosts": "accepted",
+        "origins": "deny_default",
+        "rate_limit_store": "shared"
+      }
+    },
+    {
+      "id": 22,
       "values": {
         "runtime": "full",
         "environment": "test",
@@ -431,56 +446,7 @@
         "registry": "populated",
         "hosts": "accepted",
         "origins": "deny_default",
-        "rate_limit_store": "shared",
-        "legacy": "absent"
-      }
-    },
-    {
-      "id": 20,
-      "values": {
-        "runtime": "auth_only",
-        "environment": "test",
-        "configuration": "valid",
-        "discovery": "coherent",
-        "route": "ordered",
-        "migrations": "missing",
-        "registry": "populated",
-        "hosts": "blocked",
-        "origins": "http",
-        "rate_limit_store": "unshared",
-        "legacy": "noncanonical"
-      }
-    },
-    {
-      "id": 21,
-      "values": {
-        "runtime": "auth_only",
-        "environment": "production",
-        "configuration": "invalid",
-        "discovery": "coherent",
-        "route": "after_engine",
-        "migrations": "current",
-        "registry": "invalid",
-        "hosts": "accepted",
-        "origins": "deny_default",
-        "rate_limit_store": "error",
-        "legacy": "absent"
-      }
-    },
-    {
-      "id": 22,
-      "values": {
-        "runtime": "full",
-        "environment": "test",
-        "configuration": "valid",
-        "discovery": "coherent",
-        "route": "ordered",
-        "migrations": "current",
-        "registry": "populated",
-        "hosts": "accepted",
-        "origins": "deny_default",
-        "rate_limit_store": "uncountable",
-        "legacy": "absent"
+        "rate_limit_store": "uncountable"
       }
     },
     {
@@ -494,9 +460,8 @@
         "migrations": "current",
         "registry": "populated",
         "hosts": "accepted",
-        "origins": "http",
-        "rate_limit_store": "unshared",
-        "legacy": "absent"
+        "origins": "deny_default",
+        "rate_limit_store": "shared"
       }
     },
     {
@@ -508,11 +473,10 @@
         "discovery": "coherent",
         "route": "shadowed",
         "migrations": "current",
-        "registry": "populated",
-        "hosts": "accepted",
-        "origins": "deny_default",
-        "rate_limit_store": "error",
-        "legacy": "absent"
+        "registry": "empty",
+        "hosts": "blocked",
+        "origins": "exact",
+        "rate_limit_store": "error"
       }
     },
     {
@@ -522,13 +486,12 @@
         "environment": "test",
         "configuration": "valid",
         "discovery": "coherent",
-        "route": "wrong_verbs",
+        "route": "after_engine",
         "migrations": "current",
-        "registry": "populated",
-        "hosts": "accepted",
-        "origins": "deny_default",
-        "rate_limit_store": "shared",
-        "legacy": "absent"
+        "registry": "invalid",
+        "hosts": "blocked",
+        "origins": "exact",
+        "rate_limit_store": "unshared"
       }
     },
     {
@@ -537,14 +500,13 @@
         "runtime": "full",
         "environment": "test",
         "configuration": "valid",
-        "discovery": "coherent",
-        "route": "wrong_verbs",
-        "migrations": "current",
+        "discovery": "mismatch",
+        "route": "invalid_mount",
+        "migrations": "missing",
         "registry": "populated",
-        "hosts": "accepted",
+        "hosts": "blocked",
         "origins": "deny_default",
-        "rate_limit_store": "uncountable",
-        "legacy": "absent"
+        "rate_limit_store": "error"
       }
     },
     {
@@ -552,63 +514,14 @@
       "values": {
         "runtime": "full",
         "environment": "test",
-        "configuration": "valid",
-        "discovery": "coherent",
-        "route": "wrong_verbs",
-        "migrations": "current",
-        "registry": "populated",
-        "hosts": "accepted",
-        "origins": "deny_default",
-        "rate_limit_store": "error",
-        "legacy": "absent"
-      }
-    },
-    {
-      "id": 28,
-      "values": {
-        "runtime": "auth_only",
-        "environment": "test",
         "configuration": "invalid",
-        "discovery": "mismatch",
+        "discovery": "coherent",
         "route": "invalid_mount",
         "migrations": "missing",
         "registry": "invalid",
         "hosts": "accepted",
-        "origins": "deny_default",
-        "rate_limit_store": "error",
-        "legacy": "noncanonical"
-      }
-    },
-    {
-      "id": 29,
-      "values": {
-        "runtime": "full",
-        "environment": "test",
-        "configuration": "valid",
-        "discovery": "coherent",
-        "route": "invalid_mount",
-        "migrations": "missing",
-        "registry": "empty",
-        "hosts": "accepted",
-        "origins": "deny_default",
-        "rate_limit_store": "shared",
-        "legacy": "canonical"
-      }
-    },
-    {
-      "id": 30,
-      "values": {
-        "runtime": "full",
-        "environment": "test",
-        "configuration": "valid",
-        "discovery": "coherent",
-        "route": "invalid_mount",
-        "migrations": "current",
-        "registry": "populated",
-        "hosts": "accepted",
-        "origins": "deny_default",
-        "rate_limit_store": "unshared",
-        "legacy": "absent"
+        "origins": "http",
+        "rate_limit_store": "unshared"
       }
     }
   ]

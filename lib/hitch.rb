@@ -46,11 +46,5 @@ module Hitch
     def reset_configuration!
       @configuration = nil
     end
-
-    # @return [ActiveSupport::Deprecation] the gem's deprecator; hosts can
-    #   register it with Rails' config.deprecators for silence/raise control.
-    def deprecator
-      @deprecator ||= ActiveSupport::Deprecation.new("0.3", "hitch-rails")
-    end
   end
 end

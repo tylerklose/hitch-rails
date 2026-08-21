@@ -322,12 +322,8 @@ or undermine its guarantees:
 
 0.2.0 is the first public release. The public API may change before v1.0.0.
 The exact public surface is documented in
-[`docs/public_api/0.2.0.md`](docs/public_api/0.2.0.md); upgrades and removal
-are covered in [`docs/upgrading/0.2.0.md`](docs/upgrading/0.2.0.md) and
-[`docs/removing.md`](docs/removing.md). A deprecated
-`Hitch::ServerEndpoint` compatibility concern remains available through the
-0.2 line for host-owned `/mcp` controllers that predate the authenticated
-endpoint.
+[`docs/public_api/0.2.0.md`](docs/public_api/0.2.0.md); removal is covered in
+[`docs/removing.md`](docs/removing.md).
 
 ## Contributing
 

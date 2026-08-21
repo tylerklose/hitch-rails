@@ -36,13 +36,10 @@ Gem::Specification.new do |spec|
       README.md
       SECURITY.md
       config/routes.rb
-      docs/public_api/0.1.0.md
       docs/public_api/0.2.0.md
       docs/operator/doctor.md
       docs/operator/rate_limiting.md
       docs/removing.md
-      docs/upgrading/0.1.0.md
-      docs/upgrading/0.2.0.md
       lib/generators/hitch/install/templates/controller.rb.tt
       lib/generators/hitch/tool/templates/tool.rb.tt
       lib/generators/hitch/tool/templates/tool_test.rb.tt

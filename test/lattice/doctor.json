@@ -84,14 +84,6 @@
         "uncountable",
         "error"
       ]
-    },
-    {
-      "name": "legacy",
-      "values": [
-        "absent",
-        "noncanonical",
-        "canonical"
-      ]
     }
   ],
   "constraints": [
@@ -138,10 +130,6 @@
         {
           "parameter": "rate_limit_store",
           "value": "shared"
-        },
-        {
-          "parameter": "legacy",
-          "value": "absent"
         }
       ]
     },
@@ -188,10 +176,6 @@
         {
           "parameter": "rate_limit_store",
           "value": "unshared"
-        },
-        {
-          "parameter": "legacy",
-          "value": "absent"
         }
       ]
     },
@@ -382,16 +366,6 @@
         {
           "parameter": "rate_limit_store",
           "value": "uncountable"
-        }
-      ]
-    },
-    {
-      "type": "forced",
-      "_why": "Deprecated endpoint owns the canonical resource.",
-      "assignments": [
-        {
-          "parameter": "legacy",
-          "value": "canonical"
         }
       ]
     }

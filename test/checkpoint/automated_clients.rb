@@ -19,15 +19,12 @@ module HitchCheckpoint
   class AutomatedClients
     PROTOCOL_VERSION = "2026-07-28"
     LOCK_PATH = "test/conformance/toolchain.lock.yml"
-    # The exhaustive 2x2x2 acceptance matrix, stated directly.
-    MATRIX = %w[rails_8_0_sqlite rails_8_1_postgresql].product(
-      %w[typescript python], %w[public confidential]
-    ).map.with_index(1) do |(database, sdk, oauth_client), id|
-      { "id" => id,
-        "values" => {
-          "database" => database, "sdk" => sdk, "oauth_client" => oauth_client
-        } }.freeze
-    end.freeze
+    # The exhaustive sdk x oauth_client acceptance matrix, stated directly.
+    # The database axis belongs to the release matrix, not client interop.
+    MATRIX = %w[typescript python].product(%w[public confidential])
+      .map.with_index(1) do |(sdk, oauth_client), id|
+        { "id" => id, "values" => { "sdk" => sdk, "oauth_client" => oauth_client } }.freeze
+      end.freeze
     SERVER_READY_SECONDS = 30
     CLIENT_TIMEOUT_SECONDS = 90
 
@@ -60,8 +57,7 @@ module HitchCheckpoint
     end
 
     def run(app:, profile_name:, environment:)
-      scenarios = @scenarios.select { |scenario| scenario.dig("values", "database") == profile_name }
-      raise "automated client matrix has no #{profile_name} scenarios" unless scenarios.length == 4
+      scenarios = @scenarios
 
       port = available_port
       base_url = "http://127.0.0.1:#{port}"

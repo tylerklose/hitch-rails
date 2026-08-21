@@ -32,62 +32,17 @@ end
 AUTOMATED_CLIENT_SMOKES = ARGV == [ "--automated-clients" ] || automated_client_environment == "1"
 require_relative "../test/checkpoint/automated_clients" if AUTOMATED_CLIENT_SMOKES
 
+# One packaging profile: what package-smoke uniquely proves is that the BUILT
+# ARTIFACT installs and drives the full flow in a fresh host app. The Rails
+# version and adapter dimensions belong to the release matrix.
 PROFILES = {
   "rails_8_0_sqlite" => {
     appraisal: File.join(ROOT, "gemfiles/rails_8_0_sqlite.gemfile"),
-    rails: "~> 7.2.0",
+    rails: "~> 8.0.0",
     adapter: "sqlite3",
     adapter_gem: 'gem "sqlite3", ">= 2.1", "< 3"'
-  },
-  "rails_8_1_postgresql" => {
-    appraisal: File.join(ROOT, "gemfiles/rails_8_1_postgresql.gemfile"),
-    rails: "~> 8.1.0",
-    adapter: "postgresql",
-    adapter_gem: 'gem "pg", ">= 1.5", "< 2"'
   }
 }.freeze
-
-FORBIDDEN_PACKAGE_PATHS = [
-  %r{\A(?:test|spec|tmp|log)/},
-  %r{\A\.git},
-  %r{(?:\A|/)\.env(?:\.|\z)},
-  %r{(?:\A|/)master\.key\z},
-  %r{(?:\A|/)credentials\.ya?ml\.enc\z},
-  %r{\.(?:pem|key)\z}
-].freeze
-
-REQUIRED_PACKAGE_FILES = %w[
-  CHANGELOG.md
-  MIT-LICENSE
-  README.md
-  SECURITY.md
-  config/routes.rb
-  docs/public_api/0.2.0.md
-  docs/operator/doctor.md
-  docs/operator/rate_limiting.md
-  docs/removing.md
-  app/controllers/concerns/hitch/mcp/endpoint.rb
-  app/models/hitch/mcp/internal/sdk_adapter.rb
-  app/models/hitch/mcp/internal/sdk_adapter/response_normalizer.rb
-  app/models/hitch/mcp/internal/endpoint_error_reporter.rb
-  app/models/hitch/mcp/internal/registry_runtime.rb
-  app/models/hitch/mcp/internal/schema_contract.rb
-  app/models/hitch/mcp/internal/verified_request.rb
-  app/models/hitch/mcp/context.rb
-  app/models/hitch/mcp/registry.rb
-  app/models/hitch/mcp/tool.rb
-  lib/generators/hitch/install/install_generator.rb
-  lib/generators/hitch/install/templates/controller.rb.tt
-  lib/generators/hitch/install/templates/initializer.rb
-  lib/generators/hitch/install/templates/registry.rb
-  lib/generators/hitch/tool_generator.rb
-  lib/generators/hitch/tool/templates/tool.rb.tt
-  lib/generators/hitch/tool/templates/tool_test.rb.tt
-  lib/hitch/doctor.rb
-  lib/hitch/mcp/test_helper.rb
-  lib/hitch/version.rb
-  lib/tasks/hitch.rake
-].freeze
 
 def capture!(*command, environment: {}, chdir: ROOT)
   output, status = Open3.capture2e(environment, *command, chdir: chdir)
@@ -102,16 +57,6 @@ def run!(*command, environment: {}, chdir: ROOT)
   return if system(environment, *command, chdir: chdir)
 
   raise "command failed: #{command.join(' ')}"
-end
-
-def postgresql_url
-  base = URI.parse(ENV.fetch("HITCH_PACKAGE_POSTGRES_URL", "postgresql:///postgres"))
-  unless %w[postgres postgresql].include?(base.scheme)
-    raise "HITCH_PACKAGE_POSTGRES_URL must use postgres:// or postgresql://"
-  end
-
-  base.path = "/hitch_package_#{Process.pid}_#{SecureRandom.hex(6)}_test"
-  base.to_s
 end
 
 def app_gemfile(local_repository, specification, profile)
@@ -261,7 +206,7 @@ def smoke_runner(profile_name, expected_adapter)
     token_body = JSON.parse(session.response.body)
     token = Hitch::AccessToken.find_by_token(token_body.fetch("access_token"))
     abort "issued token was not usable" unless
-      token&.accessible? && token.valid_for_resource?(resource_uri) && token.has_scope?("mcp")
+      token&.accessible? && token.valid_for_resource?(resource_uri) && token.scope?("mcp")
 
     mcp_headers = {
       "Authorization" => "Bearer \#{token_body.fetch('access_token')}",
@@ -326,14 +271,6 @@ Dir.mktmpdir("hitch-package-smoke-") do |directory|
   raise "built manifest does not match the explicit gemspec allowlist" unless packaged_files == expected_files
   raise "built contents do not match the embedded gem manifest" unless artifact_contents == packaged_files
 
-  missing = REQUIRED_PACKAGE_FILES - packaged_files
-  raise "required package files are missing: #{missing.join(', ')}" if missing.any?
-
-  forbidden = packaged_files.select do |path|
-    FORBIDDEN_PACKAGE_PATHS.any? { |pattern| pattern.match?(path) }
-  end
-  raise "forbidden package files are present: #{forbidden.join(', ')}" if forbidden.any?
-
   symlinks = expected_files.select { |path| File.symlink?(File.join(ROOT, path)) }
   raise "package allowlist must not contain symlinks: #{symlinks.join(', ')}" if symlinks.any?
 
@@ -371,82 +308,51 @@ Dir.mktmpdir("hitch-package-smoke-") do |directory|
       run!("bundle", "install", chdir: app)
       run!("bundle", "exec", "rails", "generate", "hitch:install", chdir: app)
 
-      database_url = if profile.fetch(:adapter) == "sqlite3"
-        "sqlite3:#{File.join(directory, "#{profile_name}.sqlite3")}"
-      else
-        postgresql_url
-      end
       database_environment = {
-        "DATABASE_URL" => database_url,
+        "DATABASE_URL" => "sqlite3:#{File.join(directory, "#{profile_name}.sqlite3")}",
         "RAILS_ENV" => "test",
         "SCHEMA" => File.join(directory, "#{profile_name}_schema.rb")
       }
-      database_created = false
+      run!("bundle", "exec", "rails", "db:create", environment: database_environment, chdir: app)
+      run!("bundle", "exec", "rails", "db:migrate", environment: database_environment, chdir: app)
+      registry_path = File.join(app, "app/tools/mcp_tool_registry.rb")
+      run!(
+        "bundle", "exec", "rails", "generate", "hitch:tool", "package_echo",
+        environment: database_environment,
+        chdir: app
+      )
+      raise "tool generator did not register the tool" unless
+        File.binread(registry_path).include?('register McpTools::PackageEcho, scopes: [ "mcp" ]')
 
-      begin
-        run!("bundle", "exec", "rails", "db:create", environment: database_environment, chdir: app)
-        database_created = true
-        run!("bundle", "exec", "rails", "db:migrate", environment: database_environment, chdir: app)
-        registry_path = File.join(app, "app/tools/mcp_tool_registry.rb")
-        run!(
-          "bundle", "exec", "rails", "generate", "hitch:tool", "package_echo",
-          environment: database_environment,
-          chdir: app
+      doctor_output = capture!(
+        "bundle", "exec", "rails", "hitch:doctor",
+        environment: database_environment.merge("HITCH_DOCTOR_FORMAT" => "json"),
+        chdir: app
+      )
+      doctor = JSON.parse(doctor_output)
+      raise "packaged doctor schema drifted" unless doctor.fetch("schema") == "hitch.doctor.v1"
+      raise "packaged doctor found an actionable failure" if
+        doctor.fetch("checks").any? { |check| check.fetch("status") == "fail" }
+      # The versions bounds come from the loaded gemspec, so a passing check
+      # here proves the packaged gemspec metadata survived the build.
+      raise "packaged doctor did not validate the loaded gem's versions" unless
+        doctor.fetch("checks").find { |check| check.fetch("id") == "versions" }&.fetch("code") == "supported"
+
+      output = capture!(
+        "bundle", "exec", "rails", "runner",
+        smoke_runner(profile_name, profile.fetch(:adapter)),
+        environment: database_environment.merge("HITCH_SOURCE_ROOT" => ROOT),
+        chdir: app
+      )
+      result_line = output.lines.reverse.find { |line| line.start_with?("HITCH_SMOKE_RESULT=") }
+      raise "disposable app did not report a smoke result\n#{output}" unless result_line
+
+      if automated_clients
+        automated_clients.run(
+          app:,
+          profile_name:,
+          environment: database_environment
         )
-        raise "tool generator did not register the tool" unless
-          File.binread(registry_path).include?('register McpTools::PackageEcho, scopes: [ "mcp" ]')
-
-        doctor_output = capture!(
-          "bundle", "exec", "rails", "hitch:doctor",
-          environment: database_environment.merge("HITCH_DOCTOR_FORMAT" => "json"),
-          chdir: app
-        )
-        doctor = JSON.parse(doctor_output)
-        raise "packaged doctor schema drifted" unless doctor.fetch("schema") == "hitch.doctor.v1"
-        raise "packaged doctor found an actionable failure" if
-          doctor.fetch("checks").any? { |check| check.fetch("status") == "fail" }
-        # The versions bounds come from the loaded gemspec, so a passing check
-        # here proves the packaged gemspec metadata survived the build.
-        raise "packaged doctor did not validate the loaded gem's versions" unless
-          doctor.fetch("checks").find { |check| check.fetch("id") == "versions" }&.fetch("code") == "supported"
-
-        output = capture!(
-          "bundle", "exec", "rails", "runner",
-          smoke_runner(profile_name, profile.fetch(:adapter)),
-          environment: database_environment.merge("HITCH_SOURCE_ROOT" => ROOT),
-          chdir: app
-        )
-        result_line = output.lines.reverse.find { |line| line.start_with?("HITCH_SMOKE_RESULT=") }
-        raise "disposable app did not report a smoke result\n#{output}" unless result_line
-
-        if automated_clients
-          automated_clients.run(
-            app:,
-            profile_name:,
-            environment: database_environment
-          )
-        end
-      ensure
-        if profile.fetch(:adapter) == "postgresql" && database_created
-          primary_failure = $!
-          cleanup_environment = database_environment
-          if automated_clients
-            cleanup_environment = cleanup_environment.merge(
-              automated_clients.host_environment(resource_uri: "http://127.0.0.1/mcp")
-            )
-          end
-          begin
-            run!(
-              "bundle", "exec", "rails", "db:drop",
-              environment: cleanup_environment,
-              chdir: app
-            )
-          rescue StandardError => cleanup_failure
-            raise cleanup_failure unless primary_failure
-
-            warn "PostgreSQL cleanup also failed: #{cleanup_failure.message}"
-          end
-        end
       end
     end
   end

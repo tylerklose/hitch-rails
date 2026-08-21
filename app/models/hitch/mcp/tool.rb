@@ -7,6 +7,14 @@ module Hitch
     # Declarative MCP tool descriptor. Registry admission, listing, and later
     # execution resolve the current named subclass; instances are never needed.
     class Tool
+      # A tool subclass is written in the host's own namespace, so these two
+      # siblings would otherwise be spelled Hitch::MCP:: on every line that
+      # does anything. Naming them here puts them on the subclass's ancestor
+      # chain, where Ruby's constant lookup finds them unqualified. Same
+      # objects: `rescue Hitch::MCP::Forbidden` still catches `raise Forbidden`.
+      Result = Hitch::MCP::Result
+      Forbidden = Hitch::MCP::Forbidden
+
       NOT_SET = Object.new.freeze
       INVALID_DECLARATION = Object.new.freeze
       ARGUMENT_MESSAGES = {

@@ -49,7 +49,7 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
     assert_file tool_path, /tool_name "weather_lookup"/
     assert_file tool_path, /def self\.available_to\?\(_context\)\n      true/
     assert_file tool_path, /TODO: enforce your policy/
-    assert_file tool_path, /Hitch::MCP::Result\.text/
+    assert_file tool_path, /^      Result\.text\(/
     refute_match(/^\s*raise\b/, read(tool_path))
     assert_includes read(REGISTRY_PATH), %(  register McpTools::WeatherLookup, scopes: [ "mcp" ]\n)
     # post_mcp calls post, which only integration tests define — a plain
@@ -72,7 +72,7 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
     assert_includes output, "deny-default Hitch MCP tool McpTools::WeatherLookup"
     tool_path = "app/tools/mcp_tools/weather_lookup.rb"
     assert_file tool_path, /def self\.available_to\?\(_context\)\n      false/
-    assert_file tool_path, /raise Hitch::MCP::Forbidden/
+    assert_file tool_path, /^      raise Forbidden$/
     assert_file tool_path, /raise "Implement McpTools::WeatherLookup\.perform/
     assert_includes read(REGISTRY_PATH), "register McpTools::WeatherLookup"
     test_path = "test/integration/mcp_tools/weather_lookup_test.rb"

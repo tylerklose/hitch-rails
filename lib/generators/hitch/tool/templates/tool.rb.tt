@@ -22,7 +22,7 @@
 <%= "  " * (@class_modules.length + 1) %>end
 
 <%= "  " * (@class_modules.length + 1) %>def self.authorize!(_context, arguments:)
-<%= "  " * (@class_modules.length + 2) %>raise Hitch::MCP::Forbidden
+<%= "  " * (@class_modules.length + 2) %>raise Forbidden
 <%= "  " * (@class_modules.length + 1) %>end
 
 <%= "  " * (@class_modules.length + 1) %>def self.perform(_context, arguments:)
@@ -39,11 +39,11 @@
 <%= "  " * (@class_modules.length + 1) %>end
 
 <%= "  " * (@class_modules.length + 1) %>def self.authorize!(_context, arguments:)
-<%= "  " * (@class_modules.length + 2) %># TODO: enforce your policy; raise Hitch::MCP::Forbidden to deny.
+<%= "  " * (@class_modules.length + 2) %># TODO: enforce your policy; `raise Forbidden` to deny.
 <%= "  " * (@class_modules.length + 1) %>end
 
 <%= "  " * (@class_modules.length + 1) %>def self.perform(_context, arguments:)
-<%= "  " * (@class_modules.length + 2) %>Hitch::MCP::Result.text("<%= @tool_name %> is wired up; implement perform to do real work")
+<%= "  " * (@class_modules.length + 2) %>Result.text("<%= @tool_name %> is wired up; implement perform to do real work")
 <%= "  " * (@class_modules.length + 1) %>end
 <% end -%>
 <%= "  " * @class_modules.length %>end

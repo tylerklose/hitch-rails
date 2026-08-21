@@ -2,7 +2,6 @@
 
 require "json"
 require "json_schemer"
-require "set"
 require "uri"
 
 module Hitch
@@ -10,19 +9,16 @@ module Hitch
     module Internal
       # Admission-time contract for a tool's input or output schema: a bounded,
       # copied, frozen JSON Schema 2020-12 document with only same-document
-      # references, never declaring the reserved top-level server_context input.
+      # references.
       class SchemaContract
         MAX_SCHEMA_DEPTH = 64
         MAX_SCHEMA_OBJECTS = 10_000
         MAX_SCHEMA_BYTES = 1_048_576
         JSON_SCHEMA_2020_12 = "https://json-schema.org/draft/2020-12/schema"
         REFERENCE_KEYS = %w[$ref $dynamicRef].freeze
-        SAME_INSTANCE_SCHEMA_KEYS = %w[if then else].freeze
-        SAME_INSTANCE_SCHEMA_ARRAY_KEYS = %w[allOf anyOf oneOf].freeze
 
-        def initialize(value, label:, input:)
+        def initialize(value, label:)
           @label = label
-          @input = input
           @schema = copy_schema(value)
         end
 
@@ -32,16 +28,13 @@ module Hitch
 
           validate_dialects_and_references!
           validate_json_schema!
-          if input && explicitly_declares_property?(@schema, "server_context", Set.new)
-            invalid!("must not explicitly declare the top-level server_context property")
-          end
 
           @schema
         end
 
         private
 
-        attr_reader :label, :input
+        attr_reader :label
 
         def copy_schema(value)
           JsonValues.copy(
@@ -110,35 +103,6 @@ module Hitch
         rescue JSONSchemer::InvalidRefResolution, JSONSchemer::InvalidRefPointer,
           JSONSchemer::UnknownRef, RegexpError, URI::InvalidURIError
           invalid!("is not a valid JSON Schema 2020-12 document")
-        end
-
-        def explicitly_declares_property?(schema, property, visited)
-          return false unless schema.is_a?(Hash)
-          return false if visited.include?(schema.object_id)
-
-          visited.add(schema.object_id)
-          properties = schema["properties"]
-          return true if properties.is_a?(Hash) && properties.key?(property)
-
-          REFERENCE_KEYS.each do |key|
-            reference = schema[key]
-            return true if reference && explicitly_declares_property?(
-              resolve_local_reference(reference), property, visited
-            )
-          end
-
-          SAME_INSTANCE_SCHEMA_KEYS.each do |key|
-            return true if explicitly_declares_property?(schema[key], property, visited)
-          end
-          SAME_INSTANCE_SCHEMA_ARRAY_KEYS.each do |key|
-            return true if Array(schema[key]).any? do |child|
-              explicitly_declares_property?(child, property, visited)
-            end
-          end
-          dependent_schemas = schema["dependentSchemas"]
-          dependent_schemas.is_a?(Hash) && dependent_schemas.any? do |_trigger, child|
-            explicitly_declares_property?(child, property, visited)
-          end
         end
 
         def resolve_local_reference(reference)

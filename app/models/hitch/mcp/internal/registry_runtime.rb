@@ -163,16 +163,14 @@ module Hitch
             description = validate_description(tool_class.description, label)
             input_schema = SchemaContract.new(
               tool_class.input_schema,
-              label: "#{label} input_schema",
-              input: true
+              label: "#{label} input_schema"
             ).call
             output_schema = if tool_class.output_schema.nil?
               nil
             else
               SchemaContract.new(
                 tool_class.output_schema,
-                label: "#{label} output_schema",
-                input: false
+                label: "#{label} output_schema"
               ).call
             end
             annotations = validate_annotations(tool_class.annotations, label)

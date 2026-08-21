@@ -136,31 +136,6 @@ class Hitch::MCP::RegistryTest < ActiveSupport::TestCase
       duplicate_annotation_alias: lambda {
         registry_for_tool(annotations: { read_only_hint: true, "readOnlyHint" => false })
       },
-      explicit_server_context: lambda {
-        registry_for_tool(input_schema: {
-          type: "object",
-          properties: { server_context: { type: "string" } }
-        })
-      },
-      referenced_server_context: lambda {
-        registry_for_tool(input_schema: {
-          "$defs" => {
-            args: {
-              type: "object",
-              properties: { server_context: { type: "string" } }
-            }
-          },
-          "$ref" => "#/$defs/args"
-        })
-      },
-      composed_server_context: lambda {
-        registry_for_tool(input_schema: {
-          allOf: [
-            { type: "object" },
-            { properties: { server_context: { type: "string" } } }
-          ]
-        })
-      },
       call_override: -> { registry_for_tool(call_override: true) },
       missing_scopes: -> { registry_for_tool(scopes: nil) },
       empty_scopes: -> { registry_for_tool(scopes: []) },
@@ -277,12 +252,12 @@ class Hitch::MCP::RegistryTest < ActiveSupport::TestCase
     contract_class = Hitch::MCP::Internal::SchemaContract
     hash_subclass = Class.new(Hash)
     valid = hash_subclass.new.merge("type" => "object")
-    result = contract_class.new(valid, label: "schema", input: true).call
+    result = contract_class.new(valid, label: "schema").call
     assert_equal({ "type" => "object" }, result)
     assert_predicate result, :frozen?
 
     error = assert_raises(ArgumentError) do
-      contract_class.new([], label: "schema", input: true).call
+      contract_class.new([], label: "schema").call
     end
     assert_equal "schema must be a JSON object", error.message
 
@@ -290,18 +265,15 @@ class Hitch::MCP::RegistryTest < ActiveSupport::TestCase
     error = assert_raises(ArgumentError) do
       contract_class.new(
         { "description" => "x" * max_bytes },
-        label: "schema",
-        input: true
+        label: "schema"
       ).call
     end
     assert_equal "schema exceeds #{max_bytes} serialized bytes", error.message
 
+    # A schema may declare server_context in any form. The wire refuses the
+    # argument itself, so the declaration can never be exercised.
     reserved = { "type" => "object", "properties" => { "server_context" => { "type" => "string" } } }
-    error = assert_raises(ArgumentError) do
-      contract_class.new(reserved, label: "schema", input: true).call
-    end
-    assert_equal "schema must not explicitly declare the top-level server_context property", error.message
-    assert_equal reserved, contract_class.new(reserved, label: "schema", input: false).call
+    assert_equal reserved, contract_class.new(reserved, label: "schema").call
   end
 
   private

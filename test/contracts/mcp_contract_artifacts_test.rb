@@ -18,9 +18,7 @@ class McpContractArtifactsTest < ActiveSupport::TestCase
     protocol_header_missing method_header_mismatch name_header_mismatch
     single_value_header_comma_combined unsupported_protocol_version
     unsupported_rpc_initialize malformed_call_params
-    reserved_server_context_explicit reserved_server_context_open
-    reserved_server_context_patterned reserved_server_context_referenced
-    reserved_server_context_composed nested_server_context_valid
+    reserved_server_context nested_server_context_valid
     input_schema_invalid discover_success list_success call_success
   ].freeze
   WORK_KEYS = %w[body_parses registry sdk host].freeze

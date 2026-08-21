@@ -61,7 +61,7 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
   end
 
   test "exact http and protocol mapping" do
-    assert_equal 46, VECTOR_IDS.length
+    assert_equal 42, VECTOR_IDS.length
     VECTOR_IDS.each { |vector_id| assert_vector(vector_id) }
   end
 
@@ -73,9 +73,10 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
     ids.each { |vector_id| assert_vector(vector_id) }
   end
 
-  test "reserved server context forms" do
-    ids = VECTOR_IDS.grep(/reserved_server_context/) + [ "nested_server_context_valid" ]
-    ids.each { |vector_id| assert_vector(vector_id) }
+  test "reserved server context" do
+    %w[reserved_server_context nested_server_context_valid].each do |vector_id|
+      assert_vector(vector_id)
+    end
   end
 
   test "single parse and dispatch" do

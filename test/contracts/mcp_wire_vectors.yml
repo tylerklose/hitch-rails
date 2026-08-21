@@ -180,25 +180,11 @@ vectors:
     phase: call_params
     request: {http_method: POST, bearer: valid, method: tools/call, params: arguments_array}
     expected: {http_status: 200, headers: {content_type: application/json}, protocol_code: -32602, result: invalid_params_preserved_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
-  - id: reserved_server_context_explicit
+  # One vector, not one per schema shape: the argument is refused before the
+  # registry is consulted, so the tool's schema cannot change the outcome.
+  - id: reserved_server_context
     phase: call_params
-    request: {http_method: POST, bearer: valid, method: tools/call, schema_form: explicit_property, arguments: top_level_server_context}
-    expected: {http_status: 200, headers: {content_type: application/json}, protocol_code: -32602, result: invalid_params_preserved_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
-  - id: reserved_server_context_open
-    phase: call_params
-    request: {http_method: POST, bearer: valid, method: tools/call, schema_form: additional_properties, arguments: top_level_server_context}
-    expected: {http_status: 200, headers: {content_type: application/json}, protocol_code: -32602, result: invalid_params_preserved_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
-  - id: reserved_server_context_patterned
-    phase: call_params
-    request: {http_method: POST, bearer: valid, method: tools/call, schema_form: pattern_properties, arguments: top_level_server_context}
-    expected: {http_status: 200, headers: {content_type: application/json}, protocol_code: -32602, result: invalid_params_preserved_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
-  - id: reserved_server_context_referenced
-    phase: call_params
-    request: {http_method: POST, bearer: valid, method: tools/call, schema_form: local_ref, arguments: top_level_server_context}
-    expected: {http_status: 200, headers: {content_type: application/json}, protocol_code: -32602, result: invalid_params_preserved_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
-  - id: reserved_server_context_composed
-    phase: call_params
-    request: {http_method: POST, bearer: valid, method: tools/call, schema_form: all_of, arguments: top_level_server_context}
+    request: {http_method: POST, bearer: valid, method: tools/call, arguments: top_level_server_context}
     expected: {http_status: 200, headers: {content_type: application/json}, protocol_code: -32602, result: invalid_params_preserved_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
   - id: nested_server_context_valid
     phase: dispatch

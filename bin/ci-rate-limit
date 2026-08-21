@@ -11,7 +11,7 @@ require "tmpdir"
 require_relative "../test/checkpoint/pinned_redis"
 
 ROOT = File.expand_path("..", __dir__)
-LANES = %w[rails_7_2_sqlite rails_8_1_postgresql].freeze
+LANES = %w[rails_8_0_sqlite rails_8_1_postgresql].freeze
 MINIMUM_TEST_RUNS = 27
 TEST_FILES = %w[
   test/hitch/configuration_test.rb

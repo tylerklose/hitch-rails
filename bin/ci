@@ -36,9 +36,6 @@ RELEASE_PROFILES.each do |profile|
 end
 
 run!(File.join(ROOT, "bin/ci-migrations"))
-run!(File.join(ROOT, "bin/ci-sdk"), "min")
-run!(File.join(ROOT, "bin/ci-sdk"), "latest")
-run!(File.join(ROOT, "bin/ci-wire"))
 run!(File.join(ROOT, "bin/conformance-server"))
 run!(File.join(ROOT, "bin/package-smoke"))
 

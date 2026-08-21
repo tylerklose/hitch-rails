@@ -7,13 +7,13 @@ acceptance.
 
 ## Context
 
-Ruby SDK 1.1.0 is authoritative for JSON-RPC dispatch, SDK tool/schema/content
-objects, input validation, and core result objects. Reproduced probes in
-`docs/contracts/sdk_probes.yml` also show final-2026 gaps and unsafe integration
-paths: structural keys are symbols, `RequestEnvelope` makes optional clientInfo
-required while Server does not consume it, tools-only capabilities leave extra
-handlers, error/callback data may contain names/arguments/raw requests, output
-validation defaults off, and `StreamableHTTPTransport` can report a raw body.
+The Ruby SDK (mcp >= 1.2) is authoritative for JSON-RPC dispatch, SDK
+tool/schema/content objects, input validation, and core result objects.
+Source-reproduced probes (asserted live in `test/hitch/mcp/sdk_contract_test.rb`)
+show unsafe integration paths: structural keys are symbols, tools-only
+capabilities leave extra handlers, error/callback data may contain
+names/arguments/raw requests, output validation defaults off, and
+`StreamableHTTPTransport` can report a raw body.
 
 The upstream stateless work is tracked at
 <https://github.com/modelcontextprotocol/ruby-sdk/issues/389>; related version-

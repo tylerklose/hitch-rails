@@ -82,10 +82,10 @@ module Hitch
           read(request, "method")
         end
 
-        # The server itself stays per-request on purpose: both supported SDK
-        # lines bind server_context at construction (1.1.0 server.rb:179,
-        # 1.2.0 server.rb:222) with no per-handle alternative, so a fresh thin
-        # server is what keeps one request's principal out of another's. The
+        # The server itself stays per-request on purpose: the SDK binds
+        # server_context at construction (1.2.0 server.rb:222) with no
+        # per-handle alternative, so a fresh thin server is what keeps one
+        # request's principal out of another's. The
         # expensive part — schema compilation inside ::MCP::Tool.define — is
         # memoized per snapshot entry and only assembled here.
         def build_server

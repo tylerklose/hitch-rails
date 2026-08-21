@@ -133,10 +133,10 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
     refute_match(/^\s*(?:skip|flunk)\b/, File.read(__FILE__))
   end
 
-  test "wire lane asserts the resolved SDK version" do
-    expected = ENV.fetch("HITCH_EXPECTED_MCP_VERSION", ::MCP::VERSION)
-    assert_equal expected, ::MCP::VERSION
-    assert_equal expected, Gem.loaded_specs.fetch("mcp").version.to_s
+  test "the resolved SDK version is in the supported window" do
+    resolved = Gem.loaded_specs.fetch("mcp").version
+    assert_equal ::MCP::VERSION, resolved.to_s
+    assert Gem::Requirement.new(">= 1.2", "< 2").satisfied_by?(resolved)
   end
 
   test "pre-controller guard prevents form parsing and ignores method override" do

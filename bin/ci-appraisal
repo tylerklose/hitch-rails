@@ -9,19 +9,6 @@ require "yaml"
 
 ROOT = File.expand_path("..", __dir__)
 
-HISTORICAL_APPRAISALS = {
-  "rails_7_2_sqlite" => {
-    gemfile: File.join(ROOT, "gemfiles/rails_7_2_sqlite.gemfile"),
-    adapter: "sqlite3",
-    database_url: "sqlite3::memory:"
-  },
-  "rails_8_1_postgresql" => {
-    gemfile: File.join(ROOT, "gemfiles/rails_8_1_postgresql.gemfile"),
-    adapter: "postgresql",
-    database_url: "postgresql:///hitch_appraisal_test"
-  }
-}.freeze
-
 release_matrix = YAML.safe_load_file(
   File.join(ROOT, "docs/contracts/release_matrix.yml"),
   permitted_classes: [],
@@ -42,7 +29,7 @@ RELEASE_APPRAISALS = release_matrix.fetch("lanes").to_h do |lane|
     }
   ]
 end.freeze
-APPRAISALS = HISTORICAL_APPRAISALS.merge(RELEASE_APPRAISALS).freeze
+APPRAISALS = RELEASE_APPRAISALS
 
 def abort_with_usage(message = nil, status: 64)
   warn message if message
@@ -207,7 +194,5 @@ if rails_test_command
 
   exit status
 end
-
-exit run_test(environment, command) if rails_test_command && ENV["HITCH_FAIL_ON_SKIPS"] == "1"
 
 exec(environment, *command, chdir: ROOT)

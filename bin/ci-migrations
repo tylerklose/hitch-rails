@@ -56,14 +56,14 @@ Dir.mktmpdir("hitch-ci-migrations-") do |directory|
   sqlite_url = "sqlite3:#{sqlite_path}"
   sqlite_schema_path = File.join(directory, "sqlite_schema.rb")
 
-  appraisal!("rails_7_2_sqlite", sqlite_url, sqlite_schema_path, File.join(ROOT, "bin/rails"), "db:create")
-  appraisal!("rails_7_2_sqlite", sqlite_url, sqlite_schema_path, File.join(ROOT, "bin/rails"), "db:migrate")
+  appraisal!("rails_8_0_sqlite", sqlite_url, sqlite_schema_path, File.join(ROOT, "bin/rails"), "db:create")
+  appraisal!("rails_8_0_sqlite", sqlite_url, sqlite_schema_path, File.join(ROOT, "bin/rails"), "db:migrate")
   # Drive the down path and prove the round trip: the single migration must
   # reverse cleanly and reapply to an identical schema.
-  appraisal!("rails_7_2_sqlite", sqlite_url, sqlite_schema_path, File.join(ROOT, "bin/rails"), "db:rollback", "STEP=1")
-  appraisal!("rails_7_2_sqlite", sqlite_url, sqlite_schema_path, File.join(ROOT, "bin/rails"), "db:migrate")
+  appraisal!("rails_8_0_sqlite", sqlite_url, sqlite_schema_path, File.join(ROOT, "bin/rails"), "db:rollback", "STEP=1")
+  appraisal!("rails_8_0_sqlite", sqlite_url, sqlite_schema_path, File.join(ROOT, "bin/rails"), "db:migrate")
   appraisal!(
-    "rails_7_2_sqlite",
+    "rails_8_0_sqlite",
     sqlite_url,
     sqlite_schema_path,
     File.join(ROOT, "bin/rails"),

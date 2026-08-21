@@ -12,7 +12,7 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
     test_selective_symbolization_preserves_untrusted_string_keys
     test_final_meta_accepts_absent_client_info
     test_tools_only_method_allowlist_precedes_sdk
-    test_sdk_1_1_final_discover_normalizer_issue_389
+    test_final_discover_shape_is_owned_by_hitch
     test_sdk_error_details_are_not_public
     test_hitch_owns_the_one_output_schema_validation
     test_hostile_global_callbacks_receive_no_hitch_request_data
@@ -20,9 +20,9 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
     test_streamable_http_transport_is_not_used
     test_reserved_server_context_forms_fail_before_sdk_dispatch
     test_context_is_retrieved_from_hitch_context_wrapper
-    test_tool_name_host_subset_documents_sdk_1_1_divergence
+    test_tool_name_host_subset_matches_sdk_grammar
     test_fresh_server_per_request_isolates_principals
-    test_sdk_lane_asserts_resolved_version
+    test_resolved_sdk_version_is_in_the_supported_window
   ].freeze
   PROTOCOL_VERSION = "2026-07-28"
   SERVER_INFO = { "name" => "hitch-sdk-contract", "version" => "0.2.0" }.freeze
@@ -126,16 +126,9 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
   end
 
   test "final meta accepts absent client info" do
-    # mcp 1.1 required the full _meta triple, clientInfo included; 1.2 made
-    # clientInfo optional (spec PR modelcontextprotocol#3002). Hitch accepts
-    # absent clientInfo on both lines because _meta never crosses its boundary.
-    if Gem::Version.new(::MCP::VERSION) < Gem::Version.new("1.2.0")
-      assert_raises(::MCP::Server::RequestHandlerError) do
-        ::MCP::RequestEnvelope.parse!({ "_meta" => REQUEST_META })
-      end
-    else
-      assert ::MCP::RequestEnvelope.parse!({ "_meta" => REQUEST_META })
-    end
+    # mcp 1.2 made clientInfo optional (spec PR modelcontextprotocol#3002);
+    # Hitch additionally never lets _meta cross its boundary.
+    assert ::MCP::RequestEnvelope.parse!({ "_meta" => REQUEST_META })
 
     response = call_adapter(
       method: "server/discover",
@@ -156,7 +149,7 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
     end
   end
 
-  test "SDK 1.1 final discover normalizer issue 389" do
+  test "final discover shape is owned by Hitch" do
     raw_server = ::MCP::Server.new(
       **SERVER_INFO.transform_keys(&:to_sym),
       capabilities: { tools: {} },
@@ -169,16 +162,9 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
       method: "server/discover",
       params: {}
     })
-    if Gem::Version.new(::MCP::VERSION) < Gem::Version.new("1.2.0")
-      # The 1.1 gap this normalizer was written against (ruby-sdk#389):
-      # legacy version list, top-level serverInfo, no resultType.
-      assert_includes raw.dig(:result, :supportedVersions), "2025-03-26"
-      assert raw.dig(:result, :serverInfo)
-      assert_nil raw.dig(:result, :resultType)
-    else
-      # Fixed upstream in 1.2; Hitch still owns the final shape below.
-      assert_equal [ PROTOCOL_VERSION ], raw.dig(:result, :supportedVersions)
-    end
+    # The SDK's own raw shape is modern on the supported line; Hitch still
+    # owns the final wire shape below rather than trusting it.
+    assert_equal [ PROTOCOL_VERSION ], raw.dig(:result, :supportedVersions)
 
     response = call_adapter(method: "server/discover")
     result = response.fetch(:result)
@@ -482,7 +468,7 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
     assert_deeply_frozen server_context
   end
 
-  test "tool name host subset documents SDK 1.1 divergence" do
+  test "tool name host subset matches SDK grammar" do
     sdk_only_name = "a" * 65
     assert ::MCP::Tool.define(name: sdk_only_name, input_schema: { type: "object" })
 
@@ -591,17 +577,13 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
     assert_equal %w[principal-a principal-b], contexts
   end
 
-  test "SDK lane asserts resolved version" do
-    expected = ENV.fetch("HITCH_EXPECTED_MCP_VERSION", ::MCP::VERSION)
-    assert_equal expected, ::MCP::VERSION
-    assert_equal expected, Gem.loaded_specs.fetch("mcp").version.to_s
-
-    lane = ENV["HITCH_SDK_LANE"]
-    assert_includes %w[min latest], lane if lane
-    assert_equal "1.1.0", expected if lane == "min"
+  test "resolved SDK version is in the supported window" do
+    resolved = Gem.loaded_specs.fetch("mcp").version
+    assert_equal ::MCP::VERSION, resolved.to_s
+    assert Gem::Requirement.new(">= 1.2", "< 2").satisfied_by?(resolved)
   end
 
-  test "verified request ids survive the SDK 1.1 validation subset" do
+  test "verified request ids survive the SDK validation subset" do
     [ "a/b", "日本語", 1.5, 10**100 ].each do |request_id|
       response = call_adapter(
         method: "server/discover",

@@ -33,33 +33,18 @@ jobs:
       matrix:
         include:
           - ruby: "3.3"
-            rails: "7.2"
-            adapter: sqlite3
-            profile: rails_7_2_mcp_min_sqlite
-            gemfile: gemfiles/rails_7_2_mcp_min_sqlite.gemfile
-            database_url: sqlite3:/tmp/rails_7_2_mcp_min_sqlite.sqlite3?timeout=5000
-          - ruby: "3.3"
-            rails: "7.2"
-            adapter: postgresql
-            profile: rails_7_2_mcp_latest_postgresql
-            gemfile: gemfiles/rails_7_2_mcp_latest_postgresql.gemfile
-            database_url: postgresql://postgres:postgres@127.0.0.1:5432/rails_7_2_mcp_latest_postgresql_test
-          - ruby: "3.4"
             rails: "8.0"
-            adapter: postgresql
-            profile: rails_8_0_mcp_min_postgresql
-            gemfile: gemfiles/rails_8_0_mcp_min_postgresql.gemfile
-            database_url: postgresql://postgres:postgres@127.0.0.1:5432/rails_8_0_mcp_min_postgresql_test
+            adapter: sqlite3
+            profile: rails_8_0_sqlite
+            gemfile: gemfiles/rails_8_0_sqlite.gemfile
           - ruby: "4.0"
             rails: "8.1"
-            adapter: sqlite3
-            profile: rails_8_1_mcp_latest_sqlite
-            gemfile: gemfiles/rails_8_1_mcp_latest_sqlite.gemfile
-            database_url: sqlite3:/tmp/rails_8_1_mcp_latest_sqlite.sqlite3?timeout=5000
+            adapter: postgresql
+            profile: rails_8_1_postgresql
+            gemfile: gemfiles/rails_8_1_postgresql.gemfile
 
     env:
       BUNDLE_GEMFILE: ${{ github.workspace }}/${{ matrix.gemfile }}
-      DATABASE_URL: ${{ matrix.database_url }}
       HITCH_FAIL_ON_SKIPS: "1"
       HITCH_APPRAISAL_POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
       HITCH_EXPECTED_RUBY: ${{ matrix.ruby }}
@@ -68,19 +53,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # The runner context is not available in job-level env, so the
-      # per-profile schema path is exported at step level instead.
-      - name: Point SCHEMA at a disposable per-profile path
-        run: echo "SCHEMA=$RUNNER_TEMP/${{ matrix.profile }}_schema.rb" >> "$GITHUB_ENV"
-
       - name: Set up Ruby ${{ matrix.ruby }}
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
-
-      - name: Create and migrate disposable database
-        run: bin/ci-appraisal ${{ matrix.profile }} -- bin/rails db:create db:migrate
 
       - name: Verify eager loading
         run: bin/ci-appraisal ${{ matrix.profile }} -- bundle exec rake app:zeitwerk:check
@@ -91,43 +68,11 @@ jobs:
       - name: Run style gate
         run: bin/rubocop
 
-  sdk-lanes:
-    name: MCP SDK ${{ matrix.lane }} compatibility lane
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - lane: min
-            gemfile: gemfiles/mcp_min.gemfile
-          - lane: latest
-            gemfile: gemfiles/mcp_latest.gemfile
-
-    env:
-      BUNDLE_GEMFILE: ${{ github.workspace }}/${{ matrix.gemfile }}
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Ruby 3.3
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.3"
-          bundler-cache: true
-
-      - name: Run SDK boundary contracts
-        run: bin/ci-sdk ${{ matrix.lane }}
-
-      - name: Run authenticated wire contracts
-        run: bin/ci-wire ${{ matrix.lane }}
-
   checkpoint-gates:
     name: Aggregate checkpoint and package gates
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    needs: [supported-matrix, sdk-lanes]
+    needs: [supported-matrix]
 
     services:
       postgres:
@@ -174,34 +119,14 @@ jobs:
       - name: Set up pinned authorization conformance npm
         run: npm install --global npm@11.1.0
 
-      - name: Install Rails 7.2 / minimum SDK / SQLite appraisal
+      - name: Install Rails 8.0 / SQLite appraisal
         env:
-          BUNDLE_GEMFILE: gemfiles/rails_7_2_mcp_min_sqlite.gemfile
+          BUNDLE_GEMFILE: gemfiles/rails_8_0_sqlite.gemfile
         run: bundle install
 
-      - name: Install Rails 7.2 / latest SDK / PostgreSQL appraisal
+      - name: Install Rails 8.1 / PostgreSQL appraisal
         env:
-          BUNDLE_GEMFILE: gemfiles/rails_7_2_mcp_latest_postgresql.gemfile
-        run: bundle install
-
-      - name: Install Rails 8.0 / minimum SDK / PostgreSQL appraisal
-        env:
-          BUNDLE_GEMFILE: gemfiles/rails_8_0_mcp_min_postgresql.gemfile
-        run: bundle install
-
-      - name: Install Rails 8.1 / latest SDK / SQLite appraisal
-        env:
-          BUNDLE_GEMFILE: gemfiles/rails_8_1_mcp_latest_sqlite.gemfile
-        run: bundle install
-
-      - name: Install minimum MCP SDK lane
-        env:
-          BUNDLE_GEMFILE: gemfiles/mcp_min.gemfile
-        run: bundle install
-
-      - name: Install latest-compatible MCP SDK lane
-        env:
-          BUNDLE_GEMFILE: gemfiles/mcp_latest.gemfile
+          BUNDLE_GEMFILE: gemfiles/rails_8_1_postgresql.gemfile
         run: bundle install
 
       - name: Run official authorization metadata profile

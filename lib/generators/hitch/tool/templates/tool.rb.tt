@@ -19,7 +19,7 @@
 <%= "  " * (@class_modules.length + 1) %>end
 
 <%= "  " * (@class_modules.length + 1) %>def self.authorize!(_context, arguments:)
-<%= "  " * (@class_modules.length + 2) %>raise Forbidden
+<%= "  " * (@class_modules.length + 2) %>raise Hitch::MCP::Forbidden
 <%= "  " * (@class_modules.length + 1) %>end
 
 <%= "  " * (@class_modules.length + 1) %>def self.perform(_context, arguments:)
@@ -35,11 +35,11 @@
 <%= "  " * (@class_modules.length + 1) %>def self.authorize!(_context, arguments:)
 <%= "  " * (@class_modules.length + 2) %># Returning without raising ALLOWS the call. Put your policy here,
 <%= "  " * (@class_modules.length + 2) %># naming the context argument to use it:
-<%= "  " * (@class_modules.length + 2) %>#   raise Forbidden unless context.principal.admin?
+<%= "  " * (@class_modules.length + 2) %>#   raise Hitch::MCP::Forbidden unless context.principal.admin?
 <%= "  " * (@class_modules.length + 1) %>end
 
 <%= "  " * (@class_modules.length + 1) %>def self.perform(_context, arguments:)
-<%= "  " * (@class_modules.length + 2) %>Result.text("<%= @tool_name %> is wired up; implement perform to do real work")
+<%= "  " * (@class_modules.length + 2) %>Hitch::MCP::Result.text("<%= @tool_name %> is wired up; implement perform to do real work")
 <%= "  " * (@class_modules.length + 1) %>end
 <% end -%>
 <%= "  " * @class_modules.length %>end

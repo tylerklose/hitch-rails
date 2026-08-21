@@ -155,11 +155,11 @@ module McpTools
     end
 
     def self.authorize!(context, arguments:)
-      raise Forbidden unless context.scope.may_echo?(arguments.fetch("message"))
+      raise Hitch::MCP::Forbidden unless context.scope.may_echo?(arguments.fetch("message"))
     end
 
     def self.perform(_context, arguments:)
-      Result.text(arguments.fetch("message"))
+      Hitch::MCP::Result.text(arguments.fetch("message"))
     end
   end
 end

@@ -50,12 +50,11 @@ identity.
 ## Consequences
 
 Hitch can make an exact final-2026 profile without exposing compatibility code
-as public API. The adapter must be reviewed with every SDK pin change. Separate
-minimum/latest lanes remain named even while both resolve to 1.1.0.
+as public API. The adapter must be reviewed with every SDK pin change.
 
 ## Removal and verification
 
 Every normalizer has a probe-named test and upstream link. Delete a normalizer
-only when both supported lanes pass its removal test, or raise the minimum SDK
+only when every release lane passes its removal test, or raise the minimum SDK
 in a dedicated release change. Hostile-global-callback and secret-canary tests
 remain permanent boundary tests.

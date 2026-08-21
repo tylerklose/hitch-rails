@@ -206,9 +206,10 @@ module Hitch
         end
 
         # Both inputs arrive already normalized — VerifiedRequest's product and
-        # the memoized ServerInfo are deep-frozen, string-keyed copies. The
-        # boundary copied once; the adapter holds references instead of
-        # re-walking up-to-1MiB request trees on every call.
+        # the memoized ServerInfo are deep-frozen, string-keyed copies, and
+        # those two producers own that guarantee. The adapter spot-checks the
+        # cheap top level and holds references instead of re-walking
+        # up-to-1MiB request trees on every call.
         def frozen_hash!(value)
           unless value.is_a?(Hash) && value.frozen?
             raise ArgumentError, "verified request and server info must be frozen Hash values"

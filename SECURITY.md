@@ -87,8 +87,7 @@ The authorization substrate the gem owns:
 - **The host application's tool implementation and business policy.** Report
   tool-level authorization bugs to the application. Authentication, admission,
   discovery challenges, and response shaping supplied by
-  `Hitch::MCP::Endpoint` or the deprecated `Hitch::ServerEndpoint` remain
-  Hitch's responsibility and are in scope.
+  `Hitch::MCP::Endpoint` remain Hitch's responsibility and are in scope.
 - **Documented adopter misconfiguration.** The README's *Adopter security
   requirements* section lists the host settings the gem depends on
   (`allowed_hosts`, `allowed_origins`, CSRF on the consent path,

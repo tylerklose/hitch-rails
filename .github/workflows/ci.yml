@@ -91,7 +91,6 @@ jobs:
     env:
       HITCH_APPRAISAL_POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
       HITCH_MIGRATIONS_POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
-      HITCH_PACKAGE_POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
       RAILS_ENV: test
 
     steps:

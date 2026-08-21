@@ -5,10 +5,9 @@ require "digest"
 require "base64"
 require "securerandom"
 
-# Scenarios in test/lattice/access_token_scenarios.json are the source of
-# truth. Each test below pins one row's intended behavior against the
-# substrate. If lattice regenerates with more rows, add tests; do not
-# silently let an uncovered row land.
+# test/lattice/access_token_scenarios.json is a checked fixture table: each
+# test below pins one row's intended behavior against the substrate. Add a
+# row and a test together; do not silently let an uncovered row land.
 class Hitch::AccessTokenTest < ActiveSupport::TestCase
   CLIENT_ID = "client-test"
   CLIENT_NAME = "Test Client"

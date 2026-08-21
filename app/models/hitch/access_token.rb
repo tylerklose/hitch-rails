@@ -95,39 +95,51 @@ module Hitch
     # path is proven by every other test in the suite. The token is returned
     # once and only its digest is stored, exactly as in the OAuth flow.
     def self.issue!(principal:, client_id:, client_name: nil, scopes: nil, expires_in: nil)
-      granted = Array(scopes).presence || [ Hitch.configuration.supported_scopes.first ]
-      unsupported = granted.map(&:to_s) - Hitch.configuration.supported_scopes
+      unless client_id.is_a?(String) && !client_id.empty?
+        # The endpoint refuses a token with a blank client_id, so issuing one
+        # would hand back a credential that can never work.
+        raise ArgumentError, "client_id must be a nonempty String"
+      end
+      # uniq like the browser flow's `asked & supported`, which cannot repeat
+      # a scope past the persisted scope-set boundary.
+      granted = Array(scopes).map(&:to_s).uniq.presence || [ Hitch.configuration.supported_scopes.first ]
+      unsupported = granted - Hitch.configuration.supported_scopes
       unless unsupported.empty?
         raise ArgumentError,
           "scopes are not present in Hitch.configuration.supported_scopes: #{unsupported.join(', ')}"
       end
-      raise ArgumentError, "expires_in must be a positive number of seconds" unless
-        expires_in.nil? || (expires_in.respond_to?(:to_i) && expires_in.to_i.positive?)
+      seconds = expires_in.nil? ? nil : Integer(expires_in, exception: false)
+      raise ArgumentError, "expires_in must be a positive number of seconds" if
+        !expires_in.nil? && !seconds&.positive?
 
       resource_uri = Hitch.configuration.resource_uri
       verifier = SecureRandom.urlsafe_base64(64)
-      record = create_authorization!(
-        principal: principal,
-        client_id: client_id,
-        client_name: client_name.presence || client_id,
-        code_challenge: Base64.urlsafe_encode64(Digest::SHA256.digest(verifier), padding: false),
-        code_challenge_method: "S256",
-        resource_uri: resource_uri,
-        scopes: granted.join(" ")
-      )
-      result = exchange_authorization_code!(
-        raw_code: record.raw_authorization_code,
-        code_verifier: verifier,
-        client_id: client_id,
-        resource_uri: resource_uri
-      )
-      raise "Hitch could not issue an access token" if result.nil?
+      # One transaction: a failure while dating the token must not leave a
+      # live credential behind that the caller never received.
+      transaction do
+        record = create_authorization!(
+          principal: principal,
+          client_id: client_id,
+          client_name: client_name.presence || client_id,
+          code_challenge: Base64.urlsafe_encode64(Digest::SHA256.digest(verifier), padding: false),
+          code_challenge_method: "S256",
+          resource_uri: resource_uri,
+          scopes: granted.join(" ")
+        )
+        result = exchange_authorization_code!(
+          raw_code: record.raw_authorization_code,
+          code_verifier: verifier,
+          client_id: client_id,
+          resource_uri: resource_uri
+        )
+        raise "Hitch could not issue an access token" if result.nil?
 
-      # The exchange dates every token by the configured lifetime, which is
-      # sized for a browser session. A headless agent asks for its own.
-      record.reload.update!(expires_at: expires_in.to_i.seconds.from_now) if expires_in
+        # The exchange dates every token by the configured lifetime, which is
+        # sized for a browser session. A headless agent asks for its own.
+        record.reload.update!(expires_at: seconds.seconds.from_now) if seconds
 
-      result.fetch(:raw_token)
+        result.fetch(:raw_token)
+      end
     end
 
     def self.exchange_authorization_code!(raw_code:, code_verifier:, client_id:, resource_uri:, redirect_uri: nil)

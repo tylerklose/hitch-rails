@@ -8,16 +8,23 @@ module Hitch
   module TokenIssueTask
     module_function
 
+    # rpartition, not split: a namespaced principal (Accounts::User:5) has
+    # colons in the model half, and only the last one separates the id.
     def principal!(value)
-      model_name, id = value.to_s.split(":", 2)
+      model_name, _, id = value.to_s.rpartition(":")
       abort "PRINCIPAL is required, as Model:id (for example User:1)" if model_name.blank? || id.blank?
 
       model = model_name.safe_constantize
-      unless model.is_a?(Class) && model < ActiveRecord::Base
+      unless model.is_a?(Class) && model < ActiveRecord::Base && !model.abstract_class?
         abort "PRINCIPAL model #{model_name} is not an Active Record model"
       end
 
-      model.find(id)
+      record = model.find(id)
+      # PostgreSQL casts "12 34" to 12, so a typo would issue a token for
+      # somebody else. Insist the id we were handed is the id we found.
+      abort "PRINCIPAL id #{id.inspect} is not an exact id" unless record.id.to_s == id
+
+      record
     rescue ActiveRecord::RecordNotFound
       abort "No #{model_name} with id #{id}"
     end

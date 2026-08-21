@@ -227,10 +227,22 @@ bin/rails hitch:tokens:issue PRINCIPAL=User:1 OUTPUT_FILE=agent.token
 
 The token is written once to a new `0600` file (or to your terminal when one
 is attached) and never to stdout; only its SHA-256 digest is stored, as in the
-OAuth flow. It defaults to 90 days and the first configured scope, and it can
-be revoked through `POST /oauth/revoke` or `Hitch::AccessToken#revoke!` like
-any other. `Hitch::AccessToken.issue!` is the same call if you would rather
-run it from `rails console` or a seed script.
+OAuth flow. The task defaults to 90 days, the first configured scope, and the
+`client_id` `hitch-cli`. It can be revoked through `POST /oauth/revoke` or
+`Hitch::AccessToken#revoke!` like any other.
+
+`Hitch::AccessToken.issue!(principal:, client_id:, scopes:, expires_in:)` is
+the same call from `rails console` or a seed script. Note it takes
+`expires_in` in **seconds** and applies the ordinary
+`access_token_lifetime_seconds` when you omit it — the 90-day default belongs
+to the task, not the method.
+
+The row it writes is deliberately indistinguishable from a browser-issued
+grant, which is what lets it use the same code path. The practical marker is
+`client_id`: leave it at `hitch-cli`, or give each agent its own, so a token
+can be traced and revoked by who holds it. Anyone who can run this task can
+already mint the same row by hand from a console, so it grants no authority
+that database access did not already carry.
 
 Refresh-token issuance is deliberately not implemented, so an expired agent
 token is reissued the same way.

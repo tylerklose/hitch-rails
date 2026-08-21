@@ -5,6 +5,14 @@ require "hitch/mcp/test_helper"
 require "rake"
 require "tmpdir"
 
+# A namespaced principal, which is what the polymorphic principal columns
+# exist to support and what the task's PRINCIPAL parsing has to survive.
+module Accounts
+  class Operator < ApplicationRecord
+    self.table_name = "users"
+  end
+end
+
 # The point of a console-issued token is that a headless agent can use it, so
 # every assertion here ends at the real endpoint rather than at the row.
 class HitchTokensTaskTest < ActionDispatch::IntegrationTest
@@ -89,6 +97,65 @@ class HitchTokensTaskTest < ActionDispatch::IntegrationTest
 
     assert_includes error.message, "admin"
     assert_equal 0, Hitch::AccessToken.count
+  end
+
+  # Postgres casts "12 34" to 12, so an id typo used to issue a 90-day token
+  # for a different person's account without a word.
+  test "an id that is not exactly the id found aborts" do
+    other = User.create!(email: "someone-else@example.test")
+    ENV["OUTPUT_FILE"] = "/unused"
+
+    [ "#{other.id} 99", "#{other.id}abc", " #{other.id}" ].each do |sloppy|
+      ENV["PRINCIPAL"] = "User:#{sloppy}"
+      assert_raises(SystemExit) { capture_io { Rake::Task[TASK].invoke } }
+      Rake::Task[TASK].reenable
+    end
+
+    assert_equal 0, Hitch::AccessToken.count
+  end
+
+  test "a namespaced principal model resolves" do
+    parsed = Hitch::TokenIssueTask.principal!("Accounts::Operator:#{@principal.id}")
+
+    assert_instance_of Accounts::Operator, parsed
+    assert_equal @principal.id, parsed.id
+  end
+
+  test "issuing refuses a blank client_id rather than minting a dead token" do
+    error = assert_raises(ArgumentError) do
+      Hitch::AccessToken.issue!(principal: @principal, client_id: "")
+    end
+
+    assert_includes error.message, "client_id"
+    assert_equal 0, Hitch::AccessToken.count
+  end
+
+  test "expires_in takes seconds, not anything that answers to_i" do
+    error = assert_raises(ArgumentError) do
+      Hitch::AccessToken.issue!(principal: @principal, client_id: "cron-agent", expires_in: "90abc")
+    end
+
+    assert_includes error.message, "expires_in"
+    assert_equal 0, Hitch::AccessToken.count
+  end
+
+  # The row is created before the exchange and dated after it. A failure
+  # anywhere in that sequence must not leave a live credential nobody
+  # received.
+  test "a failure partway through leaves nothing behind" do
+    stub_class_method(Hitch::AccessToken, :exchange_authorization_code!, ->(**) { nil }) do
+      assert_raises(RuntimeError) do
+        Hitch::AccessToken.issue!(principal: @principal, client_id: "cron-agent")
+      end
+    end
+
+    assert_equal 0, Hitch::AccessToken.count
+  end
+
+  test "duplicate scopes cannot walk past the persisted scope boundary" do
+    Hitch::AccessToken.issue!(principal: @principal, client_id: "cron-agent", scopes: [ "mcp" ] * 200)
+
+    assert_equal "mcp", Hitch::AccessToken.sole.scopes
   end
 
   test "a principal that does not resolve aborts before issuing anything" do

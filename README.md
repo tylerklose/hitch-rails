@@ -254,9 +254,10 @@ bin/rails hitch:doctor
 HITCH_DOCTOR_FORMAT=json bin/rails hitch:doctor
 ```
 
-The read-only doctor reports on configuration, discovery, route order,
-migrations, the Registry, host/origin posture, the admission store, and
-package integrity, without exposing credentials or mutating anything. See the
+The read-only doctor reports on runtime versions, configuration, discovery,
+route order, migrations, the Registry, host/origin posture, and the admission
+store, without exposing credentials or mutating anything. Anything it finds
+wrong is printed with what to do about it. See the
 [doctor contract](docs/operator/doctor.md).
 
 ## Client ID Metadata Documents

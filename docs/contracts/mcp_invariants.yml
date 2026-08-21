@@ -29,7 +29,7 @@ invariants:
     statement: A literal top-level arguments.server_context is rejected before SDK dispatch under every schema form; nested occurrences are valid.
     source_targets: [app/models/hitch/mcp/internal/verified_request.rb, app/models/hitch/mcp/registry.rb]
     mutation: Strip/overwrite the key, check after SDK dispatch, or recurse into nested objects.
-    killing_tests: [test/integration/mcp_wire_contract_test.rb#test_reserved_server_context_forms]
+    killing_tests: [test/integration/mcp_wire_contract_test.rb#test_reserved_server_context]
   - id: INV-MCP-007
     statement: Only fixed structural request keys become symbols; attacker-controlled metadata/arguments never undergo recursive symbolization.
     source_targets: [app/models/hitch/mcp/internal/sdk_adapter.rb]

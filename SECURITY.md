@@ -14,7 +14,7 @@ release; only the latest release line is supported.
 | ------- | --------- |
 | latest 0.2.x release, and `main` | ✅ |
 
-The supported runtime matrix is Ruby `>= 3.3, < 4.1`, Rails `>= 7.2, < 8.2`,
+The supported runtime matrix is Ruby `>= 3.3, < 4.1`, Rails `>= 8.0, < 9`,
 and SQLite or PostgreSQL. Reports that reproduce only on an unsupported
 runtime, adapter, or client version may still reveal a real bug, but the
 maintainer will first confirm them on that matrix.

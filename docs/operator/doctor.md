@@ -9,8 +9,9 @@ host expects:
 bin/rails hitch:doctor
 ```
 
-The default human output has one stable row per check. Machine consumers select
-the versioned JSON document explicitly:
+The default human output has one stable row per check, plus an indented
+`->` line naming the fix for any check that did not pass. Machine consumers
+select the versioned JSON document explicitly:
 
 ```sh
 HITCH_DOCTOR_FORMAT=json bin/rails hitch:doctor
@@ -20,7 +21,7 @@ The only accepted formats are `human` and `json`. The process exits zero when
 all findings are `pass`, `skip`, or `warn`; any `fail` finding exits one after
 the complete report is printed. Warnings identify a supported but non-golden
 posture, such as an unshared cache store in development/test, an empty
-explicit Registry, or a deprecated endpoint on a noncanonical path.
+explicit Registry, or plain-HTTP browser origins in production.
 
 ## Stable check categories
 
@@ -39,8 +40,8 @@ these IDs in this order:
 4. `route_order` — exactly one modern MCP endpoint owns the canonical path,
    admits its full method contract, precedes one root Hitch engine mount, and is
    not shadowed. Auth-only mode skips this MCP-only check.
-5. `migrations` — every packaged Hitch migration and required table exists, and
-   normalized redirect rows are the version-2 authority.
+5. `migrations` — every packaged Hitch migration has run and every required
+   table exists.
 6. `registry` — the configured Registry resolves and validates atomically. An
    empty Registry warns because no tool is exposed; auth-only mode skips it.
 7. `hosts` — Rails host authorization accepts the canonical resource host and

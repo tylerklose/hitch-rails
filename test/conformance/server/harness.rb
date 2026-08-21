@@ -22,7 +22,7 @@ module Hitch
         class Failure < StandardError; end
 
         SPEC_VERSION = "2026-07-28"
-        BUNDLE_GEMFILE = "gemfiles/rails_7_2_sqlite.gemfile"
+        BUNDLE_GEMFILE = "gemfiles/rails_8_0_sqlite.gemfile"
 
         def initialize(root:)
           @root = Pathname(root).expand_path

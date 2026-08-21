@@ -515,7 +515,7 @@ module Hitch
 
       def rails_environment
         {
-          "BUNDLE_GEMFILE" => root.join("gemfiles/rails_7_2_sqlite.gemfile").to_s,
+          "BUNDLE_GEMFILE" => root.join("gemfiles/rails_8_0_sqlite.gemfile").to_s,
           "DATABASE_URL" => "sqlite3:#{@temporary.join('conformance.sqlite3')}",
           "HITCH_CONFORMANCE" => "1",
           "HITCH_CONFORMANCE_CANARY_FILE" => @credential_canary_path.to_s,

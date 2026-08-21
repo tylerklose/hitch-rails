@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# These subjects were added after the immutable M4.5 evidence checkpoint. They
+# These subjects were added after the original coverage set. They
 # extend the live M8 mutation gate without rewriting that historical record.
 if Minitest::Test.respond_to?(:cover)
   class Hitch::MCP::ObservationTest

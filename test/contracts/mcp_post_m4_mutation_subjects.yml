@@ -1,5 +1,4 @@
 schema_version: 1
-owner_issue: M8
 required_domains:
   - endpoint_gate
   - endpoint_redaction

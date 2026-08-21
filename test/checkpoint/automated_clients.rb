@@ -14,7 +14,7 @@ require "yaml"
 require_relative "disposable_redis"
 
 module HitchCheckpoint
-  # M5.4-only acceptance harness. It is deliberately under test/ so none of
+  # Acceptance-only harness. It is deliberately under test/ so none of
   # this client automation or its credential bridge can enter the gem.
   class AutomatedClients
     PROTOCOL_VERSION = "2026-07-28"

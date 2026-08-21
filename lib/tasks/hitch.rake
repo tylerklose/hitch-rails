@@ -6,6 +6,8 @@ module Hitch
   # Argument parsing for hitch:tokens:issue. Kept out of the task body so a
   # bad PRINCIPAL aborts with a sentence instead of a NameError.
   module TokenIssueTask
+    MAX_DAYS = 3650
+
     module_function
 
     # rpartition, not split: a namespaced principal (Accounts::User:5) has
@@ -15,16 +17,22 @@ module Hitch
       abort "PRINCIPAL is required, as Model:id (for example User:1)" if model_name.blank? || id.blank?
 
       model = model_name.safe_constantize
-      unless model.is_a?(Class) && model < ActiveRecord::Base && !model.abstract_class?
+      unless model.is_a?(Class) && model < ActiveRecord::Base
         abort "PRINCIPAL model #{model_name} is not an Active Record model"
       end
+      abort "PRINCIPAL model #{model_name} is abstract; name the model that stores the record" if
+        model.abstract_class?
 
-      record = model.find(id)
-      # PostgreSQL casts "12 34" to 12, so a typo would issue a token for
-      # somebody else. Insist the id we were handed is the id we found.
-      abort "PRINCIPAL id #{id.inspect} is not an exact id" unless record.id.to_s == id
+      # Only integer keys silently absorb junk: Rails casts "12 34" to 12, so
+      # a typo would issue a token for somebody else. UUID, ULID and string
+      # keys match exactly or raise, and comparing their canonical form back
+      # against what was typed rejects an upcased or undashed UUID that found
+      # the right row.
+      if model.type_for_attribute(model.primary_key).type == :integer && !id.match?(/\A\d+\z/)
+        abort "PRINCIPAL id #{id.inspect} is not a whole number"
+      end
 
-      record
+      model.find(id)
     rescue ActiveRecord::RecordNotFound
       abort "No #{model_name} with id #{id}"
     end
@@ -34,8 +42,12 @@ module Hitch
     def days!(value)
       return 90 if value.blank?
 
-      days = Integer(value, exception: false)
+      days = Integer(value, 10, exception: false)
       abort "EXPIRES_IN_DAYS must be a positive whole number of days" unless days&.positive?
+      # A decade is already far past "an unnoticed leak expires", and past it
+      # lie a Postgres datetime overflow and a SQLite year that sorts before
+      # today's, which would make the token silently unusable there.
+      abort "EXPIRES_IN_DAYS must not exceed #{MAX_DAYS}" if days > MAX_DAYS
 
       days
     end

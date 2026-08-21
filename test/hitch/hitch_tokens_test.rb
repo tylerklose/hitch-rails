@@ -101,17 +101,29 @@ class HitchTokensTaskTest < ActionDispatch::IntegrationTest
 
   # Postgres casts "12 34" to 12, so an id typo used to issue a 90-day token
   # for a different person's account without a word.
-  test "an id that is not exactly the id found aborts" do
+  # Rails casts "12 34" to 12, so a typo used to issue a token for a
+  # different person. The output path is writable here so a failure can only
+  # come from the guard, not from the filesystem refusing the write.
+  test "an integer id carrying junk aborts" do
     other = User.create!(email: "someone-else@example.test")
-    ENV["OUTPUT_FILE"] = "/unused"
 
-    [ "#{other.id} 99", "#{other.id}abc", " #{other.id}" ].each do |sloppy|
-      ENV["PRINCIPAL"] = "User:#{sloppy}"
-      assert_raises(SystemExit) { capture_io { Rake::Task[TASK].invoke } }
-      Rake::Task[TASK].reenable
+    Dir.mktmpdir("hitch-token") do |directory|
+      [ "#{other.id} 99", "#{other.id}abc", " #{other.id}", "0x10" ].each do |sloppy|
+        ENV["OUTPUT_FILE"] = File.join(directory, "token-#{sloppy.hash}")
+        ENV["PRINCIPAL"] = "User:#{sloppy}"
+        assert_raises(SystemExit, sloppy) { capture_io { Rake::Task[TASK].invoke } }
+        Rake::Task[TASK].reenable
+        assert_equal 0, Hitch::AccessToken.count, sloppy
+      end
     end
+  end
 
-    assert_equal 0, Hitch::AccessToken.count
+  # A UUID key matches exactly or raises, so it needs no digit rule — and
+  # upcased or undashed forms that resolve correctly must not be refused.
+  test "a non-integer key is left to the adapter to match" do
+    parsed = Hitch::TokenIssueTask.principal!("Accounts::Operator:#{@principal.id}")
+
+    assert_equal @principal.id, parsed.id
   end
 
   test "a namespaced principal model resolves" do
@@ -152,6 +164,27 @@ class HitchTokensTaskTest < ActionDispatch::IntegrationTest
     assert_equal 0, Hitch::AccessToken.count
   end
 
+  # A bare `transaction` joins a caller's open one and opens no savepoint, so
+  # a host issuing inside its own transaction and rescuing kept the row. The
+  # suite's own transactional fixtures are joinable: false, which forces a
+  # savepoint and hides this — so the host's shape has to be built here.
+  test "a host's own open transaction does not swallow the rollback" do
+    swallowed = nil
+
+    Hitch::AccessToken.transaction(joinable: true) do
+      begin
+        stub_class_method(Hitch::AccessToken, :exchange_authorization_code!, ->(**) { nil }) do
+          Hitch::AccessToken.issue!(principal: @principal, client_id: "cron-agent")
+        end
+      rescue RuntimeError => error
+        swallowed = error
+      end
+    end
+
+    refute_nil swallowed
+    assert_equal 0, Hitch::AccessToken.count
+  end
+
   test "duplicate scopes cannot walk past the persisted scope boundary" do
     Hitch::AccessToken.issue!(principal: @principal, client_id: "cron-agent", scopes: [ "mcp" ] * 200)
 
@@ -159,13 +192,32 @@ class HitchTokensTaskTest < ActionDispatch::IntegrationTest
   end
 
   test "a principal that does not resolve aborts before issuing anything" do
-    ENV["OUTPUT_FILE"] = "/unused"
-    [ "", "User", "Nope:1", "User:999999" ].each do |value|
-      ENV["PRINCIPAL"] = value
-      assert_raises(SystemExit) { capture_io { Rake::Task[TASK].invoke } }
-      Rake::Task[TASK].reenable
+    Dir.mktmpdir("hitch-token") do |directory|
+      [ "", "User", "Nope:1", "User:999999", "ApplicationRecord:1" ].each do |value|
+        ENV["OUTPUT_FILE"] = File.join(directory, "token-#{value.hash}")
+        ENV["PRINCIPAL"] = value
+        assert_raises(SystemExit, value) { capture_io { Rake::Task[TASK].invoke } }
+        Rake::Task[TASK].reenable
+        assert_equal 0, Hitch::AccessToken.count, value
+      end
     end
+  end
 
-    assert_equal 0, Hitch::AccessToken.count
+  test "expires_in reads decimal, so a leading zero is not octal" do
+    Hitch::AccessToken.issue!(principal: @principal, client_id: "cron-agent", expires_in: "0700")
+
+    assert_in_delta 700.seconds.from_now, Hitch::AccessToken.sole.expires_at, 5.seconds
+  end
+
+  test "a lifetime past the cap aborts rather than overflowing the column" do
+    Dir.mktmpdir("hitch-token") do |directory|
+      ENV["OUTPUT_FILE"] = File.join(directory, "token")
+      ENV["PRINCIPAL"] = "User:#{@principal.id}"
+      ENV["EXPIRES_IN_DAYS"] = "99999999999"
+
+      assert_raises(SystemExit) { capture_io { Rake::Task[TASK].invoke } }
+
+      assert_equal 0, Hitch::AccessToken.count
+    end
   end
 end

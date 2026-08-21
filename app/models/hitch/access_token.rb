@@ -108,15 +108,19 @@ module Hitch
         raise ArgumentError,
           "scopes are not present in Hitch.configuration.supported_scopes: #{unsupported.join(', ')}"
       end
-      seconds = expires_in.nil? ? nil : Integer(expires_in, exception: false)
+      # to_s first, then base 10: Integer(x, 10) rejects a non-String, and
+      # without the base "0700" parses as octal 448.
+      seconds = expires_in.nil? ? nil : Integer(expires_in.to_s, 10, exception: false)
       raise ArgumentError, "expires_in must be a positive number of seconds" if
         !expires_in.nil? && !seconds&.positive?
 
       resource_uri = Hitch.configuration.resource_uri
       verifier = SecureRandom.urlsafe_base64(64)
-      # One transaction: a failure while dating the token must not leave a
-      # live credential behind that the caller never received.
-      transaction do
+      # requires_new, not a plain transaction: a bare `transaction` JOINS a
+      # caller's open one and opens no savepoint, so a host calling issue!
+      # inside its own transaction and rescuing kept the very row this exists
+      # to roll back.
+      transaction(requires_new: true) do
         record = create_authorization!(
           principal: principal,
           client_id: client_id,

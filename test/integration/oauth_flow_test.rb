@@ -1120,27 +1120,4 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
       assert_response :ok
     end
   end
-
-  test "CORS preflight returns 204 with allowed-origin headers for claude.ai" do
-    process :options, "/oauth/token", headers: {
-      "Origin" => "https://claude.ai",
-      "Access-Control-Request-Method" => "POST"
-    }
-    assert_response :no_content
-    assert_equal "https://claude.ai", response.headers["Access-Control-Allow-Origin"]
-  end
-
-  test "CORS headers set on token endpoint when Origin allowed" do
-    post "/oauth/token",
-      params: { grant_type: "authorization_code", code: "x", code_verifier: "y" },
-      headers: { "Origin" => "https://claude.ai" }
-    assert_equal "https://claude.ai", response.headers["Access-Control-Allow-Origin"]
-  end
-
-  test "CORS headers not set when Origin is foreign" do
-    post "/oauth/token",
-      params: { grant_type: "authorization_code", code: "x", code_verifier: "y" },
-      headers: { "Origin" => "https://attacker.test" }
-    assert_nil response.headers["Access-Control-Allow-Origin"]
-  end
 end

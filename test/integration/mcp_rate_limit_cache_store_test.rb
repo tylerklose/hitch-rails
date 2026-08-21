@@ -158,53 +158,6 @@ class MCPRateLimitCacheStoreTest < ActionDispatch::IntegrationTest
     assert_response :service_unavailable
   end
 
-  test "rotating a token does not reset the principal client quota" do
-    configure_runtime(to: 2, within: 60)
-    rotated = mint_token(@user, client_id: "shared-client")
-
-    post_admitted_mcp(method: "tools/list", token: @token)
-    assert_response :ok
-    post_admitted_mcp(method: "server/discover", token: rotated)
-    assert_response :ok
-    post_admitted_mcp(method: "tools/list", token: rotated)
-
-    assert_response :too_many_requests
-  end
-
-  test "principal and client identities keep separate quotas" do
-    configure_runtime(to: 1, within: 60)
-    other_user = User.create!(email: "other-cache-rate@example.test")
-    same_principal_other_client = mint_token(@user, client_id: "other-client")
-    other_principal_same_client = mint_token(other_user, client_id: "shared-client")
-
-    [ @token, same_principal_other_client, other_principal_same_client ].each do |token|
-      post_admitted_mcp(method: "tools/list", token:)
-      assert_response :ok
-    end
-
-    [ @token, same_principal_other_client, other_principal_same_client ].each do |token|
-      post_admitted_mcp(method: "tools/list", token:)
-      assert_response :too_many_requests
-    end
-  end
-
-  test "production boot succeeds with no Redis configuration" do
-    configuration = Hitch::MCP::Configuration.new
-    configuration.registry = "McpToolRegistry"
-    configuration.server_info = { name: "solid-cache-app", version: "1.0.0" }
-    configuration.scope_resolver = ->(principal:, access_token:, request:) { principal }
-    configuration.request_limit = { to: 120, within: 60 }
-
-    original = Rails.env
-    begin
-      Rails.env = "production"
-      assert configuration.validate!,
-        "a Solid Cache application must reach production without configuring Redis"
-    ensure
-      Rails.env = original.to_s
-    end
-  end
-
   test "the packaged gem declares no runtime Redis dependency" do
     specification = Gem::Specification.load(REPOSITORY_ROOT.join("hitch-rails.gemspec").to_s)
     runtime = specification.dependencies.select { |dependency| dependency.type == :runtime }

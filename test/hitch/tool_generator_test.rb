@@ -48,7 +48,7 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
     assert_file tool_path, /class WeatherLookup < Hitch::MCP::Tool/
     assert_file tool_path, /tool_name "weather_lookup"/
     assert_file tool_path, /def self\.available_to\?\(_context\)\n      true/
-    assert_file tool_path, /TODO: enforce your policy/
+    assert_file tool_path, /Returning without raising ALLOWS the call/
     assert_file tool_path, /^      Result\.text\(/
     refute_match(/^\s*raise\b/, read(tool_path))
     assert_includes read(REGISTRY_PATH), %(  register McpTools::WeatherLookup, scopes: [ "mcp" ]\n)

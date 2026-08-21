@@ -37,8 +37,9 @@ needs:
 - **An explicit tool registry** — deny-default availability, per-principal
   filtering, static OAuth scope checks, and a closed result channel with
   schema validation and size caps
-- **Client ID Metadata Documents** — DCR's successor in MCP 2026-07-28;
-  an `https` URL as `client_id`, with the metadata fetched from it (opt-in)
+- **Client ID Metadata Documents** — the mechanism MCP 2026-07-28 deprecates
+  DCR in favour of; an `https` URL as `client_id`, with the metadata fetched
+  from it (opt-in)
 - **Optional Dynamic Client Registration** (RFC 7591), disabled by default
 - **Resource Indicators with audience binding** (RFC 8707), discovery
   metadata (RFC 8414 + RFC 9728), and token revocation (RFC 7009)
@@ -226,7 +227,10 @@ package integrity, without exposing credentials or mutating anything. See the
 
 MCP 2026-07-28 deprecates Dynamic Client Registration in favour of CIMD: a
 client uses an `https` URL as its `client_id` and the authorization server
-fetches the metadata from it. New installs get
+fetches the metadata from it. Deprecated is not removed — DCR stays available
+at MAY for authorization servers that do not support CIMD, and CIMD itself is
+a SHOULD. The spec's selection order puts pre-registered client credentials
+ahead of CIMD, with DCR after it. New installs get
 `config.client_id_metadata_enabled = true` from the generated initializer;
 the library default stays `false` so an upgrade never flips it silently.
 

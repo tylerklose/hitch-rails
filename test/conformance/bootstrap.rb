@@ -9,6 +9,45 @@ require "tmpdir"
 
 module Hitch
   module Conformance
+    # Why this file is so much machinery for "run the conformance suite".
+    #
+    # We do not run the official runner. We run a PATCHED build of it, at an
+    # alpha version, and we publish the result as evidence that Hitch conforms.
+    # Modifying the referee and then citing the referee is only honest if we
+    # can prove exactly what we modified. That is what every constant below is
+    # for:
+    #
+    #   COMMIT / SOURCE_SHA256   pin the inputs (npm tags move; a sha cannot)
+    #   PATCH_SHA256 / PATCHED_FILES / patch_delta_sha256
+    #                            prove the applied delta is exactly the
+    #                            reviewed patch, and touches only those files
+    #   upstream_test_count: 41  prove the patch did not disable an upstream
+    #                            test — the obvious way to cheat a runner you
+    #                            are allowed to edit
+    #   NODE_VERSION / NPM_VERSION
+    #                            NOT a statement about supported Node. They are
+    #                            build inputs: the chain above terminates in a
+    #                            hash of dist/index.js, and an unpinned compiler
+    #                            makes that hash meaningless. Bumping them is
+    #                            cheap — change the two constants, the cache
+    #                            invalidates, and the manifest records the new
+    #                            runner hash.
+    #
+    # The patch exists because the upstream runner cannot (a) authenticate to a
+    # protected server, or (b) send the RFC 8707 resource indicator that the
+    # authorization profile requires. Both are upstream gaps, not Hitch
+    # specifics. (b) is filed:
+    #
+    #   modelcontextprotocol/conformance#465  (issue)
+    #   modelcontextprotocol/conformance#466  (pull request)
+    #
+    # (a) belongs to their open issue #453 and needs a design we do not own —
+    # our local approach only works on the stateless wire (2026-07-28 and
+    # draft), so it is deliberately not proposed upstream.
+    #
+    # This is scaffolding with an expiry date. When #466 merges, bump the pin
+    # to the merged commit and delete the resource half of the patch along with
+    # its hashes. When #453 is resolved, this file mostly goes away.
     class Bootstrap
       class Failure < StandardError; end
 

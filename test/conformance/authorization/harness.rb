@@ -14,6 +14,19 @@ require "uri"
 
 module Hitch
   module Conformance
+    # The pinning and hash constants below exist for the reason documented at
+    # the top of test/conformance/bootstrap.rb: we run a patched build of an
+    # alpha third-party runner and publish the result as conformance evidence,
+    # so the chain has to prove what was patched.
+    #
+    # This direction's patch (resource-aware-grants.patch) does two things.
+    # The resource indicator half is filed upstream as
+    # modelcontextprotocol/conformance#465 / #466 — when that merges, bump the
+    # pin and delete that half. The token-endpoint auth-method half is not
+    # filed yet: upstream selects `none` whenever an authorization server
+    # advertises it, even when a client secret was supplied, so a confidential
+    # client cannot be exercised against a server that also supports public
+    # clients. That affects any such AS, not just Hitch.
     class AuthorizationHarness
       class Failure < StandardError; end
 

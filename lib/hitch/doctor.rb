@@ -19,6 +19,28 @@ module Hitch
       origins
       rate_limit_store
     ].freeze
+    # What to do about it, keyed by the code that named it. A diagnosis
+    # without a next step sends the reader back to the source, which is the
+    # thing a doctor exists to save them from. Machine consumers get the
+    # same answer from `details` plus this file.
+    REMEDIES = {
+      "unsupported" => "Match Hitch's supported window, or upgrade Hitch.",
+      "invalid" => "Run the failing setting's validation directly: Hitch.configuration.validate!",
+      "mismatch" => "resource_uri must equal the URI clients send as `resource`, byte for byte.",
+      "missing_endpoint" => "Add `match \"/mcp\", to: \"mcp#handle\", via: :all` to config/routes.rb.",
+      "invalid_engine_mount" => "Mount the engine exactly once, at root: `mount Hitch::Engine => \"/\"`.",
+      "wrong_verbs" => "The MCP route needs `via: :all` — the endpoint answers POST and OPTIONS.",
+      "shadowed" => "Move the MCP route above whichever host route matches the same path first.",
+      "after_engine" => "Put the MCP route before `mount Hitch::Engine`.",
+      "missing" => "Run bin/rails db:migrate.",
+      "empty" => "Register a tool: bin/rails generate hitch:tool NAME.",
+      "blocked" => "Add the host to config.hosts, or remove it from Hitch's allowed_hosts.",
+      "insecure_http" => "Use https origins in production; plain http ones cannot be trusted.",
+      "uncountable" => "Point mcp.rate_limit_store at a store whose #increment returns a count.",
+      "unshared" => "Configure a shared config.cache_store (Solid Cache, Redis, Memcached), " \
+        "or set mcp.rate_limit_store explicitly.",
+      "probe_error" => "The check itself could not run; HITCH_DOCTOR_FORMAT=json names the error class."
+    }.freeze
     Check = Data.define(:id, :status, :code, :summary, :details) do
       def initialize(id:, status:, code:, summary:, details: {})
         super(
@@ -365,6 +387,8 @@ module Hitch
         lines = [ "Hitch doctor v1: #{report.status.upcase}" ]
         report.checks.each do |check|
           lines << format("%-4s %-24s %-28s %s", check.status.upcase, check.id, check.code, check.summary)
+          remedy = REMEDIES[check.code] unless check.status == "pass" || check.status == "skip"
+          lines << "     -> #{remedy}" if remedy
         end
         counts = %w[pass warn fail skip].to_h do |status|
           [ status, report.checks.count { |check| check.status == status } ]

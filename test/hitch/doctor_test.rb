@@ -199,6 +199,33 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     end
 
     expected_outcomes.each { |outcome| assert_includes seen, outcome }
+
+    # Every way the doctor can say something is wrong must also say what to
+    # do about it. New failure codes arrive here before they reach a host.
+    actionable = seen.reject { |(_id, status, _code)| %w[pass skip].include?(status) }
+    missing = actionable.map(&:last).uniq - Doctor::REMEDIES.keys
+    assert_empty missing, "doctor codes with no remedy: #{missing.join(', ')}"
+  end
+
+  test "human rendering prescribes for what fails and stays quiet for what passes" do
+    failing = SCENARIOS.find do |scenario|
+      Doctor.call(system: FixtureSystem.new(scenario.fetch("values"))).failure?
+    end
+    report = Doctor.call(system: FixtureSystem.new(failing.fetch("values")))
+
+    human = Doctor.render(report, format: "human")
+
+    report.checks.each do |check|
+      remedy = Doctor::REMEDIES[check.code]
+      if %w[pass skip].include?(check.status)
+        refute_includes human, "     -> #{remedy}" if remedy
+      else
+        assert_includes human, "     -> #{remedy}"
+      end
+    end
+    refute_includes Doctor.render(
+      Doctor.call(system: FixtureSystem.new(HEALTHY_FULL)), format: "human"
+    ), "->"
   end
 
   test "healthy full runtime and auth-only modes have exact skip semantics" do

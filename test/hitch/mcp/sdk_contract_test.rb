@@ -6,24 +6,6 @@ require "mcp"
 require "mcp/server/transports/streamable_http_transport"
 
 class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
-  ACTIVATION_CONSTANT = "Hitch::MCP::Internal::SDKAdapter"
-  RUNTIME_TEST_NAMES = %w[
-    test_handle_requires_structural_symbol_keys
-    test_selective_symbolization_preserves_untrusted_string_keys
-    test_final_meta_accepts_absent_client_info
-    test_tools_only_method_allowlist_precedes_sdk
-    test_final_discover_shape_is_owned_by_hitch
-    test_sdk_error_details_are_not_public
-    test_hitch_owns_the_one_output_schema_validation
-    test_hostile_global_callbacks_receive_no_hitch_request_data
-    test_sdk_callbacks_cannot_observe_arguments_or_body
-    test_streamable_http_transport_is_not_used
-    test_reserved_server_context_forms_fail_before_sdk_dispatch
-    test_context_is_retrieved_from_hitch_context_wrapper
-    test_tool_name_host_subset_matches_sdk_grammar
-    test_fresh_server_per_request_isolates_principals
-    test_resolved_sdk_version_is_in_the_supported_window
-  ].freeze
   PROTOCOL_VERSION = "2026-07-28"
   SERVER_INFO = { "name" => "hitch-sdk-contract", "version" => "0.2.0" }.freeze
   REQUEST_META = {

@@ -91,13 +91,6 @@ module HitchMcpObservationFixtures
 end
 
 class Hitch::MCP::ObservationTest < ActionDispatch::IntegrationTest
-  RUNTIME_TEST_NAMES = %w[
-    test_request_event_once_on_every_terminal_path
-    test_exact_structural_payloads_correlate_without_raw_identities_or_request_data
-    test_identity_HMACs_survive_token_rotation_and_separate_principals_and_clients
-    test_invocation_event_records_policy_execution_and_result_categories_only
-    test_sensitive_canaries_and_subscriber_failure_are_isolated
-  ].freeze
   RESOURCE = "https://dummy.test/mcp"
   PROTOCOL_VERSION = "2026-07-28"
   REQUEST_EVENT_KEYS = %i[

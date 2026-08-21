@@ -9,7 +9,6 @@ require "securerandom"
 require "yaml"
 
 class MCPWireContractTest < ActionDispatch::IntegrationTest
-  ACTIVATION_CONSTANT = "Hitch::MCP::Endpoint"
   RESOURCE = "https://dummy.test/mcp"
   PROTOCOL_VERSION = "2026-07-28"
   LEGACY_PROTOCOL_VERSION = %w[2025 11 25].join("-").freeze
@@ -20,15 +19,6 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
   VECTOR_DOCUMENT = YAML.safe_load_file(VECTOR_PATH, permitted_classes: [], aliases: false)
   VECTORS = VECTOR_DOCUMENT.fetch("vectors").index_by { |vector| vector.fetch("id") }.freeze
   VECTOR_IDS = VECTORS.keys.freeze
-  RUNTIME_TEST_NAMES = %w[
-    test_modern_envelope_and_header_vectors
-    test_reserved_server_context_forms
-    test_exact_http_and_protocol_mapping
-    test_single_parse_and_dispatch
-    test_forwarded_host_proto_and_port_cannot_change_canonical_origin
-    test_token_terminal_vectors
-    test_callback_chain_and_zero_work
-  ].freeze
 
   setup do
     Hitch::AccessToken.delete_all

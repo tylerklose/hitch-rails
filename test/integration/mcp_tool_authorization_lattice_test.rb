@@ -96,12 +96,6 @@ module HitchMcpToolAuthorizationLatticeFixtures
 end
 
 class MCPToolAuthorizationLatticeTest < ActionDispatch::IntegrationTest
-  ACTIVATION_CONSTANT = "Hitch::MCP::Tool"
-  RUNTIME_TEST_NAMES = %w[
-    test_exhaustive_terminal_paths
-    test_expired_and_revoked_concrete_variants
-    test_event_and_host_work_counts
-  ].freeze
   RESOURCE = "https://dummy.test/mcp"
   PROTOCOL_VERSION = "2026-07-28"
   SCENARIO_PATH = Rails.root.join("../lattice/mcp_tool_authorization_scenarios.json").expand_path

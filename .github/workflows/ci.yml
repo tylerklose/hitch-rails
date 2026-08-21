@@ -64,10 +64,14 @@ jobs:
       HITCH_APPRAISAL_POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
       HITCH_EXPECTED_RUBY: ${{ matrix.ruby }}
       RAILS_ENV: test
-      SCHEMA: ${{ runner.temp }}/${{ matrix.profile }}_schema.rb
 
     steps:
       - uses: actions/checkout@v6
+
+      # The runner context is not available in job-level env, so the
+      # per-profile schema path is exported at step level instead.
+      - name: Point SCHEMA at a disposable per-profile path
+        run: echo "SCHEMA=$RUNNER_TEMP/${{ matrix.profile }}_schema.rb" >> "$GITHUB_ENV"
 
       - name: Set up Ruby ${{ matrix.ruby }}
         uses: ruby/setup-ruby@v1
@@ -143,13 +147,17 @@ jobs:
       HITCH_APPRAISAL_POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
       HITCH_MIGRATIONS_POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
       HITCH_PACKAGE_POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
-      HITCH_CONFORMANCE_SERVER_EVIDENCE_DIR: ${{ runner.temp }}/server-conformance
       RAILS_ENV: test
 
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+
+      # The runner context is not available in job-level env, so the
+      # evidence directory is exported at step level instead.
+      - name: Point conformance evidence at the runner temp directory
+        run: echo "HITCH_CONFORMANCE_SERVER_EVIDENCE_DIR=$RUNNER_TEMP/server-conformance" >> "$GITHUB_ENV"
 
       - name: Set up Ruby 4.0
         uses: ruby/setup-ruby@v1

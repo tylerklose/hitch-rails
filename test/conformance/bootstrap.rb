@@ -158,12 +158,19 @@ module Hitch
             "test reviewed harness patch", {}, "npm", "test", "--", *TEST_FILES,
             chdir: checkout
           )
-          raise Failure, "Reviewed harness tests did not execute the exact 41-test set" unless
-            test_output.match?(/Test Files\s+4 passed \(4\).*Tests\s+41 passed \(41\)/m)
+          # vitest colorizes its summary on terminals that advertise color
+          # support (GitHub Actions does), so match the uncolored text.
+          summary = test_output.gsub(/\e\[[0-9;]*m/, "")
+          unless summary.match?(/Test Files\s+4 passed \(4\).*Tests\s+41 passed \(41\)/m)
+            raise Failure, "Reviewed harness tests did not execute the exact 41-test set:\n" \
+              "#{summary.lines.last(15).join}"
+          end
           run!("build reviewed harness", {}, "npm", "run", "build", chdir: checkout)
 
-          @manifest = build_manifest(checkout)
-          File.write(manifest_path(checkout), JSON.pretty_generate(manifest) << "\n", mode: "w", perm: 0o600)
+          File.write(manifest_path(checkout), JSON.pretty_generate(build_manifest(checkout)) << "\n", mode: "w", perm: 0o600)
+          # Read the manifest back from the file it just wrote so the fresh
+          # path serves exactly what every cached run will read (string keys).
+          @manifest = JSON.parse(manifest_path(checkout).read)
 
           remove_cached_target!
           FileUtils.mv(checkout, target)

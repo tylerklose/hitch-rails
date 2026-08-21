@@ -522,12 +522,14 @@ class Hitch::MCP::ResultTest < ActiveSupport::TestCase
     end
 
     adapter_class.call(
-      verified_request: {
-        "jsonrpc" => "2.0",
-        "id" => "result-request",
-        "method" => "tools/call",
-        "params" => { "name" => "result.tool", "arguments" => arguments }
-      },
+      verified_request: Hitch::MCP::Internal::JsonValues.deep_freeze(
+        {
+          "jsonrpc" => "2.0",
+          "id" => "result-request",
+          "method" => "tools/call",
+          "params" => { "name" => "result.tool", "arguments" => arguments }
+        }
+      ),
       tools: [ Definition.new(tool_class: tool, output_schema:) ],
       context:,
       server_info: SERVER_INFO

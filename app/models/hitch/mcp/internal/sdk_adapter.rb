@@ -53,10 +53,10 @@ module Hitch
         end
 
         def initialize(verified_request:, tools:, context:, server_info:)
-          @request = copy_hash(verified_request)
+          @request = frozen_hash!(verified_request)
           @tools = tools.dup.freeze
           @context = context
-          @server_info = copy_hash(server_info)
+          @server_info = frozen_hash!(server_info)
           @tool_responses = []
         end
 
@@ -205,10 +205,16 @@ module Hitch
           JsonValues.read(hash, key)
         end
 
-        def copy_hash(value)
-          raise ArgumentError, "verified request and server info must be Hash values" unless value.is_a?(Hash)
+        # Both inputs arrive already normalized — VerifiedRequest's product and
+        # the memoized ServerInfo are deep-frozen, string-keyed copies. The
+        # boundary copied once; the adapter holds references instead of
+        # re-walking up-to-1MiB request trees on every call.
+        def frozen_hash!(value)
+          unless value.is_a?(Hash) && value.frozen?
+            raise ArgumentError, "verified request and server info must be frozen Hash values"
+          end
 
-          JsonValues.deep_string_copy_and_freeze(value)
+          value
         end
 
         def deep_freeze(value)

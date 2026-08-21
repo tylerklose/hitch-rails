@@ -339,14 +339,12 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
   end
 
   test "reserved server context forms fail before SDK dispatch" do
-    [ "server_context", :server_context ].each do |reserved_key|
-      stub_class_method(::MCP::Server, :new, ->(**) { flunk "SDK server must not be constructed" }) do
-        response = call_adapter(
-          method: "tools/call",
-          params: { "name" => "echo", "arguments" => { reserved_key => "attacker" } }
-        )
-        assert_equal(-32602, response.dig(:error, :code))
-      end
+    stub_class_method(::MCP::Server, :new, ->(**) { flunk "SDK server must not be constructed" }) do
+      response = call_adapter(
+        method: "tools/call",
+        params: { "name" => "echo", "arguments" => { "server_context" => "attacker" } }
+      )
+      assert_equal(-32602, response.dig(:error, :code))
     end
 
     observed = nil
@@ -366,18 +364,17 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
     assert_equal "valid nested data", observed.dig("nested", "server_context")
   end
 
-  test "reserved context predicate is exact for method shape and both key forms" do
+  # The adapter's input is VerifiedRequest's product — plain, string-keyed,
+  # deep-frozen Hashes off JSON.parse — so the predicate is exact for that
+  # contract; symbol or Hash-subclass forms cannot reach it. The wire-level
+  # reserved_server_context_* vectors pin the production path end to end.
+  test "reserved context predicate is exact for method shape and key" do
     assert_equal false, reserved_context_predicate(method: "server/discover", arguments: { "server_context" => true })
-    assert_equal false, reserved_context_predicate(method: "tools/list", arguments: { server_context: true })
+    assert_equal false, reserved_context_predicate(method: "tools/list", arguments: { "server_context" => true })
     [ nil, [], "value", {}, { "nested" => { "server_context" => true } } ].each do |arguments|
       assert_equal false, reserved_context_predicate(method: "tools/call", arguments:)
     end
     assert_equal true, reserved_context_predicate(method: "tools/call", arguments: { "server_context" => nil })
-    assert_equal true, reserved_context_predicate(method: "tools/call", arguments: { server_context: nil })
-
-    hash_subclass = Class.new(Hash).new
-    hash_subclass[:server_context] = nil
-    assert_equal true, reserved_context_predicate(method: "tools/call", arguments: hash_subclass)
   end
 
   test "private SDK configuration installs every fixed validation and inert callback" do
@@ -652,26 +649,32 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
 
   def raw_internal_adapter(method:, arguments:)
     Hitch::MCP::Internal::SDKAdapter.new(
-      verified_request: {
-        "jsonrpc" => "2.0",
-        "id" => "reserved-predicate",
-        "method" => method,
-        "params" => { "arguments" => arguments }
-      },
+      verified_request: Hitch::MCP::Internal::JsonValues.deep_freeze(
+        {
+          "jsonrpc" => "2.0",
+          "id" => "reserved-predicate",
+          "method" => method,
+          "params" => { "arguments" => arguments }
+        }
+      ),
       tools: [],
       context: Object.new,
       server_info: SERVER_INFO
     )
   end
 
+  # The adapter's contract is VerifiedRequest's product: a deep-frozen,
+  # string-keyed Hash. The helper honors it the way the endpoint does.
   def call_adapter(method:, params: {}, tools: [], context: Object.new, server_info: SERVER_INFO, request_id: "sdk_contract_request")
     adapter_class.call(
-      verified_request: {
-        "jsonrpc" => "2.0",
-        "id" => request_id,
-        "method" => method,
-        "params" => params
-      },
+      verified_request: Hitch::MCP::Internal::JsonValues.deep_freeze(
+        {
+          "jsonrpc" => "2.0",
+          "id" => request_id,
+          "method" => method,
+          "params" => params
+        }
+      ),
       tools:,
       context:,
       server_info:

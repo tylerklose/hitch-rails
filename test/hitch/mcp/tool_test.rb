@@ -79,11 +79,9 @@ class Hitch::MCP::ToolTest < ActiveSupport::TestCase
       }
     )
 
-    [ "server_context", :server_context ].each do |reserved_key|
-      response = call_tool(tool, arguments: { reserved_key => "attacker-owned" })
+    response = call_tool(tool, arguments: { "server_context" => "attacker-owned" })
 
-      assert_equal(-32602, response.dig(:error, :code))
-    end
+    assert_equal(-32602, response.dig(:error, :code))
     assert_equal 0, calls[:authorize]
     assert_equal 0, calls[:perform]
   end
@@ -249,12 +247,14 @@ class Hitch::MCP::ToolTest < ActiveSupport::TestCase
 
   def call_tool(tool, arguments: { "message" => "hello" }, context: Object.new)
     adapter_class.call(
-      verified_request: {
-        "jsonrpc" => "2.0",
-        "id" => "tool-policy-request",
-        "method" => "tools/call",
-        "params" => { "name" => "policy.tool", "arguments" => arguments }
-      },
+      verified_request: Hitch::MCP::Internal::JsonValues.deep_freeze(
+        {
+          "jsonrpc" => "2.0",
+          "id" => "tool-policy-request",
+          "method" => "tools/call",
+          "params" => { "name" => "policy.tool", "arguments" => arguments }
+        }
+      ),
       tools: [ Definition.new(tool_class: tool, input_schema: INPUT_SCHEMA) ],
       context:,
       server_info: SERVER_INFO

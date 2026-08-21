@@ -46,7 +46,9 @@ module Hitch
           validate_call_shape!(parsed, request_id)
           validate_name_header!(parsed, request_id)
           validate_reserved_arguments!(parsed, request_id)
-          deep_copy_and_freeze(parsed)
+          # The parse output is freshly built and aliased by nothing, so the
+          # product needs freezing, not another copy of the whole tree.
+          JsonValues.deep_freeze(parsed)
         end
 
         private

@@ -83,6 +83,53 @@ module Hitch
       record
     end
 
+    # Mints a usable access token outside the browser flow, for a headless
+    # agent or a cron job that cannot complete a consent redirect. The
+    # operator at a console with database access is both the resource owner
+    # and the client, so there is no third party for a consent screen to
+    # protect anyone from.
+    #
+    # Runs the real authorization-code exchange rather than writing a row
+    # directly: the PKCE pair is generated and spent here, so the row that
+    # lands is indistinguishable from a browser-issued one and the same code
+    # path is proven by every other test in the suite. The token is returned
+    # once and only its digest is stored, exactly as in the OAuth flow.
+    def self.issue!(principal:, client_id:, client_name: nil, scopes: nil, expires_in: nil)
+      granted = Array(scopes).presence || [ Hitch.configuration.supported_scopes.first ]
+      unsupported = granted.map(&:to_s) - Hitch.configuration.supported_scopes
+      unless unsupported.empty?
+        raise ArgumentError,
+          "scopes are not present in Hitch.configuration.supported_scopes: #{unsupported.join(', ')}"
+      end
+      raise ArgumentError, "expires_in must be a positive number of seconds" unless
+        expires_in.nil? || (expires_in.respond_to?(:to_i) && expires_in.to_i.positive?)
+
+      resource_uri = Hitch.configuration.resource_uri
+      verifier = SecureRandom.urlsafe_base64(64)
+      record = create_authorization!(
+        principal: principal,
+        client_id: client_id,
+        client_name: client_name.presence || client_id,
+        code_challenge: Base64.urlsafe_encode64(Digest::SHA256.digest(verifier), padding: false),
+        code_challenge_method: "S256",
+        resource_uri: resource_uri,
+        scopes: granted.join(" ")
+      )
+      result = exchange_authorization_code!(
+        raw_code: record.raw_authorization_code,
+        code_verifier: verifier,
+        client_id: client_id,
+        resource_uri: resource_uri
+      )
+      raise "Hitch could not issue an access token" if result.nil?
+
+      # The exchange dates every token by the configured lifetime, which is
+      # sized for a browser session. A headless agent asks for its own.
+      record.reload.update!(expires_at: expires_in.to_i.seconds.from_now) if expires_in
+
+      result.fetch(:raw_token)
+    end
+
     def self.exchange_authorization_code!(raw_code:, code_verifier:, client_id:, resource_uri:, redirect_uri: nil)
       unless Hitch::Pkce.valid_verifier?(code_verifier)
         raise OAuthError.new("invalid_grant", "PKCE verifier is malformed")

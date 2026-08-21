@@ -5,7 +5,7 @@ PATH
       json (>= 2.13, < 3)
       json_schemer (>= 2.4, < 3)
       mcp (>= 1.2, < 2)
-      rails (>= 8.0, < 8.2)
+      rails (>= 8.0, < 9)
 
 GEM
   remote: https://rubygems.org/

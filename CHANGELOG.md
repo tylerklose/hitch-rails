@@ -87,6 +87,15 @@ an authenticated MCP server per the MCP 2026-07-28 authorization profile.
   `Current.user` fallback), overridable consent view, auto-appended
   migrations, `Hitch::AccessToken.cleanup_expired!`.
 
+### Operator tasks
+
+- `bin/rails hitch:tokens:issue PRINCIPAL=User:1` issues a long-lived access
+  token for a headless agent that cannot complete a consent redirect, through
+  the same authorization-code exchange the browser flow runs.
+  `Hitch::AccessToken.issue!` is the console equivalent. Disclosure follows
+  the client-secret tasks: one write to a new `0600` file or an attached
+  terminal, never stdout, and only the digest at rest.
+
 ### Requirements
 
 - Rails `>= 8.0, < 9`, Ruby `>= 3.3, < 4.1`, `mcp >= 1.2, < 2`, SQLite or

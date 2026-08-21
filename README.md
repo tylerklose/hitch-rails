@@ -213,6 +213,28 @@ authorization-code path for any persisted record your app signs in as;
 MCP headers; `mcp_headers(token:, method:)` is available for manual requests.
 `rails g hitch:tool` generates a test in exactly this shape.
 
+## Headless agents
+
+The OAuth flow needs a browser: a human signs in and presses Approve. An agent
+running from cron or `claude -p` has neither, so issue it a token from the
+console instead. The operator there is both the resource owner and the client,
+so there is no third party for a consent screen to protect anyone from.
+
+```sh
+bin/rails hitch:tokens:issue PRINCIPAL=User:1 OUTPUT_FILE=agent.token
+# optional: SCOPES="mcp" EXPIRES_IN_DAYS=90 CLIENT_ID=cron-agent NAME="Nightly report"
+```
+
+The token is written once to a new `0600` file (or to your terminal when one
+is attached) and never to stdout; only its SHA-256 digest is stored, as in the
+OAuth flow. It defaults to 90 days and the first configured scope, and it can
+be revoked through `POST /oauth/revoke` or `Hitch::AccessToken#revoke!` like
+any other. `Hitch::AccessToken.issue!` is the same call if you would rather
+run it from `rails console` or a seed script.
+
+Refresh-token issuance is deliberately not implemented, so an expired agent
+token is reissued the same way.
+
 ## Operator diagnosis
 
 ```sh

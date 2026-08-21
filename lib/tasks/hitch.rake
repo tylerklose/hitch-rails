@@ -3,6 +3,37 @@
 require "hitch/doctor"
 
 module Hitch
+  # Argument parsing for hitch:tokens:issue. Kept out of the task body so a
+  # bad PRINCIPAL aborts with a sentence instead of a NameError.
+  module TokenIssueTask
+    module_function
+
+    def principal!(value)
+      model_name, id = value.to_s.split(":", 2)
+      abort "PRINCIPAL is required, as Model:id (for example User:1)" if model_name.blank? || id.blank?
+
+      model = model_name.safe_constantize
+      unless model.is_a?(Class) && model < ActiveRecord::Base
+        abort "PRINCIPAL model #{model_name} is not an Active Record model"
+      end
+
+      model.find(id)
+    rescue ActiveRecord::RecordNotFound
+      abort "No #{model_name} with id #{id}"
+    end
+
+    # Long enough that a cron agent is not reissued monthly, short enough
+    # that an unnoticed leak expires.
+    def days!(value)
+      return 90 if value.blank?
+
+      days = Integer(value, exception: false)
+      abort "EXPIRES_IN_DAYS must be a positive whole number of days" unless days&.positive?
+
+      days
+    end
+  end
+
   module ClientCredentialTask
     module_function
 
@@ -14,6 +45,15 @@ module Hitch
             "client_id=#{credentials.client.client_id}\n" \
             "client_secret=#{credentials.client_secret}\n"
           )
+          output.flush
+        end
+      end
+    end
+
+    def disclose_token(stdin: $stdin, tty_path: "/dev/tty")
+      with_output(stdin: stdin, tty_path: tty_path) do |output|
+        Hitch::AccessToken.transaction do
+          output.write("access_token=#{yield}\n")
           output.flush
         end
       end
@@ -83,6 +123,26 @@ namespace :hitch do
         abort "Confidential client not found" unless client&.confidential_client?
 
         client.rotate_secret!
+      end
+    end
+  end
+
+  namespace :tokens do
+    desc "Issue a long-lived access token for a headless agent " \
+         "(usage: bin/rails hitch:tokens:issue PRINCIPAL=User:1)"
+    task issue: :environment do
+      principal = Hitch::TokenIssueTask.principal!(ENV["PRINCIPAL"])
+      scopes = ENV["SCOPES"].to_s.split
+      days = Hitch::TokenIssueTask.days!(ENV["EXPIRES_IN_DAYS"])
+
+      Hitch::ClientCredentialTask.disclose_token do
+        Hitch::AccessToken.issue!(
+          principal: principal,
+          client_id: ENV["CLIENT_ID"].presence || "hitch-cli",
+          client_name: ENV["NAME"],
+          scopes: scopes,
+          expires_in: days * 86_400
+        )
       end
     end
   end

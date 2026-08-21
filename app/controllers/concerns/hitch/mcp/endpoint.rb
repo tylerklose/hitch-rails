@@ -9,7 +9,6 @@ module Hitch
     module Endpoint
       extend ActiveSupport::Concern
 
-      include Hitch::IssuerUrl
       include Hitch::RequestAdmission
 
       included do
@@ -264,14 +263,14 @@ module Hitch
       end
 
       def hitch_mcp_unauthorized!
-        response.headers["WWW-Authenticate"] = Internal::BearerChallenge.challenge(issuer_url:)
+        response.headers["WWW-Authenticate"] = Internal::BearerChallenge.challenge
         response.headers["Access-Control-Expose-Headers"] = "WWW-Authenticate"
         head :unauthorized
       end
 
       def hitch_mcp_insufficient_scope!(required_scopes)
         response.headers["WWW-Authenticate"] =
-          Internal::BearerChallenge.insufficient_scope(required_scopes, issuer_url:)
+          Internal::BearerChallenge.insufficient_scope(required_scopes)
         response.headers["Access-Control-Expose-Headers"] = "WWW-Authenticate"
         head :forbidden
       end

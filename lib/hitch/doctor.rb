@@ -125,8 +125,8 @@ module Hitch
 
       def discovery_facts
         resource = URI.parse(Hitch.configuration.resource_uri.to_s)
-        issuer = uri_origin(resource)
-        resource_metadata_uri = protected_resource_metadata_uri(resource, issuer)
+        issuer = Hitch::ResourceUri.origin(resource)
+        resource_metadata_uri = Hitch::ResourceUri.protected_resource_metadata_url(resource)
         authorization = application_get("/.well-known/oauth-authorization-server", resource)
         protected_resource = application_get(URI.parse(resource_metadata_uri).request_uri, resource)
 
@@ -272,13 +272,10 @@ module Hitch
       private
 
       def application_get(path, resource)
-        host = resource.host.to_s.include?(":") ? "[#{resource.host}]" : resource.host
-        default_port = resource.scheme == "https" ? 443 : 80
-        authority = resource.port == default_port ? host : "#{host}:#{resource.port}"
         environment = Rack::MockRequest.env_for(
           path,
           method: "GET",
-          "HTTP_HOST" => authority,
+          "HTTP_HOST" => Hitch::ResourceUri.authority(resource),
           "SERVER_NAME" => resource.host,
           "SERVER_PORT" => resource.port.to_s,
           "rack.url_scheme" => resource.scheme,
@@ -293,20 +290,6 @@ module Hitch
         { "status" => status, "document" => JSON.parse(bytes) }
       ensure
         body&.close if body.respond_to?(:close)
-      end
-
-      def protected_resource_metadata_uri(resource, issuer)
-        path = resource.path.to_s
-        suffix = path.empty? || path == "/" ? "" : "/#{path.delete_prefix('/')}"
-        query = resource.query ? "?#{resource.query}" : ""
-        "#{issuer}/.well-known/oauth-protected-resource#{suffix}#{query}"
-      end
-
-      def uri_origin(uri)
-        host = uri.host.to_s.include?(":") ? "[#{uri.host}]" : uri.host
-        default_port = uri.scheme == "https" ? 443 : 80
-        port = uri.port == default_port ? "" : ":#{uri.port}"
-        "#{uri.scheme}://#{host}#{port}"
       end
 
       def normalized_route_path(route)

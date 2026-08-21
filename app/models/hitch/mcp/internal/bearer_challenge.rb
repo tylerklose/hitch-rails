@@ -26,23 +26,24 @@ module Hitch
         # host's base/default scope. Protected-resource metadata still
         # advertises the complete supported set, and a known available tool
         # names its complete static requirement in a later 403 step-up.
-        def challenge(issuer_url:)
+        def challenge
           scope = Hitch.configuration.supported_scopes.first
-          %(Bearer resource_metadata="#{resource_metadata_url(issuer_url)}", scope="#{scope}")
+          %(Bearer resource_metadata="#{resource_metadata_url}", scope="#{scope}")
         end
 
-        def insufficient_scope(required_scopes, issuer_url:)
+        def insufficient_scope(required_scopes)
           "Bearer error=\"insufficient_scope\", " \
             "scope=\"#{required_scopes.join(' ')}\", " \
-            "resource_metadata=\"#{resource_metadata_url(issuer_url)}\""
+            "resource_metadata=\"#{resource_metadata_url}\""
         end
 
-        def resource_metadata_url(issuer_url)
-          resource = URI.parse(Hitch.configuration.resource_uri.to_s)
-          path = resource.path.to_s
-          suffix = path.empty? || path == "/" ? "" : path
-          query = resource.query ? "?#{resource.query}" : ""
-          "#{issuer_url}/.well-known/oauth-protected-resource#{suffix}#{query}"
+        # Derived from the canonical resource_uri, not handed in: the issuer
+        # inside a challenge must be the same bytes discovery advertises, and
+        # the one derivation is what guarantees it (INV-MCP-024).
+        def resource_metadata_url
+          Hitch::ResourceUri.protected_resource_metadata_url(
+            URI.parse(Hitch.configuration.resource_uri.to_s)
+          )
         end
       end
     end

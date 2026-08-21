@@ -365,12 +365,9 @@ module Hitch
       return false if uri.hostname.blank? || uri.userinfo || uri.query || uri.fragment
       return false unless uri.path.blank?
 
-      default_port = uri.scheme == "https" ? 443 : 80
-      hostname = uri.hostname.downcase
-      authority_host = hostname.include?(":") ? "[#{hostname}]" : hostname
-      canonical = "#{uri.scheme}://#{authority_host}"
-      canonical += ":#{uri.port}" unless uri.port == default_port
-      origin == canonical
+      canonical = uri.dup
+      canonical.hostname = uri.hostname.downcase
+      origin == Hitch::ResourceUri.origin(canonical)
     rescue URI::InvalidURIError
       false
     end

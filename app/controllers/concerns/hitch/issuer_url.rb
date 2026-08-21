@@ -20,13 +20,7 @@ module Hitch
     private
 
     def issuer_url
-      resource = URI.parse(Hitch.configuration.resource_uri.to_s)
-      hostname = resource.hostname
-      host = hostname.include?(":") ? "[#{hostname}]" : hostname
-      default_port = resource.scheme == "https" ? 443 : 80
-      port = resource.port == default_port ? "" : ":#{resource.port}"
-
-      "#{resource.scheme}://#{host}#{port}"
+      Hitch::ResourceUri.origin(URI.parse(Hitch.configuration.resource_uri.to_s))
     end
   end
 end

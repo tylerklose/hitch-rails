@@ -46,4 +46,49 @@ class Hitch::ResourceUriTest < ActiveSupport::TestCase
       "http://[::1]:3000/mcp",
       Hitch::ResourceUri.canonicalize!("http://[::1]:3000/mcp", allow_loopback_http: true)
   end
+
+  test "authority omits a default port and brackets an IPv6 literal exactly once" do
+    {
+      "https://example.test/mcp" => "example.test",
+      "https://example.test:443/mcp" => "example.test",
+      "https://example.test:8443/mcp" => "example.test:8443",
+      "http://127.0.0.1/mcp" => "127.0.0.1",
+      "http://[::1]/mcp" => "[::1]",
+      "http://[::1]:3000/mcp" => "[::1]:3000"
+    }.each do |resource, expected|
+      assert_equal expected, Hitch::ResourceUri.authority(URI.parse(resource)), resource
+    end
+  end
+
+  test "origin is the scheme and authority with no path query or fragment" do
+    {
+      "https://example.test/mcp?tenant=one" => "https://example.test",
+      "https://example.test:8443/mcp" => "https://example.test:8443",
+      "http://[::1]:3000/mcp" => "http://[::1]:3000"
+    }.each do |resource, expected|
+      assert_equal expected, Hitch::ResourceUri.origin(URI.parse(resource)), resource
+    end
+  end
+
+  # RFC 9728 §3.1: the well-known segment sits between the origin and the
+  # resource's own path, and a resource query rides along unchanged.
+  test "protected resource metadata url is path aware" do
+    {
+      "https://example.test/mcp" =>
+        "https://example.test/.well-known/oauth-protected-resource/mcp",
+      "https://example.test" =>
+        "https://example.test/.well-known/oauth-protected-resource",
+      "https://example.test/" =>
+        "https://example.test/.well-known/oauth-protected-resource",
+      "https://example.test:8443/mcp?tenant=one" =>
+        "https://example.test:8443/.well-known/oauth-protected-resource/mcp?tenant=one",
+      "http://[::1]:3000/mcp" =>
+        "http://[::1]:3000/.well-known/oauth-protected-resource/mcp"
+    }.each do |resource, expected|
+      assert_equal \
+        expected,
+        Hitch::ResourceUri.protected_resource_metadata_url(URI.parse(resource)),
+        resource
+    end
+  end
 end

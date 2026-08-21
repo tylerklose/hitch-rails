@@ -20,9 +20,7 @@ module Hitch
           return false unless request.get_header("PATH_INFO") == resource_path
           return false unless request.get_header("QUERY_STRING").to_s == resource.query.to_s
 
-          default_port = resource.scheme == "https" ? 443 : 80
-          effective_port = explicit_port || default_port
-          return false unless effective_port == resource.port
+          return false unless (explicit_port || resource.default_port) == resource.port
 
           allowed_hosts = [ resource.hostname&.downcase, *Hitch.configuration.allowed_hosts ].compact.uniq
           allowed_hosts.include?(hostname)

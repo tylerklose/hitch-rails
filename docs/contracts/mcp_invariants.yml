@@ -117,6 +117,6 @@ invariants:
     killing_tests: [test/contracts/mcp_contract_artifacts_test.rb#test_lattice_is_exhaustive_at_strength_eight]
   - id: INV-MCP-024
     statement: Canonical resource_uri is the sole public origin; request Host/port and forwarded host/proto validate ingress only and never derive issuer, discovery, iss, challenges, or MCP identity.
-    source_targets: [app/controllers/concerns/hitch/issuer_url.rb, app/controllers/concerns/hitch/mcp/endpoint.rb]
+    source_targets: [lib/hitch/resource_uri.rb, app/controllers/concerns/hitch/issuer_url.rb, app/controllers/concerns/hitch/mcp/endpoint.rb]
     mutation: Derive any public URL or challenge resource from request.host, request.port, Forwarded, X-Forwarded-Host, or X-Forwarded-Proto.
     killing_tests: [test/integration/mcp_wire_contract_test.rb#test_forwarded_host_proto_and_port_cannot_change_canonical_origin]

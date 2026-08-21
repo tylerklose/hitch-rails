@@ -126,7 +126,7 @@ module Hitch
         mcp_test_validate_protocol_version!(protocol_version)
 
         {
-          "Host" => mcp_test_authority(resource),
+          "Host" => Hitch::ResourceUri.authority(resource),
           "Authorization" => "Bearer #{token}",
           "Content-Type" => "application/json",
           "Accept" => "application/json, text/event-stream",
@@ -162,12 +162,6 @@ module Hitch
         Date.iso8601(protocol_version)
       rescue Date::Error
         raise ArgumentError, "protocol_version must be an ISO date"
-      end
-
-      def mcp_test_authority(resource)
-        host = resource.host.include?(":") ? "[#{resource.host.delete_prefix('[').delete_suffix(']')}]" : resource.host
-        default_port = resource.scheme == "https" ? 443 : 80
-        resource.port == default_port ? host : "#{host}:#{resource.port}"
       end
 
       def mcp_test_id(id)

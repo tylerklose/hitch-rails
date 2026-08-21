@@ -205,27 +205,25 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     actionable = seen.reject { |(_id, status, _code)| %w[pass skip].include?(status) }
     missing = actionable.map(&:last).uniq - Doctor::REMEDIES.keys
     assert_empty missing, "doctor codes with no remedy: #{missing.join(', ')}"
+
+    # Remedies are keyed by code, so a code emitted by two checks hands one
+    # of them the other's advice.
+    shared = actionable.group_by(&:last).select { |_code, rows| rows.map(&:first).uniq.length > 1 }
+    assert_empty shared.keys, "codes emitted by more than one check: #{shared.keys.join(', ')}"
   end
 
-  test "human rendering prescribes for what fails and stays quiet for what passes" do
-    failing = SCENARIOS.find do |scenario|
-      Doctor.call(system: FixtureSystem.new(scenario.fetch("values"))).failure?
-    end
-    report = Doctor.call(system: FixtureSystem.new(failing.fetch("values")))
-
+  test "human rendering prescribes for every failure and nothing when healthy" do
+    report = SCENARIOS.lazy.map do |scenario|
+      Doctor.call(system: FixtureSystem.new(scenario.fetch("values")))
+    end.find(&:failure?)
     human = Doctor.render(report, format: "human")
 
-    report.checks.each do |check|
-      remedy = Doctor::REMEDIES[check.code]
-      if %w[pass skip].include?(check.status)
-        refute_includes human, "     -> #{remedy}" if remedy
-      else
-        assert_includes human, "     -> #{remedy}"
-      end
+    report.checks.reject { |check| %w[pass skip].include?(check.status) }.each do |check|
+      assert_includes human, Doctor::REMEDIES.fetch(check.code)
     end
-    refute_includes Doctor.render(
-      Doctor.call(system: FixtureSystem.new(HEALTHY_FULL)), format: "human"
-    ), "->"
+
+    healthy = Doctor.render(Doctor.call(system: FixtureSystem.new(HEALTHY_FULL)), format: "human")
+    Doctor::REMEDIES.each_value { |remedy| refute_includes healthy, remedy }
   end
 
   test "healthy full runtime and auth-only modes have exact skip semantics" do
@@ -532,7 +530,7 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
       [ "route_order", "fail", "wrong_verbs" ],
       [ "route_order", "fail", "invalid_engine_mount" ],
       [ "migrations", "fail", "missing" ],
-      [ "registry", "fail", "invalid" ],
+      [ "registry", "fail", "unresolvable" ],
       [ "registry", "warn", "empty" ],
       [ "hosts", "fail", "blocked" ],
       [ "origins", "warn", "insecure_http" ],

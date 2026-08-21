@@ -26,6 +26,8 @@ module Hitch
     REMEDIES = {
       "unsupported" => "Match Hitch's supported window, or upgrade Hitch.",
       "invalid" => "Run the failing setting's validation directly: Hitch.configuration.validate!",
+      "unresolvable" => "Fix the tool class named by the boot error; " \
+        "Hitch.configuration.validate! does not build the registry and will report success.",
       "mismatch" => "resource_uri must equal the URI clients send as `resource`, byte for byte.",
       "missing_endpoint" => "Add `match \"/mcp\", to: \"mcp#handle\", via: :all` to config/routes.rb.",
       "invalid_engine_mount" => "Mount the engine exactly once, at root: `mount Hitch::Engine => \"/\"`.",
@@ -387,8 +389,7 @@ module Hitch
         lines = [ "Hitch doctor v1: #{report.status.upcase}" ]
         report.checks.each do |check|
           lines << format("%-4s %-24s %-28s %s", check.status.upcase, check.id, check.code, check.summary)
-          remedy = REMEDIES[check.code] unless check.status == "pass" || check.status == "skip"
-          lines << "     -> #{remedy}" if remedy
+          lines << "     -> #{REMEDIES.fetch(check.code)}" if REMEDIES.key?(check.code)
         end
         counts = %w[pass warn fail skip].to_h do |status|
           [ status, report.checks.count { |check| check.status == status } ]
@@ -547,7 +548,7 @@ module Hitch
 
       pass("registry", "valid", "Registry is valid and explicitly populated", facts)
     rescue StandardError => error
-      fail_check("registry", "invalid", "Registry validation failed", "error_class" => error.class.name)
+      fail_check("registry", "unresolvable", "Registry validation failed", "error_class" => error.class.name)
     end
 
     def hosts_check

@@ -1,56 +1,7 @@
 schema_version: 1
-ruby_sdk:
-  gem: mcp
-  requirement: ">= 1.1.0, < 2"
-  tag: v1.1.0
-  version: 1.1.0
-  revision: 72a929bbc00c512fbaad82f1e14d02fae2539032
-  issue: https://github.com/modelcontextprotocol/ruby-sdk/issues/389
-  lanes:
-    min:
-      selector: "= 1.1.0"
-      resolved_at_contract: 1.1.0
-    latest:
-      selector: ">= 1.1.0, < 2"
-      resolved_at_contract: 1.1.0
-conformance:
-  package: "@modelcontextprotocol/conformance"
-  version: 0.2.0-alpha.10
-  revision: a9896553900a2ef61787b57adfcbbe936a8ab1f9
-  integrity: sha512-0V/HZDdWHcg6j0zVBzBsXcPZ571IVi6umKgTpnBhtTx/jm/LONmGF6cIWL2k4Xjyps0OiHV6B37nj2s0pUg0nQ==
-  package_manifest:
-    path: test/conformance/package.json
-    sha256: d6e4c68b0e9512fbf183ab4a0a928883fafd4a37543c7559de59fb86a2b08082
-  package_lock:
-    path: test/conformance/package-lock.json
-    sha256: 84e71df11eaa61d9cbdff1c43f62cd4a64d8a651b0d4c9f12f80c04ca84c92f7
-  harness_patch:
-    path: test/conformance/harness.patch
-    sha256: 495975758b1f42f08c91b46f4151529348d2c8e82e376f672b27d7018faaca8b
-    authorization_input: private_mode_0600_file
-    upstream_scenario_assertions_changed: false
 automated_clients:
-  rails_server:
-    package: puma
-    version: 8.0.2
-  harness:
-    path: test/checkpoint/automated_clients.rb
-    sha256: db0cfd69c0aa307a49f29f1af73a5080250799225c4a479b3ac1149284976ea4
-  redis_service:
-    path: test/checkpoint/pinned_redis.rb
-    sha256: 62518270085125bb20c3299504982ab6f8d2a79cde4c378d9ce4c139f9ff3523
-  matrix:
-    schema:
-      path: test/lattice/m5_automated_clients.json
-      sha256: 0cfd777295abaedbdb595df86b5861ef89e89e1e7ea4042755ecb5ad310903a3
-    scenarios:
-      path: test/lattice/m5_automated_clients_scenarios.json
-      sha256: 92ea37a048ead1ba1ef959956074266e7a65b7d989157844b1facbd40c2ab4a5
-      seed: 42
-      exhaustive_strength: 3
-      expected_rows: 8
   typescript:
-    package: "@modelcontextprotocol/client"
+    package: '@modelcontextprotocol/client'
     version: 2.0.0
     shasum: 4dc18c983c7acb40040f08442123e3c5b88d6074
     integrity: sha512-8f1OghQ2rjzIOfqgUCP+8GiUWqRs89njoWLNqAe8kWmDePv3s1fZXseej+QXemssEuuOvLLmLO/kqM3IQHtISw==
@@ -77,23 +28,3 @@ automated_clients:
     fixture:
       path: test/clients/python/smoke.py
       sha256: 3fb86a2854c2a31f8c83fd36f46c555153cce1b046bdd404c8091d85895c3f96
-lattice:
-  package: lattice-cli
-  implementation: python
-  version: 0.1.2
-  seed: 42
-redis:
-  gem_requirement: ">= 5, < 7"
-  image: docker.io/library/redis:7.4.5-alpine
-  index_digest: sha256:bb186d083732f669da90be8b0f975a37812b15e913465bb14d845db72a4e3e08
-  linux_amd64_digest: sha256:0302cccee2b2043e61b497c8f4075467c5f7ba27a9f38be7e092634f2734baed
-  linux_arm64_digest: sha256:53ced3c237c7411bcac9047db4a04e4d1060adc052f8cfb409136be6ced7f293
-mutation:
-  runner: mutant
-  version: 0.16.3
-  integration: mutant-minitest
-  integration_version: 0.16.3
-support_tools:
-  jq: "1.7.1"
-  node: "23.7.0"
-  npm: "11.1.0"

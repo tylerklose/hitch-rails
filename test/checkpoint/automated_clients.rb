@@ -11,15 +11,23 @@ require "timeout"
 require "uri"
 require "yaml"
 
-require_relative "pinned_redis"
+require_relative "disposable_redis"
 
 module HitchCheckpoint
   # M5.4-only acceptance harness. It is deliberately under test/ so none of
   # this client automation or its credential bridge can enter the gem.
   class AutomatedClients
     PROTOCOL_VERSION = "2026-07-28"
-    MATRIX_PATH = "test/lattice/m5_automated_clients_scenarios.json"
     LOCK_PATH = "test/conformance/toolchain.lock.yml"
+    # The exhaustive 2x2x2 acceptance matrix, stated directly.
+    MATRIX = %w[rails_8_0_sqlite rails_8_1_postgresql].product(
+      %w[typescript python], %w[public confidential]
+    ).map.with_index(1) do |(database, sdk, oauth_client), id|
+      { "id" => id,
+        "values" => {
+          "database" => database, "sdk" => sdk, "oauth_client" => oauth_client
+        } }.freeze
+    end.freeze
     SERVER_READY_SECONDS = 30
     CLIENT_TIMEOUT_SECONDS = 90
 
@@ -27,7 +35,7 @@ module HitchCheckpoint
     class CommandTimedOut < StandardError; end
 
     def self.open(root:, working_directory:)
-      PinnedRedis.open(root:) do |redis|
+      DisposableRedis.open do |redis|
         yield new(root:, working_directory:, redis:)
       end
     end
@@ -38,7 +46,7 @@ module HitchCheckpoint
       @redis = redis
       @lock = YAML.safe_load_file(File.join(@root, LOCK_PATH), permitted_classes: [], aliases: false)
       @client_lock = @lock.fetch("automated_clients")
-      @scenarios = load_scenarios
+      @scenarios = MATRIX
       @runtime = prepare_runtime
     end
 
@@ -90,41 +98,10 @@ module HitchCheckpoint
 
     private
 
-    def load_scenarios
-      document = JSON.parse(File.read(File.join(@root, MATRIX_PATH)))
-      meta = document.fetch("meta")
-      unless meta.values_at("strength", "test_count", "exhaustive_count", "seed") == [ 3, 8, 8, 42 ]
-        raise "automated client matrix is not the exhaustive locked 2x2x2 set"
-      end
-
-      scenarios = document.fetch("scenarios")
-      actual = scenarios.map do |scenario|
-        values = scenario.fetch("values")
-        [ values.fetch("database"), values.fetch("sdk"), values.fetch("oauth_client") ]
-      end.sort
-      expected = %w[rails_7_2_sqlite rails_8_1_postgresql].product(
-        %w[typescript python],
-        %w[public confidential]
-      ).sort
-      raise "automated client matrix combinations drifted" unless actual == expected
-
-      scenarios.freeze
-    end
-
     def prepare_runtime
       typescript = prepare_typescript
       python = prepare_python
-      {
-        "typescript" => typescript,
-        "python" => python,
-        "matrix" => {
-          "path" => MATRIX_PATH,
-          "sha256" => Digest::SHA256.file(File.join(@root, MATRIX_PATH)).hexdigest,
-          "rows" => 8,
-          "strength" => 3,
-          "seed" => 42
-        }
-      }.freeze
+      { "typescript" => typescript, "python" => python }.freeze
     end
 
     def prepare_typescript

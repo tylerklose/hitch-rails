@@ -230,8 +230,6 @@ class Hitch::MCP::ToolTest < ActiveSupport::TestCase
     assert_operator Hitch::MCP::Forbidden, :<, StandardError
   end
 
-  private
-
   # A tool failure reaches the client as one flat generic error on purpose.
   # That is the wire's contract, not the developer's: locally the real
   # exception has to be readable, or the only way to debug a tool is to
@@ -283,6 +281,8 @@ class Hitch::MCP::ToolTest < ActiveSupport::TestCase
     # A denial is the policy working, not a failure to diagnose.
     assert_equal "", capture_hitch_log { call_tool(denying) }
   end
+
+  private
 
   def capture_hitch_log
     buffer = StringIO.new

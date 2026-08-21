@@ -136,6 +136,19 @@ class Hitch::MCP::RegistryTest < ActiveSupport::TestCase
       duplicate_annotation_alias: lambda {
         registry_for_tool(annotations: { read_only_hint: true, "readOnlyHint" => false })
       },
+      declared_server_context: lambda {
+        registry_for_tool(input_schema: {
+          type: "object",
+          properties: { server_context: { type: "string" } }
+        })
+      },
+      required_server_context: lambda {
+        registry_for_tool(input_schema: {
+          type: "object",
+          properties: { message: { type: "string" } },
+          required: [ "server_context" ]
+        })
+      },
       call_override: -> { registry_for_tool(call_override: true) },
       missing_scopes: -> { registry_for_tool(scopes: nil) },
       empty_scopes: -> { registry_for_tool(scopes: []) },

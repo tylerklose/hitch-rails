@@ -174,6 +174,10 @@ module Hitch
               tool_class.input_schema,
               label: "#{label} input_schema"
             ).call
+            if declares_server_context?(input_schema)
+              raise ArgumentError,
+                "#{label} input_schema must not declare a top-level server_context property"
+            end
             output_schema = if tool_class.output_schema.nil?
               nil
             else
@@ -197,6 +201,17 @@ module Hitch
                 name:, description:, input_schema:, output_schema:, annotations:
               )
             )
+          end
+
+          # server_context is Hitch's own channel to the tool, and the wire
+          # refuses it as an argument, so a schema naming it can never be
+          # satisfied: every call would fail with "Missing required
+          # arguments". Caught once at boot instead of on every request.
+          # Top level only — a nested server_context is ordinary tool data.
+          def declares_server_context?(schema)
+            properties = schema["properties"]
+            (properties.is_a?(Hash) && properties.key?("server_context")) ||
+              Array(schema["required"]).include?("server_context")
           end
 
           def validate_tool_name(value, label)

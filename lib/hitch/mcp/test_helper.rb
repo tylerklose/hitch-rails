@@ -10,9 +10,13 @@ require "uri"
 module Hitch
   module MCP
     module TestHelper
+      # Public: host test suites pin this. One name for the value, not a
+      # second copy of it.
+      PROTOCOL_VERSION = Internal::Protocol::VERSION
+
       TOKEN_PATTERN = /\A[A-Za-z0-9\-._~+\/]+=*\z/
 
-      def mcp_headers(token:, method:, name: nil, protocol_version: Internal::Protocol::VERSION)
+      def mcp_headers(token:, method:, name: nil, protocol_version: PROTOCOL_VERSION)
         resource = mcp_test_resource_uri!
         mcp_test_headers(
           resource:,
@@ -24,7 +28,7 @@ module Hitch
       end
 
       def post_mcp(method:, token:, params: {}, id: "hitch-test", client_info: nil,
-        capabilities: {}, protocol_version: Internal::Protocol::VERSION)
+        capabilities: {}, protocol_version: PROTOCOL_VERSION)
         resource = mcp_test_resource_uri!
         normalized_params = mcp_test_json_hash(params, "params")
         raise ArgumentError, "params must not supply _meta" if normalized_params.key?("_meta")

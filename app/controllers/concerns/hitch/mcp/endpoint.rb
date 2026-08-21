@@ -50,9 +50,10 @@ module Hitch
           request_id: error.request_id,
           data: error.data
         )
-      rescue StandardError
+      rescue StandardError => error
         request_id = verified_request && verified_request["id"]
         Internal::EndpointErrorReporter.report(category: :dispatch)
+        Internal::LocalDiagnosis.report("MCP request failed during dispatch", error)
         hitch_mcp_protocol_error!(200, -32603, "Internal error", request_id: request_id)
       ensure
         request.delete_header("RAW_POST_DATA") if request

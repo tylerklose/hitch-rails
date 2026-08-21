@@ -89,5 +89,6 @@ an authenticated MCP server per the MCP 2026-07-28 authorization profile.
 
 ### Requirements
 
-- Rails `>= 8.0, < 8.2`, Ruby `>= 3.3, < 4.1`, `mcp >= 1.2, < 2`, SQLite or
-  PostgreSQL.
+- Rails `>= 8.0, < 9`, Ruby `>= 3.3, < 4.1`, `mcp >= 1.2, < 2`, SQLite or
+  PostgreSQL. CI covers Rails 8.0 and 8.1; later 8.x, including edge Rails,
+  installs without a lane behind it.

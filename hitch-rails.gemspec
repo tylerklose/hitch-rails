@@ -4,7 +4,6 @@ Gem::Specification.new do |spec|
   spec.name        = "hitch-rails"
   spec.version     = Hitch::VERSION
   spec.authors     = [ "Tyler Klose" ]
-  spec.email       = [ "tylerklose@gmail.com" ]
   spec.homepage    = "https://github.com/tylerklose/hitch-rails"
   spec.summary     = "Opinionated authenticated MCP framework for Rails"
   spec.description = <<~DESC
@@ -60,5 +59,5 @@ Gem::Specification.new do |spec|
   spec.add_dependency "json", ">= 2.13", "< 3"
   spec.add_dependency "json_schemer", ">= 2.4", "< 3"
   spec.add_dependency "mcp", ">= 1.2", "< 2"
-  spec.add_dependency "rails", ">= 8.0", "< 8.2"
+  spec.add_dependency "rails", ">= 8.0", "< 9"
 end

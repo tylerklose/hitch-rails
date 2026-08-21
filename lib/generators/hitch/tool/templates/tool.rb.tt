@@ -1,0 +1,52 @@
+# frozen_string_literal: true
+
+<% @class_modules.each_with_index do |namespace, index| -%>
+<%= "  " * index %>module <%= namespace %>
+<% end -%>
+<%= "  " * @class_modules.length %>class <%= @class_leaf %> < Hitch::MCP::Tool
+<%= "  " * (@class_modules.length + 1) %>tool_name "<%= @tool_name %>"
+<%= "  " * (@class_modules.length + 1) %>description "TODO: describe <%= @tool_name %>"
+<%= "  " * (@class_modules.length + 1) %>input_schema(
+<%= "  " * (@class_modules.length + 2) %>type: "object",
+<%= "  " * (@class_modules.length + 2) %>properties: {},
+<%= "  " * (@class_modules.length + 2) %>additionalProperties: false
+<%= "  " * (@class_modules.length + 1) %>)
+<% if deny_default? -%>
+<%= "  " * (@class_modules.length + 1) %>annotations read_only_hint: false,
+<%= "  " * (@class_modules.length + 2) %>destructive_hint: true,
+<%= "  " * (@class_modules.length + 2) %>idempotent_hint: false,
+<%= "  " * (@class_modules.length + 2) %>open_world_hint: true
+
+<%= "  " * (@class_modules.length + 1) %>def self.available_to?(_context)
+<%= "  " * (@class_modules.length + 2) %>false
+<%= "  " * (@class_modules.length + 1) %>end
+
+<%= "  " * (@class_modules.length + 1) %>def self.authorize!(_context, arguments:)
+<%= "  " * (@class_modules.length + 2) %>raise Hitch::MCP::Forbidden
+<%= "  " * (@class_modules.length + 1) %>end
+
+<%= "  " * (@class_modules.length + 1) %>def self.perform(_context, arguments:)
+<%= "  " * (@class_modules.length + 2) %>raise "Implement <%= @class_name %>.perform before making the tool available"
+<%= "  " * (@class_modules.length + 1) %>end
+<% else -%>
+<%= "  " * (@class_modules.length + 1) %>annotations read_only_hint: true,
+<%= "  " * (@class_modules.length + 2) %>destructive_hint: false,
+<%= "  " * (@class_modules.length + 2) %>idempotent_hint: true,
+<%= "  " * (@class_modules.length + 2) %>open_world_hint: false
+
+<%= "  " * (@class_modules.length + 1) %>def self.available_to?(_context)
+<%= "  " * (@class_modules.length + 2) %>true
+<%= "  " * (@class_modules.length + 1) %>end
+
+<%= "  " * (@class_modules.length + 1) %>def self.authorize!(_context, arguments:)
+<%= "  " * (@class_modules.length + 2) %># TODO: enforce your policy; raise Hitch::MCP::Forbidden to deny.
+<%= "  " * (@class_modules.length + 1) %>end
+
+<%= "  " * (@class_modules.length + 1) %>def self.perform(_context, arguments:)
+<%= "  " * (@class_modules.length + 2) %>Hitch::MCP::Result.text("<%= @tool_name %> is wired up; implement perform to do real work")
+<%= "  " * (@class_modules.length + 1) %>end
+<% end -%>
+<%= "  " * @class_modules.length %>end
+<% @class_modules.length.times.reverse_each do |index| -%>
+<%= "  " * index %>end
+<% end -%>

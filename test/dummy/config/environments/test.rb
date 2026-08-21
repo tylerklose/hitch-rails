@@ -26,7 +26,25 @@ Rails.application.configure do
   config.action_dispatch.show_exceptions = :rescuable
 
   # Disable request forgery protection in test environment.
-  config.action_controller.allow_forgery_protection = false
+  config.action_controller.allow_forgery_protection = ENV["HITCH_CONFORMANCE"] == "1"
+
+  # Conformance and migration gates use disposable databases. Never let those
+  # adapter-specific runs rewrite the canonical checked-in dummy schema.
+  config.active_record.dump_schema_after_migration = false if ENV["HITCH_CONFORMANCE"] == "1"
+
+  if (conformance_log = ENV["HITCH_CONFORMANCE_RAILS_LOG"]).present?
+    # The harness pre-creates this file at 0600. Give Rails and Active Record
+    # the same logger so no request/SQL output falls back to the workspace's
+    # ignored test/dummy/log/test.log.
+    log_io = File.open(conformance_log, File::WRONLY | File::APPEND | File::CREAT, 0o600)
+    log_io.sync = true
+    config.logger = ActiveSupport::TaggedLogging.new(ActiveSupport::Logger.new(log_io))
+  end
+
+  if (canary_file = ENV["HITCH_CONFORMANCE_CANARY_FILE"]).present?
+    require Rails.root.join("../conformance/authorization/credential_canary_middleware").to_s
+    config.middleware.use Hitch::Conformance::CredentialCanaryMiddleware, path: canary_file
+  end
 
   # Print deprecation notices to the stderr.
   config.active_support.deprecation = :stderr

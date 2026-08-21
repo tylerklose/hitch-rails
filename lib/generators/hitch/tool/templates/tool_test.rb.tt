@@ -1,0 +1,58 @@
+# frozen_string_literal: true
+
+require "test_helper"
+require "hitch/mcp/test_helper"
+
+class <%= @test_class_name %> < ActionDispatch::IntegrationTest
+  # post_mcp drives your mounted /mcp endpoint over real HTTP — see
+  # Hitch::MCP::TestHelper.
+  include Hitch::MCP::TestHelper
+
+  setup do
+    # post_mcp needs a real bearer token. Point this at however your tests
+    # get a signed-in user — a fixture, a factory, or a record created here.
+    @token = mint_mcp_token(principal: User.first!)
+  end
+<% if deny_default? -%>
+
+  test "stays hidden until the host implements and opens it" do
+    post_mcp(method: "tools/list", token: @token)
+
+    assert_response :success
+    tools = JSON.parse(response.body).dig("result", "tools")
+    refute_includes tools.map { |tool| tool.fetch("name") }, "<%= @tool_name %>"
+  end
+
+  test "calls are refused while unavailable" do
+    post_mcp(
+      method: "tools/call",
+      token: @token,
+      params: { name: "<%= @tool_name %>", arguments: {} }
+    )
+
+    assert_response :success
+    assert_equal(-32602, JSON.parse(response.body).dig("error", "code"))
+  end
+<% else -%>
+
+  test "is listed for an authorized principal" do
+    post_mcp(method: "tools/list", token: @token)
+
+    assert_response :success
+    tools = JSON.parse(response.body).dig("result", "tools")
+    assert_includes tools.map { |tool| tool.fetch("name") }, "<%= @tool_name %>"
+  end
+
+  test "responds when called" do
+    post_mcp(
+      method: "tools/call",
+      token: @token,
+      params: { name: "<%= @tool_name %>", arguments: {} }
+    )
+
+    assert_response :success
+    result = JSON.parse(response.body).fetch("result")
+    assert_includes result.dig("content", 0, "text"), "<%= @tool_name %>"
+  end
+<% end -%>
+end

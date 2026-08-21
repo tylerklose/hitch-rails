@@ -7,14 +7,17 @@ project.
 
 ## Supported versions
 
-The gem is pre-1.0 and has no published RubyGems release yet — adopters
-consume it as a git dependency. Security fixes land on `main`, and
-adopters pinning a commit `ref:` should expect to move that ref.
+The gem is pre-1.0. Security fixes land on `main` and ship in the next
+release; only the latest release line is supported.
 
 | Version | Supported |
 | ------- | --------- |
-| `main`  | ✅        |
-| 0.1.x (pre-release) | ✅ |
+| latest 0.2.x release, and `main` | ✅ |
+
+The supported runtime matrix is Ruby `>= 3.3, < 4.1`, Rails `>= 7.2, < 8.2`,
+and SQLite or PostgreSQL. Reports that reproduce only on an unsupported
+runtime, adapter, or client version may still reveal a real bug, but the
+maintainer will first confirm them on that matrix.
 
 ## Reporting a vulnerability
 
@@ -62,22 +65,34 @@ The authorization substrate the gem owns:
 - `redirect_uri` validation and matching (`Hitch::UriValidation`)
 - RFC 8707 audience binding — a token accepted for the wrong resource
 - Dynamic Client Registration — client impersonation, registration
-  poisoning
+  poisoning, strict JSON admission, bounded metadata, mode enforcement, and
+  shared-store rate limiting
 - Discovery metadata (`/.well-known/*`) — issuer or endpoint
-  manipulation
+  manipulation. The issuer is fixed by `config.resource_uri`; accepted ingress
+  aliases and forwarded headers cannot select it.
+- Pre-instrumentation size, shape, duplicate-parameter, and secret-redaction
+  boundaries on authorize, token, revoke, and registration requests
 - Consent-screen CSRF, clickjacking, or scope escalation
 - CORS policy in `Hitch::CorsSupport`
+- `Hitch::MCP::Endpoint` Host/Origin/method/authentication ordering, canonical
+  protected-resource challenge, media/header validation, raw body cap,
+  duplicate-member rejection, reserved argument handling, callback isolation,
+  fleet-shared authenticated admission, structural notification redaction, and
+  stable error sanitization
+- `hitch:doctor` output redaction, admission-store probe isolation/expiry/cleanup, and
+  its guarantee not to mutate application data or repair host configuration
 
 ### Out of scope
 
-- **The host application's `/mcp` endpoint and tool dispatch.** The host
-  owns those; the gem only supplies bearer validation and the response
-  envelope. Report tool-level authorization bugs to the application, not
-  here.
+- **The host application's tool implementation and business policy.** Report
+  tool-level authorization bugs to the application. Authentication, admission,
+  discovery challenges, and response shaping supplied by
+  `Hitch::MCP::Endpoint` remain Hitch's responsibility and are in scope.
 - **Documented adopter misconfiguration.** The README's *Adopter security
-  requirements* section lists four host settings the gem depends on
-  (`config.hosts`, CSRF on the consent path, `config.resource_uri`,
-  `trusted_proxies`). A report that "a host ignoring these is
+  requirements* section lists the host settings the gem depends on
+  (`allowed_hosts`, `allowed_origins`, CSRF on the consent path,
+  `resource_uri`, `trusted_proxies`, and a shared DCR store when DCR is
+  enabled in production). A report that "a host ignoring these is
   exploitable" describes known, documented behavior.
 
   A report that **following them is still insufficient** is very much in
@@ -91,10 +106,10 @@ This project tracks the MCP specification closely, and a gap between what
 the spec requires and what the gem implements is usually a **public
 issue**, not a security report.
 
-Example: the gem does not yet send the RFC 9207 `iss` parameter on
-authorization responses. That's a conformance gap tracked in the open,
-because `iss` is a client-side check against authorization-server mix-up
-— its absence doesn't let anyone extract a token from a Hitch server.
+Example: local HTTP development emits the RFC 9207 `iss` parameter so the
+security path is exercised, but does not advertise support because RFC 9207
+requires an HTTPS issuer. That deliberate development exception is a public
+conformance limitation, not a production security promise.
 
 The line: if exploiting it requires only a client that talks to this
 server, report it privately. If it's "this doesn't match the spec text,"

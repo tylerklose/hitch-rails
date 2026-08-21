@@ -10,46 +10,58 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_29_183000) do
-  # These are extensions that must be enabled in order to support this database
-  enable_extension "pg_catalog.plpgsql"
-
+ActiveRecord::Schema[7.2].define(version: 2026_08_17_000000) do
   create_table "hitch_access_tokens", force: :cascade do |t|
-    t.string "authorization_code_digest"
+    t.string "principal_type", null: false
+    t.string "principal_id", null: false
     t.string "client_id", null: false
     t.string "client_name"
+    t.string "authorization_code_digest"
+    t.datetime "code_expires_at"
+    t.string "redirect_uri"
     t.string "code_challenge", null: false
     t.string "code_challenge_method", default: "S256", null: false
-    t.datetime "code_expires_at"
-    t.datetime "created_at", null: false
-    t.datetime "expires_at"
-    t.bigint "principal_id", null: false
-    t.string "principal_type", null: false
-    t.string "redirect_uri"
-    t.string "resource_uri"
-    t.datetime "revoked_at"
-    t.string "scopes", default: "mcp", null: false
     t.string "token_digest"
+    t.datetime "expires_at"
+    t.datetime "revoked_at"
+    t.string "resource_uri"
+    t.string "scopes", default: "mcp", null: false
+    t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["authorization_code_digest"], name: "index_hitch_access_tokens_on_authorization_code_digest", unique: true, where: "(authorization_code_digest IS NOT NULL)"
+    t.index ["authorization_code_digest"], name: "index_hitch_access_tokens_on_authorization_code_digest", unique: true, where: "authorization_code_digest IS NOT NULL"
     t.index ["principal_type", "principal_id"], name: "index_hitch_access_tokens_on_principal"
-    t.index ["token_digest"], name: "index_hitch_access_tokens_on_token_digest", unique: true, where: "(token_digest IS NOT NULL)"
+    t.index ["token_digest"], name: "index_hitch_access_tokens_on_token_digest", unique: true, where: "token_digest IS NOT NULL"
+  end
+
+  create_table "hitch_client_redirect_uris", force: :cascade do |t|
+    t.integer "hitch_client_id", null: false
+    t.string "uri", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["hitch_client_id", "uri"], name: "index_hitch_client_redirect_uris_on_client_and_uri", unique: true
   end
 
   create_table "hitch_clients", force: :cascade do |t|
-    t.string "application_type"
     t.string "client_id", null: false
     t.string "client_name", null: false
+    t.string "application_type"
+    t.string "token_endpoint_auth_method", default: "none", null: false
+    t.string "client_secret_digest"
+    t.datetime "client_secret_issued_at"
+    t.datetime "client_secret_rotated_at"
     t.datetime "created_at", null: false
-    t.string "redirect_uris", default: [], null: false, array: true
     t.datetime "updated_at", null: false
     t.index ["client_id"], name: "index_hitch_clients_on_client_id", unique: true
+    t.check_constraint "(token_endpoint_auth_method = 'none' AND client_secret_digest IS NULL AND client_secret_issued_at IS NULL AND client_secret_rotated_at IS NULL) OR (token_endpoint_auth_method = 'client_secret_basic' AND client_secret_digest IS NOT NULL AND client_secret_issued_at IS NOT NULL)", name: "hitch_clients_secret_consistency_check"
+    t.check_constraint "token_endpoint_auth_method IN ('none', 'client_secret_basic')", name: "hitch_clients_auth_method_check"
   end
 
   create_table "users", force: :cascade do |t|
-    t.datetime "created_at", null: false
     t.string "email", null: false
+    t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["email"], name: "index_users_on_email", unique: true
   end
+
+  add_foreign_key "hitch_client_redirect_uris", "hitch_clients", on_delete: :cascade
 end

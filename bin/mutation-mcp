@@ -1,0 +1,47 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "open3"
+require "yaml"
+
+ROOT = File.expand_path("..", __dir__)
+MANIFEST_PATHS = %w[
+  test/contracts/mcp_m4_mutation_subjects.yml
+  test/contracts/mcp_post_m4_mutation_subjects.yml
+].freeze
+MANIFESTS = MANIFEST_PATHS.map do |path|
+  YAML.safe_load_file(File.join(ROOT, path), permitted_classes: [], aliases: false)
+end.freeze
+SUBJECTS = MANIFESTS.flat_map { |manifest| manifest.fetch("subjects") }
+  .map { |entry| entry.fetch("expression") }.freeze
+DOMAINS = MANIFESTS.flat_map { |manifest| manifest.fetch("required_domains") }.freeze
+
+jobs = Integer(ENV.fetch("HITCH_MUTATION_JOBS", "1"), 10)
+timeout_seconds = Integer(ENV.fetch("HITCH_MUTATION_TIMEOUT", "30"), 10)
+abort "HITCH_MUTATION_JOBS must be positive" unless jobs.positive?
+abort "HITCH_MUTATION_TIMEOUT must be positive" unless timeout_seconds.positive?
+
+command = [
+  "bundle", "exec", "mutant", "run",
+  "--integration", "minitest",
+  "--usage", "opensource",
+  "-rmutant/integration/minitest",
+  "-Itest",
+  "-rtest_helper",
+  "--jobs", jobs.to_s,
+  "--mutation-timeout", timeout_seconds.to_s,
+  *SUBJECTS
+]
+
+puts "+ #{command.join(' ')}"
+environment = { "RAILS_ENV" => "test", "HITCH_MUTATION_GATE" => "1" }
+status = nil
+Open3.popen2e(environment, *command, chdir: ROOT, pgroup: true) do |_stdin, output, wait_thread|
+  output.each { |chunk| $stdout.write(chunk) }
+  status = wait_thread.value
+end
+
+abort "MCP mutation gate failed" unless status.success?
+
+puts "MCP mutation gate passed: #{SUBJECTS.length} exact subjects across " \
+  "#{DOMAINS.length} domains, zero survivors or timeouts"

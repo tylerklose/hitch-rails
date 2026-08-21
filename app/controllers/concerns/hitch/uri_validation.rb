@@ -18,18 +18,19 @@ module Hitch
     # http (which RFC 8252 permits for native apps).
     def valid_redirect_uri?(uri)
       parsed = URI.parse(uri)
-      return false if parsed.host.blank?
+      return false if parsed.hostname.blank?
+      return false unless parsed.userinfo.nil? && !userinfo_component_present?(uri)
       # RFC 6749 §3.1.2: the redirection endpoint URI MUST NOT include a
       # fragment component. Enforced because redirect_uri_matches? does
       # not compare fragments either, so one would otherwise ride through
       # unvalidated — and a client that scans location.hash for response
       # parameters (a real pattern in libraries supporting both query and
       # fragment response modes) would read whatever was smuggled there.
-      return false if parsed.fragment.present?
+      return false unless parsed.fragment.nil?
 
       case parsed.scheme
       when "https" then true
-      when "http"  then loopback_host?(parsed.host)
+      when "http"  then loopback_host?(parsed.hostname)
       else false
       end
     rescue URI::InvalidURIError
@@ -37,7 +38,11 @@ module Hitch
     end
 
     def loopback_host?(host)
-      host == "localhost" || host == "127.0.0.1"
+      Hitch::ResourceUri::LOOPBACK_HOSTS.include?(host)
+    end
+
+    def userinfo_component_present?(value)
+      Hitch::ResourceUri.userinfo_component_present?(value)
     end
 
     # Exact comparison, with exactly one exception.
@@ -66,34 +71,46 @@ module Hitch
       reg = URI.parse(registered)
       inb = URI.parse(inbound)
 
-      return false if reg.fragment.present? || inb.fragment.present?
-      return false if reg.userinfo.present? || inb.userinfo.present?
+      return false unless reg.fragment.nil? && inb.fragment.nil?
+      return false unless reg.userinfo.nil? && inb.userinfo.nil?
+      return false if userinfo_component_present?(registered) || userinfo_component_present?(inbound)
       return false unless reg.scheme == inb.scheme
-      return false unless reg.host == inb.host
+      return false unless reg.hostname == inb.hostname
       return false unless reg.path == inb.path
       return false unless reg.query == inb.query
 
-      return true if reg.scheme == "http" && loopback_host?(reg.host)
+      return true if reg.scheme == "http" && loopback_host?(reg.hostname)
 
       reg.port == inb.port
     rescue URI::InvalidURIError
       false
     end
 
-    # RFC 8707 §2: `resource` parameter MUST be an absolute URI as
-    # specified by Section 4.3 of RFC 3986. MUST NOT include a fragment
-    # component. Schemes other than http/https don't make sense as MCP
-    # server audiences.
-    def valid_resource_uri?(uri)
-      parsed = URI.parse(uri)
-      return false unless parsed.absolute?
-      return false unless %w[http https].include?(parsed.scheme)
-      return false if parsed.host.blank?
-      return false if parsed.fragment.present?
+    # RFC 8707 audience binding, shared by the authorize and token
+    # endpoints: the request's `resource` must canonicalize to exactly
+    # the resource this server is configured to protect. Returns the
+    # canonical resource string, or nil after rendering the OAuth error.
+    def require_canonical_resource(value)
+      if value.blank?
+        oauth_error("invalid_target", "resource is required")
+        return nil
+      end
 
-      true
-    rescue URI::InvalidURIError
-      false
+      allow_loopback = Rails.env.local?
+      requested = Hitch::ResourceUri.canonicalize!(value, allow_loopback_http: allow_loopback)
+      configured = Hitch::ResourceUri.canonicalize!(
+        Hitch.configuration.resource_uri,
+        allow_loopback_http: allow_loopback
+      )
+      unless requested == configured
+        oauth_error("invalid_target", "resource does not identify this MCP server")
+        return nil
+      end
+
+      requested
+    rescue Hitch::ResourceUri::Invalid => error
+      oauth_error("invalid_target", error.message)
+      nil
     end
   end
 end

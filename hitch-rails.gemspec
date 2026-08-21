@@ -6,19 +6,15 @@ Gem::Specification.new do |spec|
   spec.authors     = [ "Tyler Klose" ]
   spec.email       = [ "tylerklose@gmail.com" ]
   spec.homepage    = "https://github.com/tylerklose/hitch-rails"
-  spec.summary     = "OAuth 2.1 + PKCE authorization server for Rails-hosted MCP servers"
+  spec.summary     = "Opinionated authenticated MCP framework for Rails"
   spec.description = <<~DESC
-    Hitch turns a Rails app into a spec-conformant MCP authorization
-    server. Bundles OAuth 2.1 + PKCE (S256), Dynamic Client Registration
-    (RFC 7591), Resource Indicators with audience binding (RFC 8707),
-    discovery metadata (RFC 8414 + RFC 9728), token revocation (RFC 7009),
-    and CORS for browser-based MCP clients. The host owns the /mcp
-    transport and its tool dispatch; Hitch provides the auth substrate it
-    validates tokens against, plus a ServerEndpoint concern for
-    spec-correct MCP Streamable HTTP response shaping. The principal model
-    is host-configurable (defaults to User) so apps with different identity
-    schemas can adopt without surgery. Postgres required (the clients
-    table uses an array column).
+    Hitch turns a Rails app into an MCP authorization server: OAuth 2.1 +
+    PKCE, audience-bound tokens, discovery metadata, revocation, and
+    default-deny CORS, built on the sign-in the app already has. It adds an
+    authenticated /mcp endpoint backed by the official Ruby MCP SDK and an
+    explicit deny-default tool registry with schema-validated, size-capped
+    results. Request admission counts through the app's own cache store — no
+    Redis, no separate auth server — with SQLite and PostgreSQL supported.
   DESC
   spec.license = "MIT"
 
@@ -28,17 +24,41 @@ Gem::Specification.new do |spec|
   # same place.
   spec.metadata["changelog_uri"] = "https://github.com/tylerklose/hitch-rails/blob/main/CHANGELOG.md"
   spec.metadata["bug_tracker_uri"] = "https://github.com/tylerklose/hitch-rails/issues"
+  spec.metadata["documentation_uri"] = "https://github.com/tylerklose/hitch-rails/blob/main/docs/public_api/0.2.0.md"
   spec.metadata["rubygems_mfa_required"] = "true"
 
-  spec.required_ruby_version = ">= 3.3.0"
+  spec.required_ruby_version = Gem::Requirement.new(">= 3.3", "< 4.1")
 
   spec.files = Dir.chdir(File.expand_path(__dir__)) do
-    Dir["{app,config,db,lib}/**/*", "MIT-LICENSE", "Rakefile", "README.md", "CHANGELOG.md"]
+    files = %w[
+      CHANGELOG.md
+      MIT-LICENSE
+      README.md
+      SECURITY.md
+      config/routes.rb
+      docs/public_api/0.2.0.md
+      docs/operator/doctor.md
+      docs/operator/rate_limiting.md
+      docs/removing.md
+      lib/generators/hitch/install/templates/controller.rb.tt
+      lib/generators/hitch/tool/templates/tool.rb.tt
+      lib/generators/hitch/tool/templates/tool_test.rb.tt
+    ]
+    files.concat(
+      Dir[
+        "app/controllers/**/*.rb",
+        "app/models/**/*.rb",
+        "app/views/**/*.erb",
+        "db/migrate/*.rb",
+        "lib/**/*.rake",
+        "lib/**/*.rb"
+      ]
+    )
+    files.select { |path| File.file?(path) }.sort
   end
 
-  # This gem provides the OAuth/auth substrate only — it does not use
-  # the `mcp` SDK itself (the host owns the /mcp transport endpoint and
-  # depends on `mcp` directly). Adding it here would force a heavy,
-  # version-coupled dependency on every adopter for nothing.
-  spec.add_dependency "rails", ">= 7.1", "< 10"
+  spec.add_dependency "json", ">= 2.13", "< 3"
+  spec.add_dependency "json_schemer", ">= 2.4", "< 3"
+  spec.add_dependency "mcp", ">= 1.2", "< 2"
+  spec.add_dependency "rails", ">= 8.0", "< 8.2"
 end

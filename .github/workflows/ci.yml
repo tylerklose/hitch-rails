@@ -5,9 +5,74 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  test:
+  supported-matrix:
+    name: Ruby ${{ matrix.ruby }} / ${{ matrix.rails }} / ${{ matrix.adapter }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ruby: "3.3"
+            rails: "8.0"
+            adapter: sqlite3
+            profile: rails_8_0_sqlite
+            gemfile: gemfiles/rails_8_0_sqlite.gemfile
+          - ruby: "4.0"
+            rails: "8.1"
+            adapter: postgresql
+            profile: rails_8_1_postgresql
+            gemfile: gemfiles/rails_8_1_postgresql.gemfile
+
+    env:
+      BUNDLE_GEMFILE: ${{ github.workspace }}/${{ matrix.gemfile }}
+      HITCH_FAIL_ON_SKIPS: "1"
+      HITCH_APPRAISAL_POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+      HITCH_EXPECTED_RUBY: ${{ matrix.ruby }}
+      RAILS_ENV: test
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Ruby ${{ matrix.ruby }}
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+
+      - name: Verify eager loading
+        run: bin/ci-appraisal ${{ matrix.profile }} -- bundle exec rake app:zeitwerk:check
+
+      - name: Run supported-lane suite
+        run: bin/ci-appraisal ${{ matrix.profile }} -- bin/rails test
+
+      - name: Run style gate
+        run: bin/rubocop
+
+  checkpoint-gates:
+    name: Aggregate checkpoint and package gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: [supported-matrix]
 
     services:
       postgres:
@@ -24,26 +89,70 @@ jobs:
           --health-retries=5
 
     env:
+      HITCH_APPRAISAL_POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+      HITCH_MIGRATIONS_POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
       RAILS_ENV: test
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/dummy_test
-
-    strategy:
-      fail-fast: false
-      matrix:
-        ruby: ["3.3", "3.4"]
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
-      - name: Set up Ruby ${{ matrix.ruby }}
+      # The runner context is not available in job-level env, so the
+      # evidence directory is exported at step level instead.
+      - name: Point conformance evidence at the runner temp directory
+        run: echo "HITCH_CONFORMANCE_SERVER_EVIDENCE_DIR=$RUNNER_TEMP/server-conformance" >> "$GITHUB_ENV"
+
+      - name: Set up Ruby 4.0
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: ${{ matrix.ruby }}
+          ruby-version: "4.0"
           bundler-cache: true
 
-      - name: Create + migrate dummy DB
-        working-directory: test/dummy
-        run: bin/rails db:create db:migrate
+      - name: Set up pinned authorization conformance Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "23.7.0"
+          package-manager-cache: false
 
-      - name: Run tests
-        run: bundle exec rails test
+      - name: Set up pinned authorization conformance npm
+        run: npm install --global npm@11.1.0
+
+      - name: Install Rails 8.0 / SQLite appraisal
+        env:
+          BUNDLE_GEMFILE: gemfiles/rails_8_0_sqlite.gemfile
+        run: bundle install
+
+      - name: Install Rails 8.1 / PostgreSQL appraisal
+        env:
+          BUNDLE_GEMFILE: gemfiles/rails_8_1_postgresql.gemfile
+        run: bundle install
+
+      - name: Run official authorization metadata profile
+        env:
+          HITCH_CONFORMANCE_EVIDENCE_DIR: ${{ runner.temp }}/auth-conformance/metadata
+        run: bin/conformance-auth --profile metadata
+
+      - name: Run reviewed resource-aware authorization grants
+        env:
+          HITCH_CONFORMANCE_EVIDENCE_DIR: ${{ runner.temp }}/auth-conformance/resource-aware-grants
+        run: bin/conformance-auth --profile resource-aware-grants
+
+      - name: Run aggregate CI
+        run: bin/ci
+
+      - name: Upload sanitized authorization conformance evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: hitch-authorization-conformance-sanitized
+          if-no-files-found: error
+          retention-days: 1
+          path: ${{ runner.temp }}/auth-conformance
+
+      - name: Upload sanitized server conformance evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: hitch-server-conformance-sanitized
+          if-no-files-found: error
+          retention-days: 1
+          path: ${{ runner.temp }}/server-conformance

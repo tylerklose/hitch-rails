@@ -40,7 +40,7 @@ class Hitch::CimdCheckTaskTest < ActiveSupport::TestCase
 
   test "a reachable document reports ok and exits zero" do
     document = CIMD::Document.new(client_id: DOC_URL, client_name: "X", redirect_uris: [ "https://a.test/cb" ])
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { [ document, 3600 ] }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { [ document, 3600 ] }) do
       output, status = invoke(DOC_URL)
       assert_nil status, "a working probe must not exit non-zero"
       assert_match(/outcome:\s+ok/, output)
@@ -49,7 +49,7 @@ class Hitch::CimdCheckTaskTest < ActiveSupport::TestCase
 
   # The case the whole command exists for.
   test "an unreachable document reports it, names egress, and exits non-zero" do
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { CIMD::HOST_FAILURE }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { CIMD::HOST_FAILURE }) do
       output, status = invoke(DOC_URL)
       assert_equal 1, status
       assert_match(/outcome:\s+unreachable/, output)
@@ -65,7 +65,7 @@ class Hitch::CimdCheckTaskTest < ActiveSupport::TestCase
     document = CIMD::Document.new(client_id: DOC_URL, client_name: "X", redirect_uris: [ "https://a.test/cb" ])
     reached = false
 
-    stub_class_method(CIMD, :fetch_and_validate, ->(_id, *) { reached = true; [ document, 3600 ] }) do
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { reached = true; [ document, 3600 ] }) do
       output, status = invoke(DOC_URL)
       assert reached, "the task must attempt the fetch even while the feature is off"
       assert_nil status

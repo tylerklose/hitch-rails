@@ -1,0 +1,287 @@
+{
+  "model_name": "hitch_mcp_result_normalization",
+  "_intent_notes": [
+    "Exhaustive terminal-path model for the M4.2 closed Result boundary.",
+    "Within and exact cap boundaries are successful; over-cap, invalid, schema, serialization, and exception paths are generic.",
+    "Only an explicit Result.error within the cap may preserve its host-approved message.",
+    "Forced rows pin all fourteen valid paths; this is a truth table rather than a pairwise-reduction claim."
+  ],
+  "parameters": [
+    {
+      "name": "result_path",
+      "values": [
+        "text",
+        "structured_schema_accepts",
+        "structured_schema_missing",
+        "structured_schema_rejects",
+        "explicit_error",
+        "invalid_return",
+        "serialization_failure",
+        "host_raises"
+      ]
+    },
+    {
+      "name": "wire_size",
+      "values": ["within", "exact", "over", "not_applicable"]
+    },
+    {
+      "name": "public_outcome",
+      "values": ["success", "explicit_safe_error", "generic_error"]
+    }
+  ],
+  "constraints": [
+    {
+      "type": "invalid_pair",
+      "_why": "Successful text always has a serialized size.",
+      "if": { "parameter": "result_path", "value": "text" },
+      "then_not": { "parameter": "wire_size", "value": "not_applicable" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "result_path", "value": "structured_schema_accepts" },
+      "then_not": { "parameter": "wire_size", "value": "not_applicable" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "result_path", "value": "explicit_error" },
+      "then_not": { "parameter": "wire_size", "value": "not_applicable" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "Failures before a valid bounded result have no applicable size boundary.",
+      "if": { "parameter": "result_path", "value": "structured_schema_missing" },
+      "then_not": { "parameter": "wire_size", "value": "within" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "result_path", "value": "structured_schema_missing" },
+      "then_not": { "parameter": "wire_size", "value": "exact" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "result_path", "value": "structured_schema_missing" },
+      "then_not": { "parameter": "wire_size", "value": "over" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "result_path", "value": "structured_schema_rejects" },
+      "then_not": { "parameter": "wire_size", "value": "within" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "result_path", "value": "structured_schema_rejects" },
+      "then_not": { "parameter": "wire_size", "value": "exact" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "result_path", "value": "structured_schema_rejects" },
+      "then_not": { "parameter": "wire_size", "value": "over" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "result_path", "value": "invalid_return" },
+      "then_not": { "parameter": "wire_size", "value": "within" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "result_path", "value": "invalid_return" },
+      "then_not": { "parameter": "wire_size", "value": "exact" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "result_path", "value": "invalid_return" },
+      "then_not": { "parameter": "wire_size", "value": "over" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "result_path", "value": "serialization_failure" },
+      "then_not": { "parameter": "wire_size", "value": "within" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "result_path", "value": "serialization_failure" },
+      "then_not": { "parameter": "wire_size", "value": "exact" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "result_path", "value": "serialization_failure" },
+      "then_not": { "parameter": "wire_size", "value": "over" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "result_path", "value": "host_raises" },
+      "then_not": { "parameter": "wire_size", "value": "within" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "result_path", "value": "host_raises" },
+      "then_not": { "parameter": "wire_size", "value": "exact" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "result_path", "value": "host_raises" },
+      "then_not": { "parameter": "wire_size", "value": "over" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "Only Result.error can preserve an explicit message.",
+      "if": { "parameter": "result_path", "value": "text" },
+      "then_not": { "parameter": "public_outcome", "value": "explicit_safe_error" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "result_path", "value": "structured_schema_accepts" },
+      "then_not": { "parameter": "public_outcome", "value": "explicit_safe_error" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "result_path", "value": "explicit_error" },
+      "then_not": { "parameter": "public_outcome", "value": "success" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "Every pre-result failure is generic.",
+      "if": { "parameter": "wire_size", "value": "not_applicable" },
+      "then_not": { "parameter": "public_outcome", "value": "success" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "wire_size", "value": "not_applicable" },
+      "then_not": { "parameter": "public_outcome", "value": "explicit_safe_error" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "Over-cap results are always generic.",
+      "if": { "parameter": "wire_size", "value": "over" },
+      "then_not": { "parameter": "public_outcome", "value": "success" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "wire_size", "value": "over" },
+      "then_not": { "parameter": "public_outcome", "value": "explicit_safe_error" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "A within-cap result is never generic.",
+      "if": { "parameter": "wire_size", "value": "within" },
+      "then_not": { "parameter": "public_outcome", "value": "generic_error" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "wire_size", "value": "exact" },
+      "then_not": { "parameter": "public_outcome", "value": "generic_error" }
+    },
+    {
+      "type": "forced",
+      "assignments": [
+        { "parameter": "result_path", "value": "text" },
+        { "parameter": "wire_size", "value": "within" },
+        { "parameter": "public_outcome", "value": "success" }
+      ]
+    },
+    {
+      "type": "forced",
+      "assignments": [
+        { "parameter": "result_path", "value": "text" },
+        { "parameter": "wire_size", "value": "exact" },
+        { "parameter": "public_outcome", "value": "success" }
+      ]
+    },
+    {
+      "type": "forced",
+      "assignments": [
+        { "parameter": "result_path", "value": "text" },
+        { "parameter": "wire_size", "value": "over" },
+        { "parameter": "public_outcome", "value": "generic_error" }
+      ]
+    },
+    {
+      "type": "forced",
+      "assignments": [
+        { "parameter": "result_path", "value": "structured_schema_accepts" },
+        { "parameter": "wire_size", "value": "within" },
+        { "parameter": "public_outcome", "value": "success" }
+      ]
+    },
+    {
+      "type": "forced",
+      "assignments": [
+        { "parameter": "result_path", "value": "structured_schema_accepts" },
+        { "parameter": "wire_size", "value": "exact" },
+        { "parameter": "public_outcome", "value": "success" }
+      ]
+    },
+    {
+      "type": "forced",
+      "assignments": [
+        { "parameter": "result_path", "value": "structured_schema_accepts" },
+        { "parameter": "wire_size", "value": "over" },
+        { "parameter": "public_outcome", "value": "generic_error" }
+      ]
+    },
+    {
+      "type": "forced",
+      "assignments": [
+        { "parameter": "result_path", "value": "explicit_error" },
+        { "parameter": "wire_size", "value": "within" },
+        { "parameter": "public_outcome", "value": "explicit_safe_error" }
+      ]
+    },
+    {
+      "type": "forced",
+      "assignments": [
+        { "parameter": "result_path", "value": "explicit_error" },
+        { "parameter": "wire_size", "value": "exact" },
+        { "parameter": "public_outcome", "value": "explicit_safe_error" }
+      ]
+    },
+    {
+      "type": "forced",
+      "assignments": [
+        { "parameter": "result_path", "value": "explicit_error" },
+        { "parameter": "wire_size", "value": "over" },
+        { "parameter": "public_outcome", "value": "generic_error" }
+      ]
+    },
+    {
+      "type": "forced",
+      "assignments": [
+        { "parameter": "result_path", "value": "structured_schema_missing" },
+        { "parameter": "wire_size", "value": "not_applicable" },
+        { "parameter": "public_outcome", "value": "generic_error" }
+      ]
+    },
+    {
+      "type": "forced",
+      "assignments": [
+        { "parameter": "result_path", "value": "structured_schema_rejects" },
+        { "parameter": "wire_size", "value": "not_applicable" },
+        { "parameter": "public_outcome", "value": "generic_error" }
+      ]
+    },
+    {
+      "type": "forced",
+      "assignments": [
+        { "parameter": "result_path", "value": "invalid_return" },
+        { "parameter": "wire_size", "value": "not_applicable" },
+        { "parameter": "public_outcome", "value": "generic_error" }
+      ]
+    },
+    {
+      "type": "forced",
+      "assignments": [
+        { "parameter": "result_path", "value": "serialization_failure" },
+        { "parameter": "wire_size", "value": "not_applicable" },
+        { "parameter": "public_outcome", "value": "generic_error" }
+      ]
+    },
+    {
+      "type": "forced",
+      "assignments": [
+        { "parameter": "result_path", "value": "host_raises" },
+        { "parameter": "wire_size", "value": "not_applicable" },
+        { "parameter": "public_outcome", "value": "generic_error" }
+      ]
+    }
+  ]
+}

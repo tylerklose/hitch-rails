@@ -1,61 +1,57 @@
 # Hitch
 
 **Couple your Rails app to anything that speaks MCP.** Hitch is the hitch:
-it turns your Rails app into a spec-conformant MCP authorization server, so
+it turns your Rails app into an authorization server implemented against the
+MCP 2026-07-28 authorization profile, so
 Claude, ChatGPT, Cursor, Grok, and any other MCP client can connect to your
 app's tools with OAuth handled for you.
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](MIT-LICENSE)
 
-## What this is
+## Why
 
-A mountable Rails engine that bundles the spec-conformant authorization
-pieces an MCP server needs:
+**No Redis, no separate auth server, no new sign-in system.** Hitch uses what
+your app already has: request admission counts through your configured
+`config.cache_store`, and the OAuth consent screen identifies whoever your
+app's own authentication says is signed in (`current_user` or Rails 8's
+`Current.user`).
+
+The official Ruby MCP SDK (the `mcp` gem) ships client-side OAuth but no
+server-side auth helpers, and no Rails gem packaged the server-side
+OAuth 2.1 + PKCE plumbing an MCP server needs. Hitch fills that gap. It is
+opinionated about **what** to implement (the
+[2026-07-28 MCP authorization spec](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization))
+but unopinionated about **whom** that auth identifies — the host supplies the
+signed-in record.
+
+## What you get
+
+A mountable Rails engine that bundles the pieces an authenticated MCP server
+needs:
 
 - **OAuth 2.1 + PKCE (S256)** — the auth flow MCP clients (Claude Code,
   Claude.ai, Cursor, ChatGPT, etc.) use
-- **Dynamic Client Registration** (RFC 7591) — clients self-register, no
-  manual key minting
-- **Client ID Metadata Documents** — DCR's successor in MCP 2026-07-28;
-  an `https` URL as `client_id`, with the metadata fetched from it.
-  Opt-in (see below); DCR keeps working alongside it
-- **Resource Indicators with audience binding** (RFC 8707) — tokens
-  carry the audience they were issued for; the MCP server validates
-  them per the [2025-11-25 MCP authorization spec](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization)'s MUST
-- **Discovery metadata** (RFC 8414 + RFC 9728) —
-  `.well-known/oauth-authorization-server` +
-  `.well-known/oauth-protected-resource`
-- **Token revocation** (RFC 7009) — clients can invalidate sessions
-  cleanly
-- **CORS** for browser-based MCP clients (claude.ai, chatgpt.com, etc.)
-- **`Hitch::ServerEndpoint`** — an optional concern for your `/mcp`
-  controller that handles the MCP Streamable HTTP response contract,
-  bearer auth, and the discovery challenge (see below)
+- **An authenticated `/mcp` endpoint** — stateless POST/OPTIONS with strict
+  host/origin admission, bounded JSON, modern MCP headers, and dispatch
+  through the official Ruby SDK behind a private adapter
+- **An explicit tool registry** — deny-default availability, per-principal
+  filtering, static OAuth scope checks, and a closed result channel with
+  schema validation and size caps
+- **Client ID Metadata Documents** — the mechanism MCP 2026-07-28 deprecates
+  DCR in favour of; an `https` URL as `client_id`, with the metadata fetched
+  from it (opt-in)
+- **Optional Dynamic Client Registration** (RFC 7591), disabled by default
+- **Resource Indicators with audience binding** (RFC 8707), discovery
+  metadata (RFC 8414 + RFC 9728), and token revocation (RFC 7009)
+- **Default-deny CORS** with exact host-owned origin configuration
+- **Generators, a test helper, and a read-only `hitch:doctor`** for
+  installing, testing, and diagnosing the integration
 
-The host owns the `/mcp` endpoint and its tool dispatch; Hitch owns the
-auth substrate and the protocol envelope around it. Your controller asks
-`Hitch::AccessToken` whether the inbound bearer token is valid for the
-configured resource, and `Hitch::ServerEndpoint` shapes the response.
+SQLite and PostgreSQL are supported, on Ruby >= 3.3 and Rails 8.0 or 8.1.
+Host models with integer, UUID, or ULID primary keys all work: access tokens
+store principal IDs losslessly as strings.
 
-## Why this gem exists
-
-The official Ruby MCP SDK (the `mcp` gem) ships *client-side* OAuth but no
-server-side auth helpers, and no Ruby/Rails gem packaged the server-side
-OAuth 2.1 + PKCE plumbing an MCP server needs. Hitch fills that gap. It
-does **not** depend on the `mcp` SDK — the host owns the `/mcp` transport
-(and its `mcp` dependency); Hitch provides the auth substrate plus
-optional response-shaping helpers.
-
-It is opinionated about **what** to implement (the [2025-11-25 MCP
-authorization spec](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization))
-but unopinionated about **whom** that auth identifies — the principal
-model is host-configurable (defaults to `User`, but apps with team-scoped
-identity, Account models, or non-User principals configure their own).
-
-**Database:** Postgres only. The clients table uses a Postgres array
-column for `redirect_uris`.
-
-## Installation
+## Quickstart
 
 ```ruby
 # Gemfile
@@ -64,175 +60,231 @@ gem "hitch-rails"
 
 ```bash
 bundle install
-bin/rails generate hitch:install   # adds initializer + mounts the engine
-bin/rails db:migrate                   # picks up the gem's migrations automatically
+bin/rails generate hitch:install   # initializer, /mcp controller, registry, routes
+bin/rails db:migrate
+bin/rails generate hitch:tool echo # a working, registered tool + integration test
 ```
+
+Set `resource_uri` and `brand_name` in `config/initializers/hitch.rb`, and
+the generated tool answers `tools/call` — its generated test proves it over
+real HTTP once you point the test's one `principal:` line at however your
+tests get a signed-in user. Add `--deny-default` to generate a hardened tool
+instead: hidden, denying, and unimplemented until you fill it in.
+`bin/rails hitch:doctor` gives a read-only diagnosis of the install, and
+`bin/rails destroy hitch:install` / `destroy hitch:tool NAME` reverse the
+generators.
 
 ## Configuration
 
+The generated `config/initializers/hitch.rb` holds the knobs every host must
+set; everything else has a working default:
+
 ```ruby
-# config/initializers/hitch.rb
 Hitch.configure do |config|
-  config.principal_model = "User"  # default; constantize-friendly string
   config.resource_uri = "https://your-app.example.com/mcp"  # RFC 8707
   config.brand_name = "Your App"
-  config.supported_scopes = [ "mcp" ]
-  # Optional:
-  config.principal_method = :current_user  # method on controllers
-  config.login_path = "/sign_in"           # where to redirect when unauth'd
+  config.allowed_origins = []  # exact browser origins; denied by default
+  config.client_id_metadata_enabled = true
+  config.dynamic_client_registration_enabled = false
+  config.mcp.enabled = true
+  config.mcp.registry = "McpToolRegistry"
 end
 ```
 
-### Rails 8 built-in authentication
-
-If you use Rails 8's `bin/rails generate authentication`, the signed-in
-user is exposed as `Current.user` and there is **no** `current_user`
-controller method. Hitch handles this automatically: when the configured
-`principal_method` (default `:current_user`) isn't defined, it falls back
-to `Current.user`. No extra configuration needed — the consent screen
-identifies the signed-in user out of the box. (Devise and
-`has_secure_password` apps that expose `current_user` keep working
-unchanged.)
+The defaults behind it: `server_info` derives from the application name,
+`request_limit` is 120 requests per minute, request/result bodies cap at
+1 MiB, and admission counts through your `config.cache_store`. Tune them in
+the same block when you need to:
 
 ```ruby
-# config/routes.rb
+config.allowed_hosts = []                # additional exact proxy hosts
+config.supported_scopes = [ "mcp" ]
+config.mcp.server_info = { name: "your-app", version: "1.0.0" }
+config.mcp.scope_resolver = ->(principal:, access_token:, request:) {
+  principal.account                      # what tools see as context.scope
+}
+config.mcp.request_limit = { to: 120, within: 1.minute }
+config.mcp.max_request_bytes = 1.megabyte
+config.mcp.max_result_bytes = 1.megabyte
+config.principal_method = :current_user  # method on controllers
+config.login_path = "/sign_in"           # where to redirect when unauth'd
+```
+
+The generated route and controller:
+
+```ruby
+# config/routes.rb — the MCP route must precede the engine mount
+match "/mcp", to: "mcp#handle", via: :all
 mount Hitch::Engine => "/"  # exposes /oauth/* + /.well-known/*
 ```
 
-### Client ID Metadata Documents
+```ruby
+# app/controllers/mcp_controller.rb
+class McpController < ActionController::API
+  include Hitch::MCP::Endpoint
+end
+```
 
-MCP 2026-07-28 deprecates Dynamic Client Registration in favour of CIMD:
-a client uses an `https` URL as its `client_id`, and the authorization
-server fetches the client metadata from that URL.
+If you use Rails 8's built-in authentication generator, the signed-in user is
+`Current.user` and there is no `current_user` method. Hitch falls back to
+`Current.user` automatically; Devise and `has_secure_password` apps that
+expose `current_user` work unchanged.
 
-**New installations get this on; existing ones do not.** The generated
-initializer sets `config.client_id_metadata_enabled = true`, so a fresh
-install is spec-conformant through configuration you can see and own.
-The library's own fallback stays `false`, so upgrading an existing app
-changes nothing until you opt in.
+## Tools
 
-That split is deliberate. The feature needs your app to reach arbitrary
-https hosts on port 443 **directly** — Hitch ignores `http_proxy`, since
-honouring it would reach the destination from the proxy's egress rather
-than your app's, which is part of what keeps this from being an SSRF
-hole. A host whose only outbound path is a proxy would begin
-*advertising* support it cannot deliver, steering conformant clients off
-DCR and onto a path that fails every time. Nothing surfaces that until a
-client tries, so it is not a thing to switch on during a `bundle
-update`.
+Tools live in `app/tools/`, and the registry in
+`app/tools/mcp_tool_registry.rb`:
 
-Note the capability is a stable declaration, not a health signal.
-`client_id_metadata_document_supported` says this server supports CIMD;
-it is not a promise that every document fetch will succeed. It stays
-tied to this one setting and never varies at runtime.
+```ruby
+module McpTools
+  class Echo < Hitch::MCP::Tool
+    tool_name "echo"
+    description "Describe one signed-in account"
+    input_schema(
+      type: "object",
+      properties: { message: { type: "string" } },
+      required: [ "message" ],
+      additionalProperties: false
+    )
+    annotations read_only_hint: true, destructive_hint: false
 
-### Verifying egress before you enable it
+    def self.available_to?(context)
+      context.scope.can_use_echo?
+    end
+
+    def self.authorize!(context, arguments:)
+      raise Hitch::MCP::Forbidden unless context.scope.may_echo?(arguments.fetch("message"))
+    end
+
+    def self.perform(_context, arguments:)
+      Hitch::MCP::Result.text(arguments.fetch("message"))
+    end
+  end
+end
+
+class McpToolRegistry < Hitch::MCP::Registry
+  register McpTools::Echo, scopes: [ "mcp" ]
+end
+```
+
+Everything is deny-default: a tool is listed and callable only if it is
+registered, `available_to?` returns true for the resolved scope, and the
+token carries a registered OAuth scope. Arguments arrive as one recursively
+frozen, string-keyed Hash after SDK schema validation and `authorize!`.
+Results go through the closed `Hitch::MCP::Result` channel — `.text`,
+`.structured` (validated against the registered output schema), or `.error` —
+and are size-capped after serialization. Host exception messages are never
+exposed to clients.
+
+Request admission shares one fixed-window quota per principal/client across
+`server/discover`, `tools/list`, and `tools/call`, counted through your cache
+store with HMAC keys (no raw identifiers, no reset on token rotation).
+Production refuses a store that cannot count across processes
+(`:memory_store`, `:null_store`, `:file_store`); see the
+[request admission guide](docs/operator/rate_limiting.md).
+
+## Testing your tools
+
+```ruby
+require "hitch/mcp/test_helper"
+
+class AccountToolsTest < ActionDispatch::IntegrationTest
+  include Hitch::MCP::TestHelper
+
+  test "calls a reviewed tool" do
+    token = mint_mcp_token(principal: users(:one))
+
+    post_mcp(
+      method: "tools/call",
+      token: token,
+      params: { name: "echo", arguments: { message: "hello" } }
+    )
+
+    assert_response :success
+  end
+end
+```
+
+`mint_mcp_token` mints a real access token through the production
+authorization-code path for any persisted record your app signs in as;
+`post_mcp` builds the JSON-RPC envelope with the canonical Host and modern
+MCP headers; `mcp_headers(token:, method:)` is available for manual requests.
+`rails g hitch:tool` generates a test in exactly this shape.
+
+## Operator diagnosis
+
+```sh
+bin/rails hitch:doctor
+HITCH_DOCTOR_FORMAT=json bin/rails hitch:doctor
+```
+
+The read-only doctor reports on configuration, discovery, route order,
+migrations, the Registry, host/origin posture, the admission store, and
+package integrity, without exposing credentials or mutating anything. See the
+[doctor contract](docs/operator/doctor.md).
+
+## Client ID Metadata Documents
+
+MCP 2026-07-28 deprecates Dynamic Client Registration in favour of CIMD: a
+client uses an `https` URL as its `client_id` and the authorization server
+fetches the metadata from it. Deprecated is not removed — DCR stays available
+at MAY for authorization servers that do not support CIMD, and CIMD itself is
+a SHOULD. The spec's selection order puts pre-registered client credentials
+ahead of CIMD, with DCR after it. New installs get
+`config.client_id_metadata_enabled = true` from the generated initializer;
+the library default stays `false` so an upgrade never flips it silently.
+
+Enabling CIMD means `/oauth/authorize` makes outbound HTTPS requests to
+caller-chosen URLs, so each fetch is tightly constrained (https on 443 only,
+no redirects, DNS pinned after a non-public-range check, wall-clock budget,
+streamed size cap) and the volume is bounded by two caps:
+
+```ruby
+config.client_id_metadata_enabled = true
+config.client_id_metadata_cache_ttl = 3600             # document cache ceiling
+config.client_id_metadata_max_concurrent_fetches = 4   # protects your request pool
+config.client_id_metadata_fetches_per_minute = 20      # per signed-in principal
+```
+
+The host must be able to reach arbitrary https hosts directly — Hitch ignores
+`http_proxy`, which is part of what keeps this from being an SSRF hole. Verify
+egress before enabling:
 
 ```
 bin/rails 'hitch:cimd:check[https://some-client.example/client.json]'
 ```
 
-Runs the real fetch path — same SSRF constraints, same concurrency cap —
-against a document you trust, and reports. It never changes what
-discovery advertises.
+## Dynamic Client Registration
+
+`POST /oauth/register` is disabled by the generated initializer and discovery
+omits `registration_endpoint`. If you enable it, registration is
+unauthenticated, so it is rate-limited per `request.remote_ip` through your
+cache store and rejects malformed or oversized documents before persistence:
 
 ```ruby
-config.client_id_metadata_enabled = true         # opt in
-config.client_id_metadata_cache_ttl = 3600       # ceiling on how long a document is cached
-config.client_id_metadata_max_concurrent_fetches = 4   # nil disables; 0 blocks every fetch
-config.client_id_metadata_fetches_per_minute = 20      # per signed-in principal; nil disables
+config.dynamic_client_registration_enabled = true
+config.dynamic_client_registration_limit = { to: 20, within: 1.minute }
 ```
 
-Enabling CIMD means `/oauth/authorize` makes outbound HTTPS requests to
-URLs chosen by callers. Two separate things bound that.
+Behind a CDN or load balancer, set
+`config.action_dispatch.trusted_proxies` to exactly your proxy addresses —
+the quota is only as trustworthy as `remote_ip`.
 
-**Each fetch** is constrained by `Hitch::ClientIdMetadata`: `https` on
-port 443 only, no redirects followed, DNS resolved once with every
-returned address checked against non-public ranges and the connection
-then pinned to the checked address, a wall-clock budget covering DNS and
-connect and read together, and the response streamed with a size cap
-enforced as it arrives.
+## Hosts, origins, and preflight
 
-**How many fetches** is bounded by the two caps above, because
-constraining each one says nothing about how many a caller can provoke.
-The concurrency cap protects this server — a fetch can occupy a request
-thread for the whole budget, so without it enough slow ones saturate the
-pool. The per-principal rate limit protects everyone else: negative
-caching cannot close amplification on its own, since a wildcard DNS
-record yields unlimited distinct hosts and a host answering `404` yields
-unlimited distinct URLs, but neither trick changes who is asking.
-
-Negative caching lives in `Rails.cache`. Under a `NullStore` it does not
-apply, and the engine logs a warning at boot when CIMD is enabled
-without a real cache store in production.
-
-Both caps are in-process and unaffected by the cache store. That makes
-the per-principal limit atomic — the check and the increment have to be
-one operation, and splitting them across a cache read and write lets
-every caller the concurrency cap admits read the same value and write
-value+1, multiplying the limit by the cap rather than approaching it.
-The trade is that both bounds are per process, so a fleet ceiling is the
-configured value times the worker count.
-
-## Using a token from the host's MCP endpoint
-
-The host owns the `/mcp` route and the tool dispatch; the gem owns the
-protocol envelope. Include `Hitch::ServerEndpoint` in a **dedicated**
-MCP controller (it calls `skip_forgery_protection`, which is
-controller-wide — don't mix MCP and browser actions in one class) and it
-provides three RFC-fixed pieces every consumer would otherwise hand-roll:
-
-- `require_mcp_token!` — bearer auth (validated against
-  `config.resource_uri` for RFC 8707 audience binding); sets `mcp_token`.
-- `render_mcp_response(body)` — the MCP Streamable HTTP contract: `202`
-  with no body for notifications/responses (`handle_json` returns `nil`),
-  `200` + `application/json` for requests. Getting this wrong (`200` +
-  empty) is tolerated by lenient clients but bricks strict ones — Grok
-  loops the handshake and never calls `tools/list`.
-- a `401` with the `WWW-Authenticate` discovery challenge MCP requires.
-
-```ruby
-# config/routes.rb
-post "mcp", to: "mcp_server#create"
-match "mcp", to: "mcp_server#preflight", via: :options
-```
-
-If browser-based MCP clients (claude.ai, chatgpt.com) will reach this
-endpoint, include `Hitch::CorsSupport` as well. `ServerEndpoint` does
-not set `Access-Control-Allow-Origin` — the `/mcp` route is yours, so
-CORS on it is your decision — and without that header a browser cannot
-read the `401` challenge that starts the OAuth flow, even though
-`ServerEndpoint` exposes it. Non-browser clients are unaffected.
-
-```ruby
-class MCPServerController < ApplicationController
-  include Hitch::ServerEndpoint
-  include Hitch::CorsSupport   # browser-based MCP clients only
-  before_action :require_mcp_token!
-
-  def create
-    # mcp_token is the validated Hitch::AccessToken; mcp_token.principal
-    # is the resource owner. Build your MCP server with your tools (using
-    # the `mcp` gem) and hand it the raw body — the gem shapes the HTTP
-    # response so notifications return 202 and requests return 200 + JSON.
-    server = build_mcp_server(mcp_token.principal) # your tool set
-    render_mcp_response(server.handle_json(request.raw_post))
-  end
-end
-```
-
-Requires `config.resource_uri` to be set — tokens are validated against
-it, and unbound or audience-mismatched tokens are rejected with `401`.
+The host in `config.resource_uri` is canonical. `config.allowed_hosts` adds
+exact proxy hostnames; wildcards are rejected. Discovery, endpoint URLs,
+RFC 9207 `iss`, and bearer challenges always derive from the fixed
+`resource_uri` origin, never from request headers. `config.allowed_origins`
+is an exact allowlist; preflights receive `204` only when Origin, method, and
+every requested header are allowed.
 
 ## Operational cleanup
 
-Expired auth codes (from abandoned OAuth flows), long-revoked tokens,
-and long-expired tokens accumulate forever unless reaped. The gem
-provides the method; the host schedules it via whichever background
-job framework it uses:
+Expired auth codes and long-dead tokens accumulate unless reaped. Schedule
+the provided method with whatever job framework you use:
 
 ```ruby
-# Daily via Solid Queue / GoodJob / Sidekiq recurring schedule:
 class CleanupMCPTokensJob < ApplicationJob
   def perform
     Hitch::AccessToken.cleanup_expired!(revoked_retention_days: 30)
@@ -240,56 +292,49 @@ class CleanupMCPTokensJob < ApplicationJob
 end
 ```
 
-Returns the number of rows deleted. Idempotent — safe to run as often
-as you like. Active tokens are never touched.
+Idempotent; active tokens are never touched.
 
 ## Customizing the consent view
 
-The gem ships a default consent screen at
-`app/views/hitch/oauth/authorizations/new.html.erb`. Host apps
-override it by placing a file at the same path in their own tree —
-Rails view resolution prefers the host's copy automatically. Available
+Override the shipped consent screen by placing your own
+`app/views/hitch/authorizations/new.html.erb` in the host app. Available
 instance variables: `@client_name`, `@redirect_host`, `@brand_name`,
-`@oauth_params` (hash of redirect_uri/state/client_id/code_challenge/
-code_challenge_method/scope/resource), `@resource`, and `@scopes` (the
-space-delimited scopes that will be granted, already clamped to the
-server's `supported_scopes` — show these so the user's consent is
-informed).
+`@oauth_params`, `@resource`, and `@scopes` (already clamped to
+`supported_scopes` — show them so consent is informed).
+
+`@client_name` is derived from the verified redirect host through
+`config.client_names`, a Hash of host matchers (exact `String` or `Regexp`)
+to labels, checked in order. The default table labels the common MCP
+clients; extend it with
+`config.client_names = Hitch::Configuration::DEFAULT_CLIENT_NAMES.merge("tool.example" => "My Tool")`.
+
+## Adopter security requirements
+
+This gem is an OAuth **authorization server** — configure the host correctly
+or undermine its guarantees:
+
+- **`config.resource_uri`** — set it. Tokens are audience-bound to it
+  (RFC 8707) and validation fails closed without it.
+- **`config.allowed_hosts` / `config.allowed_origins`** — exact allowlists;
+  keep them minimal.
+- **`protect_from_forgery`** — keep CSRF protection active on the consent
+  (`POST /oauth/authorize`) path.
+- **`config.action_dispatch.trusted_proxies`** — set correctly behind a
+  reverse proxy so `remote_ip` and scheme are interpreted correctly.
 
 ## Status
 
-**v0.1.0 — pre-release.** The substrate is exercised end-to-end through
-the gem's own test suite (OAuth dance, RFC 8707 audience binding, PKCE,
-DCR, revocation, CORS, the MCP Streamable HTTP response contract, plus
-redirect-uri-enforcement and scope-clamping security regression tests),
-and the full OAuth + MCP handshake has been verified against a live
-third-party MCP client. The public API may still change before v1.0.0.
-
-### Adopter security requirements
-
-This gem is an OAuth **authorization server** — adopters MUST configure
-their host app correctly or undermine the gem's guarantees:
-
-- **`config.hosts`** — set a strict host allowlist. Discovery metadata
-  (`/.well-known/*`) derives the issuer from the request host; without a
-  host allowlist behind a shared cache, a forged `Host`/`X-Forwarded-Host`
-  can poison the cached discovery document.
-- **`protect_from_forgery`** — keep CSRF protection active on the
-  consent (`POST /oauth/authorize`) path. The shipped consent view uses
-  `form_with` (CSRF token included), but a host that disables forgery
-  protection app-wide exposes the Approve action to CSRF.
-- **`config.resource_uri`** — set it. Tokens are issued bound to this
-  audience (RFC 8707); if left `nil`, every token is issued unbound and
-  `valid_for_resource?` fails closed (rejecting all requests).
-- **`config.action_dispatch.trusted_proxies`** — set correctly behind a
-  reverse proxy (Kamal/Fly/Heroku) so the issuer URL reflects the public
-  host, not the container address.
+0.2.0 is the first public release. The public API may change before v1.0.0.
+The exact public surface is documented in
+[`docs/public_api/0.2.0.md`](docs/public_api/0.2.0.md); removal is covered in
+[`docs/removing.md`](docs/removing.md).
 
 ## Contributing
 
-Issues and PRs welcome. Spec conformance is the primary correctness
-bar — citations to the [MCP authorization spec](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization)
-and the underlying RFCs are appreciated in PRs.
+Issues and PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Spec
+conformance is the primary correctness bar; citations to the
+[MCP authorization spec](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization)
+and the underlying RFCs are appreciated.
 
 ## License
 

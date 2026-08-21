@@ -1,0 +1,373 @@
+{
+  "model_name": "hitch_doctor",
+  "_intent_notes": [
+    "Pairwise operator-diagnostic model for M5.3.",
+    "Every row executes all ten stable doctor categories against an immutable fixture system.",
+    "Auth-only mode must skip MCP registry and admission-store checks regardless of irrelevant fixture values.",
+    "Forced rows pin the healthy full runtime, healthy auth-only mode, and every actionable failure category."
+  ],
+  "parameters": [
+    {
+      "name": "runtime",
+      "values": [
+        "full",
+        "auth_only"
+      ]
+    },
+    {
+      "name": "environment",
+      "values": [
+        "test",
+        "production"
+      ]
+    },
+    {
+      "name": "configuration",
+      "values": [
+        "valid",
+        "invalid"
+      ]
+    },
+    {
+      "name": "discovery",
+      "values": [
+        "coherent",
+        "mismatch"
+      ]
+    },
+    {
+      "name": "route",
+      "values": [
+        "ordered",
+        "missing",
+        "shadowed",
+        "after_engine",
+        "wrong_verbs",
+        "invalid_mount"
+      ]
+    },
+    {
+      "name": "migrations",
+      "values": [
+        "current",
+        "missing"
+      ]
+    },
+    {
+      "name": "registry",
+      "values": [
+        "populated",
+        "empty",
+        "invalid"
+      ]
+    },
+    {
+      "name": "hosts",
+      "values": [
+        "accepted",
+        "blocked"
+      ]
+    },
+    {
+      "name": "origins",
+      "values": [
+        "deny_default",
+        "exact",
+        "http"
+      ]
+    },
+    {
+      "name": "rate_limit_store",
+      "values": [
+        "shared",
+        "unshared",
+        "uncountable",
+        "error"
+      ]
+    }
+  ],
+  "constraints": [
+    {
+      "type": "forced",
+      "_why": "Healthy production full-runtime golden path.",
+      "assignments": [
+        {
+          "parameter": "runtime",
+          "value": "full"
+        },
+        {
+          "parameter": "environment",
+          "value": "production"
+        },
+        {
+          "parameter": "configuration",
+          "value": "valid"
+        },
+        {
+          "parameter": "discovery",
+          "value": "coherent"
+        },
+        {
+          "parameter": "route",
+          "value": "ordered"
+        },
+        {
+          "parameter": "migrations",
+          "value": "current"
+        },
+        {
+          "parameter": "registry",
+          "value": "populated"
+        },
+        {
+          "parameter": "hosts",
+          "value": "accepted"
+        },
+        {
+          "parameter": "origins",
+          "value": "exact"
+        },
+        {
+          "parameter": "rate_limit_store",
+          "value": "shared"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Healthy auth-only nonproduction mode skips MCP-only checks.",
+      "assignments": [
+        {
+          "parameter": "runtime",
+          "value": "auth_only"
+        },
+        {
+          "parameter": "environment",
+          "value": "test"
+        },
+        {
+          "parameter": "configuration",
+          "value": "valid"
+        },
+        {
+          "parameter": "discovery",
+          "value": "coherent"
+        },
+        {
+          "parameter": "route",
+          "value": "missing"
+        },
+        {
+          "parameter": "migrations",
+          "value": "current"
+        },
+        {
+          "parameter": "registry",
+          "value": "invalid"
+        },
+        {
+          "parameter": "hosts",
+          "value": "accepted"
+        },
+        {
+          "parameter": "origins",
+          "value": "deny_default"
+        },
+        {
+          "parameter": "rate_limit_store",
+          "value": "unshared"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Configuration failure.",
+      "assignments": [
+        {
+          "parameter": "configuration",
+          "value": "invalid"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Discovery mismatch.",
+      "assignments": [
+        {
+          "parameter": "discovery",
+          "value": "mismatch"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Missing endpoint route.",
+      "assignments": [
+        {
+          "parameter": "route",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Shadowed endpoint route.",
+      "assignments": [
+        {
+          "parameter": "route",
+          "value": "shadowed"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Endpoint placed after the engine mount.",
+      "assignments": [
+        {
+          "parameter": "route",
+          "value": "after_engine"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Endpoint route missing method coverage.",
+      "assignments": [
+        {
+          "parameter": "route",
+          "value": "wrong_verbs"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Engine is not mounted once at root.",
+      "assignments": [
+        {
+          "parameter": "route",
+          "value": "invalid_mount"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Missing migration/table state.",
+      "assignments": [
+        {
+          "parameter": "migrations",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Invalid registry.",
+      "assignments": [
+        {
+          "parameter": "runtime",
+          "value": "full"
+        },
+        {
+          "parameter": "registry",
+          "value": "invalid"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Rails blocks a Hitch host.",
+      "assignments": [
+        {
+          "parameter": "hosts",
+          "value": "blocked"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Production admission store cannot count across processes.",
+      "assignments": [
+        {
+          "parameter": "runtime",
+          "value": "full"
+        },
+        {
+          "parameter": "environment",
+          "value": "production"
+        },
+        {
+          "parameter": "rate_limit_store",
+          "value": "unshared"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Production admission store cannot count at all.",
+      "assignments": [
+        {
+          "parameter": "runtime",
+          "value": "full"
+        },
+        {
+          "parameter": "environment",
+          "value": "production"
+        },
+        {
+          "parameter": "rate_limit_store",
+          "value": "uncountable"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Configured admission store raises while probing.",
+      "assignments": [
+        {
+          "parameter": "runtime",
+          "value": "full"
+        },
+        {
+          "parameter": "rate_limit_store",
+          "value": "error"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Nonproduction admission store is not shared across processes.",
+      "assignments": [
+        {
+          "parameter": "runtime",
+          "value": "full"
+        },
+        {
+          "parameter": "environment",
+          "value": "test"
+        },
+        {
+          "parameter": "rate_limit_store",
+          "value": "unshared"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Nonproduction admission store cannot count at all.",
+      "assignments": [
+        {
+          "parameter": "runtime",
+          "value": "full"
+        },
+        {
+          "parameter": "environment",
+          "value": "test"
+        },
+        {
+          "parameter": "rate_limit_store",
+          "value": "uncountable"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,145 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "securerandom"
+require "tmpdir"
+require "uri"
+
+ROOT = File.expand_path("..", __dir__)
+APPRAISAL = File.join(ROOT, "bin/ci-appraisal")
+TEST_FILES = %w[
+  test/hitch/client_redirect_uri_test.rb
+  test/integration/concurrent_code_exchange_test.rb
+].freeze
+
+missing_tests = TEST_FILES.reject { |path| File.file?(File.join(ROOT, path)) }
+unless missing_tests.empty?
+  warn "The migration gate is incomplete; required test files are missing:"
+  missing_tests.each { |path| warn "  #{path}" }
+  exit 1
+end
+
+def run!(environment, *command)
+  puts "+ #{command.join(' ')}"
+  return if system(environment, *command, chdir: ROOT)
+
+  raise "command failed: #{command.join(' ')}"
+end
+
+def appraisal!(profile, database_url, schema_path, *command)
+  run!(
+    {
+      "DATABASE_URL" => database_url,
+      "RAILS_ENV" => "test",
+      "SCHEMA" => schema_path
+    },
+    APPRAISAL,
+    profile,
+    "--",
+    *command
+  )
+end
+
+def postgresql_database_url(database_name)
+  base = ENV.fetch("HITCH_MIGRATIONS_POSTGRES_URL", "postgresql:///postgres")
+  uri = URI.parse(base)
+  unless %w[postgres postgresql].include?(uri.scheme)
+    raise "HITCH_MIGRATIONS_POSTGRES_URL must use postgres:// or postgresql://"
+  end
+
+  uri.path = "/#{database_name}"
+  uri.to_s
+end
+
+Dir.mktmpdir("hitch-ci-migrations-") do |directory|
+  sqlite_path = File.join(directory, "hitch_migrations_test.sqlite3")
+  sqlite_url = "sqlite3:#{sqlite_path}"
+  sqlite_schema_path = File.join(directory, "sqlite_schema.rb")
+
+  appraisal!("rails_8_0_sqlite", sqlite_url, sqlite_schema_path, File.join(ROOT, "bin/rails"), "db:create")
+  appraisal!("rails_8_0_sqlite", sqlite_url, sqlite_schema_path, File.join(ROOT, "bin/rails"), "db:migrate")
+  # Drive the down path and prove the round trip: the single migration must
+  # reverse cleanly and reapply to an identical schema.
+  appraisal!("rails_8_0_sqlite", sqlite_url, sqlite_schema_path, File.join(ROOT, "bin/rails"), "db:rollback", "STEP=1")
+  appraisal!("rails_8_0_sqlite", sqlite_url, sqlite_schema_path, File.join(ROOT, "bin/rails"), "db:migrate")
+  appraisal!(
+    "rails_8_0_sqlite",
+    sqlite_url,
+    sqlite_schema_path,
+    File.join(ROOT, "bin/rails"),
+    "test",
+    *TEST_FILES
+  )
+
+  postgresql_name = "hitch_migrations_#{Process.pid}_#{SecureRandom.hex(6)}_test"
+  postgresql_url = postgresql_database_url(postgresql_name)
+  postgresql_schema_path = File.join(directory, "postgresql_schema.rb")
+  postgresql_created = false
+
+  begin
+    appraisal!(
+      "rails_8_1_postgresql",
+      postgresql_url,
+      postgresql_schema_path,
+      File.join(ROOT, "bin/rails"),
+      "db:create"
+    )
+    postgresql_created = true
+    appraisal!(
+      "rails_8_1_postgresql",
+      postgresql_url,
+      postgresql_schema_path,
+      File.join(ROOT, "bin/rails"),
+      "db:migrate"
+    )
+    appraisal!(
+      "rails_8_1_postgresql",
+      postgresql_url,
+      postgresql_schema_path,
+      File.join(ROOT, "bin/rails"),
+      "db:rollback",
+      "STEP=1"
+    )
+    appraisal!(
+      "rails_8_1_postgresql",
+      postgresql_url,
+      postgresql_schema_path,
+      File.join(ROOT, "bin/rails"),
+      "db:migrate"
+    )
+    appraisal!(
+      "rails_8_1_postgresql",
+      postgresql_url,
+      postgresql_schema_path,
+      File.join(ROOT, "bin/rails"),
+      "test",
+      *TEST_FILES
+    )
+  ensure
+    if postgresql_created
+      primary_failure = $!
+      cleanup_failure = begin
+        cleanup_succeeded = system(
+          { "DATABASE_URL" => postgresql_url, "RAILS_ENV" => "test" },
+          APPRAISAL,
+          "rails_8_1_postgresql",
+          "--",
+          File.join(ROOT, "bin/rails"),
+          "db:drop",
+          chdir: ROOT
+        )
+        RuntimeError.new("failed to drop the disposable PostgreSQL migration database") unless cleanup_succeeded
+      rescue StandardError => error
+        error
+      end
+
+      if cleanup_failure
+        raise cleanup_failure unless primary_failure
+
+        warn "PostgreSQL migration cleanup also failed: #{cleanup_failure.message}"
+      end
+    end
+  end
+end
+
+puts "Migration and concurrency gates passed for SQLite and PostgreSQL."

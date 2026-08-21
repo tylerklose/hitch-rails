@@ -6,7 +6,9 @@ module Hitch
   # apply automatically. The gem only adds OAuth-specific behavior on
   # top.
   class ApplicationController < ::ApplicationController
+    include Hitch::HostValidation
     include Hitch::IssuerUrl
+    include Hitch::OauthParameterValidation
 
     # Opt out of the host's blanket authentication-enforcement callback.
     # Rails 8's built-in `bin/rails g authentication` adds a global
@@ -52,18 +54,6 @@ module Hitch
       return Current.user if defined?(Current) && Current.respond_to?(:user)
 
       nil
-    end
-
-    # Render an OAuth-formatted JSON error.
-    def oauth_error(code, description, status = :bad_request)
-      render json: { error: code, error_description: description }, status: status
-    end
-
-    # Guard against query-string array/hash coercion
-    # (?client_id[]=a&client_id[]=b would otherwise become an Array).
-    def scalar_param(key)
-      value = params[key]
-      value.is_a?(String) ? value.presence : nil
     end
   end
 end

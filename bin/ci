@@ -1,0 +1,43 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "yaml"
+
+ROOT = File.expand_path("..", __dir__)
+RELEASE_PROFILES = YAML.safe_load_file(
+  File.join(ROOT, "docs/contracts/release_matrix.yml"),
+  permitted_classes: [],
+  aliases: false
+).fetch("lanes").map { |lane| lane.fetch("name") }.freeze
+
+def run!(*command, environment: {})
+  puts
+  puts "+ #{command.join(' ')}"
+  return if system(environment, *command, chdir: ROOT)
+
+  abort "CI command failed: #{command.join(' ')}"
+end
+
+run!(File.join(ROOT, "bin/rubocop"))
+
+RELEASE_PROFILES.each do |profile|
+  run!(
+    File.join(ROOT, "bin/ci-appraisal"), profile, "--",
+    File.join(ROOT, "bin/rails"), "test",
+    environment: { "HITCH_FAIL_ON_SKIPS" => "1" }
+  )
+end
+
+RELEASE_PROFILES.each do |profile|
+  run!(
+    File.join(ROOT, "bin/ci-appraisal"), profile, "--",
+    "bundle", "exec", "rake", "app:zeitwerk:check"
+  )
+end
+
+run!(File.join(ROOT, "bin/ci-migrations"))
+run!(File.join(ROOT, "bin/conformance-server"))
+run!(File.join(ROOT, "bin/package-smoke"))
+
+puts
+puts "All Hitch CI gates passed."

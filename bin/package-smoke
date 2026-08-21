@@ -1,0 +1,376 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Builds the gem, verifies the packaged manifest, then installs the built
+# artifact into disposable Rails apps (SQLite and PostgreSQL), runs the
+# generators and doctor, and exercises the authenticated OAuth + MCP flow
+# end to end. With --automated-clients it also runs the official Python and
+# TypeScript client smokes against the packaged server.
+
+require "digest"
+require "fileutils"
+require "json"
+require "open3"
+require "rubygems/package"
+require "securerandom"
+require "tmpdir"
+require "uri"
+
+ROOT = File.expand_path("..", __dir__)
+GEMSPEC_PATH = File.join(ROOT, "hitch-rails.gemspec")
+PACKAGE_APP_SERVER_VERSION = "8.0.2"
+PACKAGE_SMOKE_USAGE = "Usage: bin/package-smoke [--automated-clients]"
+unless ARGV.empty? || ARGV == [ "--automated-clients" ]
+  warn PACKAGE_SMOKE_USAGE
+  exit 64
+end
+
+automated_client_environment = ENV["HITCH_AUTOMATED_CLIENT_SMOKES"]
+unless automated_client_environment.nil? || automated_client_environment == "1"
+  raise "HITCH_AUTOMATED_CLIENT_SMOKES must be 1 when present"
+end
+AUTOMATED_CLIENT_SMOKES = ARGV == [ "--automated-clients" ] || automated_client_environment == "1"
+require_relative "../test/checkpoint/automated_clients" if AUTOMATED_CLIENT_SMOKES
+
+# One packaging profile: what package-smoke uniquely proves is that the BUILT
+# ARTIFACT installs and drives the full flow in a fresh host app. The Rails
+# version and adapter dimensions belong to the release matrix.
+PROFILES = {
+  "rails_8_0_sqlite" => {
+    appraisal: File.join(ROOT, "gemfiles/rails_8_0_sqlite.gemfile"),
+    rails: "~> 8.0.0",
+    adapter: "sqlite3",
+    adapter_gem: 'gem "sqlite3", ">= 2.1", "< 3"'
+  }
+}.freeze
+
+def capture!(*command, environment: {}, chdir: ROOT)
+  output, status = Open3.capture2e(environment, *command, chdir: chdir)
+  return output if status.success?
+
+  warn output
+  raise "command failed (#{status.exitstatus}): #{command.join(' ')}"
+end
+
+def run!(*command, environment: {}, chdir: ROOT)
+  puts "+ #{command.join(' ')}"
+  return if system(environment, *command, chdir: chdir)
+
+  raise "command failed: #{command.join(' ')}"
+end
+
+def app_gemfile(local_repository, specification, profile)
+  <<~RUBY
+    source "https://rubygems.org"
+
+    gem "rails", "#{profile.fetch(:rails)}"
+    #{profile.fetch(:adapter_gem)}
+    gem "puma", "=#{PACKAGE_APP_SERVER_VERSION}"
+
+    source "file://#{local_repository}" do
+      gem "#{specification.name}", "=#{specification.version}"
+    end
+  RUBY
+end
+
+def application_controller
+  <<~RUBY
+    # frozen_string_literal: true
+
+    class ApplicationController < ActionController::Base
+      def current_user
+        Hitch::Client.first
+      end
+    end
+  RUBY
+end
+
+def smoke_runner(profile_name, expected_adapter)
+  <<~RUBY
+    require "base64"
+    require "digest"
+    require "json"
+    require "securerandom"
+    require "uri"
+
+    Rails.application.eager_load!
+    loaded = Gem.loaded_specs.fetch("hitch-rails")
+    source_root = File.expand_path(ENV.fetch("HITCH_SOURCE_ROOT"))
+    loaded_root = File.expand_path(loaded.full_gem_path)
+    abort "smoke loaded the checkout instead of the built artifact" if
+      loaded_root == source_root || loaded_root.start_with?("\#{source_root}/")
+
+    actual_adapter = ActiveRecord::Base.connection_db_config.adapter
+    abort "expected #{expected_adapter}, booted \#{actual_adapter}" unless
+      actual_adapter == "#{expected_adapter}"
+
+    abort "MCP configuration did not load from the artifact" unless
+      Hitch.configuration.mcp.is_a?(Hitch::MCP::Configuration)
+    sdk_adapter = Hitch::MCP::Internal::SDKAdapter
+    adapter_source = File.expand_path(sdk_adapter.instance_method(:call).source_location.fetch(0))
+    abort "SDK adapter did not load from the built artifact" unless
+      adapter_source == File.join(loaded_root, "app/models/hitch/mcp/internal/sdk_adapter.rb")
+    endpoint_source = File.expand_path(Hitch::MCP::Endpoint.instance_method(:handle).source_location.fetch(0))
+    abort "MCP endpoint did not load from the built artifact" unless
+      endpoint_source == File.join(loaded_root, "app/controllers/concerns/hitch/mcp/endpoint.rb")
+
+    package_tool = Class.new(Hitch::MCP::Tool)
+    Object.const_set(:HitchPackageSmokeTool, package_tool)
+    package_tool.tool_name "package.echo"
+    package_tool.description "Prove packaged registry listing and call admission"
+    package_tool.input_schema(
+      type: "object",
+      properties: { message: { type: "string" } },
+      required: [ "message" ],
+      additionalProperties: false
+    )
+    package_tool.define_singleton_method(:available_to?) do |context|
+      context.scope.equal?(context.principal)
+    end
+
+    package_registry = Class.new(Hitch::MCP::Registry)
+    Object.const_set(:HitchPackageSmokeRegistry, package_registry)
+    package_registry.register package_tool, scopes: [ "mcp" ]
+
+    Hitch.configuration.mcp.registry = "HitchPackageSmokeRegistry"
+    Hitch.configuration.mcp.server_info = {
+      name: "hitch-package-smoke",
+      version: loaded.version.to_s,
+      title: "Hitch Package Smoke",
+      instructions: "Exercise the packaged authenticated endpoint."
+    }
+    Hitch.configuration.mcp.scope_resolver = lambda do |principal:, access_token:, request:|
+      principal
+    end
+    Hitch.configuration.mcp.request_limit = { to: 120, within: 60 }
+    Hitch.configuration.mcp.max_request_bytes = 8_192
+    Hitch.configuration.validate!
+    Hitch.configuration.mcp.__send__(
+      :prepare_registry!,
+      supported_scopes: Hitch.configuration.supported_scopes
+    )
+
+    redirect_uri = "https://client.example/callback"
+    resource_uri = Hitch.configuration.resource_uri
+    client = Hitch::Client.register!(
+      client_id: "package-smoke-client",
+      client_name: "Package smoke",
+      redirect_uris: [ redirect_uri ]
+    )
+
+    verifier = SecureRandom.urlsafe_base64(64)
+    challenge = Base64.urlsafe_encode64(Digest::SHA256.digest(verifier), padding: false)
+    authorization = {
+      response_type: "code",
+      client_id: client.client_id,
+      redirect_uri: redirect_uri,
+      scope: "mcp",
+      state: "package-smoke-state",
+      code_challenge: challenge,
+      code_challenge_method: "S256",
+      resource: resource_uri
+    }
+
+    session = ActionDispatch::Integration::Session.new(Rails.application)
+    session.https!
+    session.host! "your-app.example.com"
+
+    session.get "/.well-known/oauth-authorization-server"
+    abort "authorization discovery failed: \#{session.response.status}" unless
+      session.response.status == 200
+    metadata = JSON.parse(session.response.body)
+    abort "artifact issuer drifted" unless metadata.fetch("issuer") == "https://your-app.example.com"
+    abort "new install unexpectedly advertised DCR" if metadata.key?("registration_endpoint")
+
+    session.get "/oauth/authorize", params: authorization
+    abort "consent render failed: \#{session.response.status}" unless session.response.status == 200
+
+    session.post "/oauth/authorize", params: authorization
+    abort "authorization failed: \#{session.response.status}" unless session.response.redirect?
+    redirect = URI.parse(session.response.location)
+    response_parameters = URI.decode_www_form(redirect.query.to_s).to_h
+    code = response_parameters.fetch("code")
+    abort "authorization issuer drifted" unless
+      response_parameters.fetch("iss") == "https://your-app.example.com"
+
+    session.post "/oauth/token", params: {
+      grant_type: "authorization_code",
+      code: code,
+      client_id: client.client_id,
+      redirect_uri: redirect_uri,
+      code_verifier: verifier,
+      resource: resource_uri
+    }
+    abort "token exchange failed: \#{session.response.status} \#{session.response.body}" unless
+      session.response.status == 200
+    token_body = JSON.parse(session.response.body)
+    token = Hitch::AccessToken.find_by_token(token_body.fetch("access_token"))
+    abort "issued token was not usable" unless
+      token&.accessible? && token.valid_for_resource?(resource_uri) && token.scope?("mcp")
+
+    mcp_headers = {
+      "Authorization" => "Bearer \#{token_body.fetch('access_token')}",
+      "Content-Type" => "application/json",
+      "Accept" => "application/json, text/event-stream",
+      "MCP-Protocol-Version" => "2026-07-28"
+    }
+    request_meta = {
+      "io.modelcontextprotocol/protocolVersion" => "2026-07-28",
+      "io.modelcontextprotocol/clientCapabilities" => {}
+    }
+
+    session.post "/mcp", params: JSON.generate(
+      jsonrpc: "2.0",
+      id: "package/discover",
+      method: "server/discover",
+      params: { "_meta" => request_meta }
+    ), headers: mcp_headers.merge("Mcp-Method" => "server/discover")
+    abort "packaged MCP discovery failed: \#{session.response.status} \#{session.response.body}" unless
+      session.response.status == 200
+    mcp_discovery = JSON.parse(session.response.body)
+    abort "packaged MCP discovery identity drifted: \#{session.response.body}" unless
+      mcp_discovery.dig("result", "_meta", "io.modelcontextprotocol/serverInfo", "name") == "hitch-package-smoke"
+
+    session.post "/mcp", params: JSON.generate(
+      jsonrpc: "2.0",
+      id: "package/list",
+      method: "tools/list",
+      params: { "_meta" => request_meta }
+    ), headers: mcp_headers.merge("Mcp-Method" => "tools/list")
+    abort "packaged MCP listing failed: \#{session.response.status} \#{session.response.body}" unless
+      session.response.status == 200
+    mcp_listing = JSON.parse(session.response.body)
+    abort "packaged MCP registry filtering drifted" unless
+      mcp_listing.dig("result", "tools").map { |tool| tool.fetch("name") } == [ "package.echo" ]
+
+    puts "HITCH_SMOKE_RESULT=" + JSON.generate(
+      profile: "#{profile_name}",
+      ruby: RUBY_VERSION,
+      rails: Rails.version,
+      adapter: actual_adapter,
+      artifact_version: loaded.version.to_s
+    )
+  RUBY
+end
+
+before_status = capture!("git", "status", "--porcelain=v1", "-z", "--untracked-files=all")
+
+Dir.mktmpdir("hitch-package-smoke-") do |directory|
+  specification = Gem::Specification.load(GEMSPEC_PATH) || raise("could not load #{GEMSPEC_PATH}")
+  artifact = File.join(directory, "#{specification.full_name}.gem")
+  run!("gem", "build", GEMSPEC_PATH, "--output", artifact)
+
+  package = Gem::Package.new(artifact)
+  artifact_specification = package.spec
+  expected_files = specification.files.sort
+  packaged_files = artifact_specification.files.sort
+  artifact_contents = package.contents.sort
+
+  raise "built version does not match gemspec" unless artifact_specification.version == specification.version
+  raise "built name does not match gemspec" unless artifact_specification.name == specification.name
+  raise "built manifest does not match the explicit gemspec allowlist" unless packaged_files == expected_files
+  raise "built contents do not match the embedded gem manifest" unless artifact_contents == packaged_files
+
+  symlinks = expected_files.select { |path| File.symlink?(File.join(ROOT, path)) }
+  raise "package allowlist must not contain symlinks: #{symlinks.join(', ')}" if symlinks.any?
+
+  extraction = File.join(directory, "extracted")
+  FileUtils.mkdir_p(extraction)
+  package.extract_files(extraction)
+  mismatched = packaged_files.reject do |path|
+    Digest::SHA256.file(File.join(ROOT, path)).hexdigest ==
+      Digest::SHA256.file(File.join(extraction, path)).hexdigest
+  end
+  raise "artifact bytes differ from the checkout: #{mismatched.join(', ')}" if mismatched.any?
+
+  local_repository = File.join(directory, "gem-repository")
+  FileUtils.mkdir_p(File.join(local_repository, "gems"))
+  FileUtils.cp(artifact, File.join(local_repository, "gems"))
+  run!("gem", "generate_index", "--directory", local_repository)
+
+  run_acceptance = lambda do |automated_clients|
+    PROFILES.each do |profile_name, profile|
+      app = File.join(directory, profile_name)
+      run!(
+        "bundle", "exec", "rails", "new", app,
+        "--skip-bundle", "--skip-git", "--skip-keeps", "--skip-bootsnap",
+        "--skip-javascript", "--skip-hotwire", "--skip-asset-pipeline",
+        "--skip-action-mailer", "--skip-action-mailbox", "--skip-action-text",
+        "--skip-active-storage", "--skip-action-cable", "--skip-jbuilder",
+        "--skip-test", "--skip-system-test", "--database=#{profile.fetch(:adapter)}",
+        environment: { "BUNDLE_GEMFILE" => profile.fetch(:appraisal) },
+        chdir: directory
+      )
+
+      File.write(File.join(app, "Gemfile"), app_gemfile(local_repository, specification, profile))
+      File.write(File.join(app, "app/controllers/application_controller.rb"), application_controller)
+      run!("bundle", "config", "set", "--local", "path", "vendor/bundle", chdir: app)
+      run!("bundle", "install", chdir: app)
+      run!("bundle", "exec", "rails", "generate", "hitch:install", chdir: app)
+
+      database_environment = {
+        "DATABASE_URL" => "sqlite3:#{File.join(directory, "#{profile_name}.sqlite3")}",
+        "RAILS_ENV" => "test",
+        "SCHEMA" => File.join(directory, "#{profile_name}_schema.rb")
+      }
+      run!("bundle", "exec", "rails", "db:create", environment: database_environment, chdir: app)
+      run!("bundle", "exec", "rails", "db:migrate", environment: database_environment, chdir: app)
+      registry_path = File.join(app, "app/tools/mcp_tool_registry.rb")
+      run!(
+        "bundle", "exec", "rails", "generate", "hitch:tool", "package_echo",
+        environment: database_environment,
+        chdir: app
+      )
+      raise "tool generator did not register the tool" unless
+        File.binread(registry_path).include?('register McpTools::PackageEcho, scopes: [ "mcp" ]')
+
+      doctor_output = capture!(
+        "bundle", "exec", "rails", "hitch:doctor",
+        environment: database_environment.merge("HITCH_DOCTOR_FORMAT" => "json"),
+        chdir: app
+      )
+      doctor = JSON.parse(doctor_output)
+      raise "packaged doctor schema drifted" unless doctor.fetch("schema") == "hitch.doctor.v1"
+      raise "packaged doctor found an actionable failure" if
+        doctor.fetch("checks").any? { |check| check.fetch("status") == "fail" }
+      # The versions bounds come from the loaded gemspec, so a passing check
+      # here proves the packaged gemspec metadata survived the build.
+      raise "packaged doctor did not validate the loaded gem's versions" unless
+        doctor.fetch("checks").find { |check| check.fetch("id") == "versions" }&.fetch("code") == "supported"
+
+      output = capture!(
+        "bundle", "exec", "rails", "runner",
+        smoke_runner(profile_name, profile.fetch(:adapter)),
+        environment: database_environment.merge("HITCH_SOURCE_ROOT" => ROOT),
+        chdir: app
+      )
+      result_line = output.lines.reverse.find { |line| line.start_with?("HITCH_SMOKE_RESULT=") }
+      raise "disposable app did not report a smoke result\n#{output}" unless result_line
+
+      if automated_clients
+        automated_clients.run(
+          app:,
+          profile_name:,
+          environment: database_environment
+        )
+      end
+    end
+  end
+
+  if AUTOMATED_CLIENT_SMOKES
+    HitchCheckpoint::AutomatedClients.open(root: ROOT, working_directory: directory) do |automated_clients|
+      run_acceptance.call(automated_clients)
+    end
+  else
+    run_acceptance.call(nil)
+  end
+end
+
+after_status = capture!("git", "status", "--porcelain=v1", "-z", "--untracked-files=all")
+raise "package smoke changed the worktree" unless after_status == before_status
+
+if AUTOMATED_CLIENT_SMOKES
+  puts "Package, disposable Rails apps, and automated official client smokes passed."
+else
+  puts "Package manifest and disposable Rails adoption smoke passed."
+end

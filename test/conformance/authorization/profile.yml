@@ -1,0 +1,44 @@
+upstream:
+  repository: https://github.com/modelcontextprotocol/conformance
+  package: "@modelcontextprotocol/conformance"
+  version: 0.2.0-alpha.10
+  commit: a9896553900a2ef61787b57adfcbbe936a8ab1f9
+  package_lock_sha256: cc83986778543b99cc7ef22680ed932cab899d068b90ee3d676a7eeab4ae9cf3
+  direction: authorization-server-under-test
+  sources:
+    src/index.ts: 467d34bdb0d5e084b60e1886eb763572e37cb17887e61acc2976d2975513a34c
+    src/schemas.ts: 7ad0859a285ba3b20a096cd8624c8f9633fa13cad1d371e7c05f025cc79d1a9a
+    src/scenarios/authorization-server/authorization-server-metadata.ts: 3fda4c799ba278295380ba2cf002587da79f95245e4e83b8d3a65e1e349288c8
+    src/scenarios/authorization-server/authorization-code-grant.ts: eb533f606e841d1fa710d374419337ca1eb2ba40a1f2f4812cd6a5fda672a0b2
+official_profile:
+  scenario: authorization-server-metadata-endpoint
+  mutation: none
+  evidence_class: official_unmodified_authorization_metadata
+reviewed_extension:
+  scenario: authorization-code-grant
+  rationale: >-
+    The pinned upstream authorization-server runner does not forward the MCP
+    resource indicator and chooses public authentication whenever metadata also
+    advertises none. The reviewed patch forwards one identical resource at the
+    authorization and token endpoints and selects an advertised confidential
+    method when a secret is supplied. It changes no upstream conformance check.
+  patch: test/conformance/authorization/resource-aware-grants.patch
+  patch_sha256: 35403574632cf54ca6b133abfa5d52c91499972f17d55904890853ca130d2597
+  fixtures:
+    - public
+    - confidential_client_secret_basic
+  evidence_class: reviewed_resource_indicator_extension
+local_bridge:
+  tests:
+    - test/conformance/authorization/metadata_profile_test.rb
+    - test/conformance/authorization/resource_aware_grants_test.rb
+  evidence_class: local_regression_only
+evidence_retention:
+  credential_bearing_raw_output: ephemeral_never_uploaded
+  ci_artifact: sanitized_summary_and_raw_file_hashes
+  rails_log: disposable_mode_0600_with_credential_canaries
+profiles:
+  metadata:
+    command: bin/conformance-auth --profile metadata
+  resource-aware-grants:
+    command: bin/conformance-auth --profile resource-aware-grants

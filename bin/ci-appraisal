@@ -1,0 +1,198 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "open3"
+require "securerandom"
+require "tmpdir"
+require "uri"
+require "yaml"
+
+ROOT = File.expand_path("..", __dir__)
+
+release_matrix = YAML.safe_load_file(
+  File.join(ROOT, "docs/contracts/release_matrix.yml"),
+  permitted_classes: [],
+  aliases: false
+)
+SQLITE_BUSY_TIMEOUT_MS = release_matrix.fetch("sqlite_busy_timeout_ms")
+RELEASE_APPRAISALS = release_matrix.fetch("lanes").to_h do |lane|
+  adapter = lane.fetch("adapter")
+  [
+    lane.fetch("name"),
+    {
+      gemfile: File.join(ROOT, lane.fetch("gemfile")),
+      adapter: adapter,
+      database_url: adapter == "sqlite3" ? "sqlite3::memory:" : "postgresql:///hitch_appraisal_test",
+      rails_requirement: lane.fetch("rails"),
+      mcp_requirement: lane.fetch("mcp"),
+      ruby: lane.fetch("ruby")
+    }
+  ]
+end.freeze
+APPRAISALS = RELEASE_APPRAISALS
+
+def abort_with_usage(message = nil, status: 64)
+  warn message if message
+  warn "Usage: bin/ci-appraisal NAME [-- COMMAND ...]"
+  warn "Available appraisals: #{APPRAISALS.keys.join(', ')}"
+  exit status
+end
+
+def run_test(environment, command)
+  output = +""
+  status = nil
+  Open3.popen2e(environment, *command, chdir: ROOT) do |_stdin, stream, wait_thread|
+    stream.each do |chunk|
+      $stdout.write(chunk)
+      output << chunk
+    end
+    status = wait_thread.value
+  end
+
+  return status.exitstatus || 1 unless status.success?
+  return 0 unless ENV["HITCH_FAIL_ON_SKIPS"] == "1"
+
+  skipped = output.scan(/\b(\d+) skips\b/).flatten.map(&:to_i).last
+  if skipped.nil?
+    warn "Could not find the Minitest skip summary; refusing an ambiguous release lane."
+    return 1
+  end
+  if skipped.positive?
+    warn "Release lanes may not contain unexplained skips (found #{skipped})."
+    return 1
+  end
+
+  0
+end
+
+name = ARGV.shift
+abort_with_usage if name.nil?
+abort_with_usage(status: 0) if %w[-h --help].include?(name)
+
+appraisal = APPRAISALS[name]
+abort_with_usage("Unknown appraisal: #{name}") unless appraisal
+
+ARGV.shift if ARGV.first == "--"
+
+environment = {
+  "BUNDLE_GEMFILE" => appraisal.fetch(:gemfile),
+  "RAILS_ENV" => "test",
+  "DATABASE_URL" => ENV.fetch("DATABASE_URL", appraisal.fetch(:database_url)),
+  "HITCH_APPRAISAL_NAME" => name,
+  "HITCH_APPRAISAL_ADAPTER" => appraisal.fetch(:adapter)
+}
+if appraisal[:rails_requirement]
+  environment["HITCH_APPRAISAL_RAILS"] = appraisal.fetch(:rails_requirement)
+  environment["HITCH_APPRAISAL_MCP"] = appraisal.fetch(:mcp_requirement)
+  environment["HITCH_MATRIX_RUBY"] = appraisal.fetch(:ruby)
+end
+dependencies_installed = system(
+  environment,
+  "bundle",
+  "check",
+  chdir: ROOT,
+  out: File::NULL,
+  err: File::NULL
+)
+
+unless dependencies_installed
+  warn "Dependencies for #{name} are not installed."
+  warn "Run: BUNDLE_GEMFILE=#{appraisal.fetch(:gemfile)} bundle install"
+  exit 1
+end
+
+if appraisal[:rails_requirement]
+  runtime_verifier = <<~'RUBY'
+    require "bundler/setup"
+
+    rails = Gem.loaded_specs.fetch("rails").version
+    mcp = Gem.loaded_specs.fetch("mcp").version
+    rails_requirement = Gem::Requirement.new(*ENV.fetch("HITCH_APPRAISAL_RAILS").split(", "))
+    mcp_requirement = Gem::Requirement.new(*ENV.fetch("HITCH_APPRAISAL_MCP").split(", "))
+    abort "Resolved Rails #{rails} violates #{rails_requirement}" unless rails_requirement.satisfied_by?(rails)
+    abort "Resolved mcp #{mcp} violates #{mcp_requirement}" unless mcp_requirement.satisfied_by?(mcp)
+
+    expected_ruby = ENV["HITCH_EXPECTED_RUBY"]
+    if expected_ruby && !expected_ruby.empty? && !RUBY_VERSION.start_with?("#{expected_ruby}.")
+      abort "Expected Ruby #{expected_ruby}.x, running #{RUBY_VERSION}"
+    end
+
+    puts "matrix_runtime ruby=#{RUBY_VERSION} rails=#{rails} mcp=#{mcp} contract=ok"
+  RUBY
+  unless system(environment, "bundle", "exec", "ruby", "-e", runtime_verifier, chdir: ROOT)
+    warn "Resolved runtime violates the #{name} release-matrix contract."
+    exit 1
+  end
+end
+
+command = if ARGV.empty?
+  runner = <<~'RUBY'
+    Rails.application.eager_load!
+    expected = ENV.fetch("HITCH_APPRAISAL_ADAPTER")
+    actual = ActiveRecord::Base.connection_db_config.adapter
+    abort "Expected #{expected} adapter, booted #{actual}" unless actual == expected
+
+    puts "appraisal=#{ENV.fetch('HITCH_APPRAISAL_NAME')} rails=#{Rails.version} adapter=#{actual} boot=ok"
+  RUBY
+
+  [ File.join(ROOT, "bin/rails"), "runner", runner ]
+else
+  ARGV
+end
+
+rails_test_command = command.length >= 2 &&
+  File.expand_path(command.fetch(0), ROOT) == File.join(ROOT, "bin/rails") &&
+  command.fetch(1) == "test"
+
+if rails_test_command
+  status = Dir.mktmpdir("hitch-appraisal-#{appraisal.fetch(:adapter)}-") do |directory|
+    schema = File.join(directory, "schema.rb")
+    database_url = if appraisal.fetch(:adapter) == "sqlite3"
+      "sqlite3:#{File.join(directory, 'test.sqlite3')}?timeout=#{SQLITE_BUSY_TIMEOUT_MS}"
+    else
+      base = URI.parse(ENV.fetch("HITCH_APPRAISAL_POSTGRES_URL", "postgresql:///postgres"))
+      unless %w[postgres postgresql].include?(base.scheme)
+        warn "HITCH_APPRAISAL_POSTGRES_URL must use postgres:// or postgresql://"
+        break 1
+      end
+
+      base.path = "/hitch_appraisal_#{Process.pid}_#{SecureRandom.hex(6)}_test"
+      base.to_s
+    end
+    test_environment = environment.merge("DATABASE_URL" => database_url, "SCHEMA" => schema)
+    database_created = false
+    result = 1
+
+    begin
+      if system(test_environment, File.join(ROOT, "bin/rails"), "db:create", chdir: ROOT)
+        database_created = true
+      else
+        warn "Failed to create the disposable #{appraisal.fetch(:adapter)} appraisal database."
+      end
+
+      if database_created && system(test_environment, File.join(ROOT, "bin/rails"), "db:migrate", chdir: ROOT)
+        result = run_test(test_environment, command)
+      elsif database_created
+        warn "Failed to migrate the disposable #{appraisal.fetch(:adapter)} appraisal database."
+      end
+    ensure
+      if appraisal.fetch(:adapter) == "postgresql" && database_created
+        cleanup_succeeded = system(
+          test_environment,
+          File.join(ROOT, "bin/rails"),
+          "db:drop",
+          chdir: ROOT
+        )
+        unless cleanup_succeeded
+          warn "Failed to drop the disposable PostgreSQL appraisal database."
+          result = 1 if result.zero?
+        end
+      end
+    end
+    result
+  end
+
+  exit status
+end
+
+exec(environment, *command, chdir: ROOT)

@@ -1,0 +1,4 @@
+schema_version: 1
+server:
+  - server-stateless:sep-2575-server-rejects-undeclared-capability
+  - server-stateless:sep-2575-missing-capability-http-400

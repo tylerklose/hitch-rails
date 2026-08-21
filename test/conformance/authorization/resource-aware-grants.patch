@@ -1,0 +1,186 @@
+diff --git a/src/index.ts b/src/index.ts
+index b82093c..9dd1d9a 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -530,6 +530,10 @@ program
+     '--client-secret <secret>',
+     'OAuth client secret (omit for public/PKCE-only clients)'
+   )
++  .option(
++    '--resource <uri>',
++    'RFC 8707 resource indicator sent to authorization and token endpoints'
++  )
+   .option(
+     '-p, --port <port>',
+     'Port for the local OAuth callback server; register http://127.0.0.1:<port>/callback as a redirect URI',
+diff --git a/src/scenarios/authorization-server/authorization-code-grant.test.ts b/src/scenarios/authorization-server/authorization-code-grant.test.ts
+index 6b51bf6..42c591c 100644
+--- a/src/scenarios/authorization-server/authorization-code-grant.test.ts
++++ b/src/scenarios/authorization-server/authorization-code-grant.test.ts
+@@ -17,11 +17,13 @@ const mockedStartCallbackServer = vi.mocked(startCallbackServer);
+ const SERVER_URL = 'https://example.com';
+ const AUTHORIZATION_ENDPOINT = `${SERVER_URL}/auth`;
+ const TOKEN_ENDPOINT = `${SERVER_URL}/token`;
++const RESOURCE = `${SERVER_URL}/mcp`;
+ 
+ const OPTIONS = {
+   url: SERVER_URL,
+   clientId: 'client',
+   clientSecret: 'secret',
++  resource: RESOURCE,
+   port: 3000
+ };
+ 
+@@ -110,6 +112,11 @@ describe('AuthorizationCodeGrantScenario', () => {
+     expect((check.details as any).authorizationRequest).toContain(
+       AUTHORIZATION_ENDPOINT
+     );
++    expect(
++      new URL((check.details as any).authorizationRequest).searchParams.get(
++        'resource'
++      )
++    ).toBe(RESOURCE);
+ 
+     expect((check.details as any).authorizationResponseUrl).toContain(
+       'code=abc'
+@@ -118,6 +125,75 @@ describe('AuthorizationCodeGrantScenario', () => {
+     expect((check.details as any).body.access_token).toBe('eyJh…0123 (len=36)');
+     expect((check.details as any).body.refresh_token).toBe('[redacted, len=5]');
+     expect((check.details as any).body.token_type).toBe('Bearer');
++
++    const [, tokenRequest] = mockedRequest.mock.calls[0];
++    const tokenBody = new URLSearchParams(tokenRequest.body as string);
++    expect(tokenBody.get('resource')).toBe(RESOURCE);
++  });
++
++  it('uses public client authentication when no secret is supplied', async () => {
++    const scenario = new AuthorizationCodeGrantScenario();
++    const options = { ...OPTIONS, clientSecret: undefined };
++    const details = {
++      'authorization-server-metadata-endpoint': {
++        body: {
++          ...METADATA,
++          token_endpoint_auth_methods_supported: [
++            'none',
++            'client_secret_basic'
++          ]
++        }
++      }
++    };
++
++    mockCallbackServer(
++      scenario,
++      (state) =>
++        `http://127.0.0.1:3000/callback?code=abc&state=${state}&iss=${SERVER_URL}`
++    );
++    mockTokenResponse({ access_token: 'access-token', token_type: 'Bearer' });
++
++    const checks = await scenario.run(options, details);
++
++    expect(checks[0].status).toBe('SUCCESS');
++    const [, tokenRequest] = mockedRequest.mock.calls[0];
++    const tokenBody = new URLSearchParams(tokenRequest.body as string);
++    expect(tokenRequest.headers).not.toHaveProperty('authorization');
++    expect(tokenBody.get('client_id')).toBe(OPTIONS.clientId);
++    expect(tokenBody.has('client_secret')).toBe(false);
++    expect(tokenBody.get('resource')).toBe(RESOURCE);
++  });
++
++  it('prefers Basic authentication when a secret and both methods are advertised', async () => {
++    const scenario = new AuthorizationCodeGrantScenario();
++    const details = {
++      'authorization-server-metadata-endpoint': {
++        body: {
++          ...METADATA,
++          token_endpoint_auth_methods_supported: [
++            'none',
++            'client_secret_basic'
++          ]
++        }
++      }
++    };
++
++    mockCallbackServer(
++      scenario,
++      (state) =>
++        `http://127.0.0.1:3000/callback?code=abc&state=${state}&iss=${SERVER_URL}`
++    );
++    mockTokenResponse({ access_token: 'access-token', token_type: 'Bearer' });
++
++    const checks = await scenario.run(OPTIONS, details);
++
++    expect(checks[0].status).toBe('SUCCESS');
++    const [, tokenRequest] = mockedRequest.mock.calls[0];
++    const tokenBody = new URLSearchParams(tokenRequest.body as string);
++    expect(tokenRequest.headers).toHaveProperty('authorization');
++    expect(tokenBody.has('client_id')).toBe(false);
++    expect(tokenBody.has('client_secret')).toBe(false);
++    expect(tokenBody.get('resource')).toBe(RESOURCE);
+   });
+ 
+   it('returns FAILURE when state parameter is invalid and does not request a token', async () => {
+diff --git a/src/scenarios/authorization-server/authorization-code-grant.ts b/src/scenarios/authorization-server/authorization-code-grant.ts
+index 48bcdee..5952ed6 100644
+--- a/src/scenarios/authorization-server/authorization-code-grant.ts
++++ b/src/scenarios/authorization-server/authorization-code-grant.ts
+@@ -169,6 +169,10 @@ export class AuthorizationCodeGrantScenario implements ClientScenarioForAuthoriz
+       code_challenge_method: 'S256'
+     });
+ 
++    if (options.resource) {
++      params.set('resource', options.resource);
++    }
++
+     return `${metadata.authorization_endpoint}?${params.toString()}`;
+   }
+ 
+@@ -228,15 +232,15 @@ export class AuthorizationCodeGrantScenario implements ClientScenarioForAuthoriz
+     const authMethods: string[] =
+       metadata.token_endpoint_auth_methods_supported ?? ['client_secret_basic'];
+ 
+-    if (!options.clientSecret || authMethods.includes('none')) {
+-      return 'none';
+-    }
+-    if (authMethods.includes('client_secret_post')) {
++    if (options.clientSecret && authMethods.includes('client_secret_post')) {
+       return 'client_secret_post';
+     }
+-    if (authMethods.includes('client_secret_basic')) {
++    if (options.clientSecret && authMethods.includes('client_secret_basic')) {
+       return 'client_secret_basic';
+     }
++    if (authMethods.includes('none')) {
++      return 'none';
++    }
+     // client_secret_jwt / private_key_jwt / tls_client_auth are not yet
+     // implemented; skip rather than fail.
+     return null;
+@@ -264,6 +268,10 @@ export class AuthorizationCodeGrantScenario implements ClientScenarioForAuthoriz
+       'content-type': 'application/x-www-form-urlencoded'
+     };
+ 
++    if (options.resource) {
++      params.set('resource', options.resource);
++    }
++
+     if (authMethod === 'none') {
+       // Public client (PKCE-only). RFC 6749 §3.2.1: client_id in the body.
+       params.set('client_id', options.clientId!);
+diff --git a/src/schemas.ts b/src/schemas.ts
+index 040aa2e..5a397dd 100644
+--- a/src/schemas.ts
++++ b/src/schemas.ts
+@@ -57,6 +57,13 @@ export const AuthorizationServerOptionsSchema = z.object({
+     .optional(),
+   clientId: z.string().min(1, 'Client id cannot be empty').optional(),
+   clientSecret: z.string().min(1, 'Client secret cannot be empty').optional(),
++  resource: z
++    .string()
++    .url('Invalid resource URI')
++    .refine((value) => new URL(value).hash === '', {
++      error: 'Resource URI cannot contain a fragment'
++    })
++    .optional(),
+   port: z
+     .number()
+     .int('Port must be an integer')

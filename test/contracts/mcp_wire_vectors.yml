@@ -1,0 +1,222 @@
+schema_version: 1
+protocol_version: "2026-07-28"
+notes:
+  - Boundary failures before a trusted JSON-RPC id use null id; Host, Origin, method, authentication, and admission failures do not parse or return a protocol body.
+  - Single-valued MCP headers reject duplicate/comma-combined values after OWS trimming. Accept is the only list-valued profile header.
+  - The duplicate-member parser rejects a repeated member in any JSON object so security decisions never depend on last-value semantics.
+vectors:
+  - id: options_allowed
+    phase: cors
+    request: {http_method: OPTIONS, origin: allowed, preflight_method: POST, preflight_headers: allowed}
+    expected: {http_status: 204, headers: {allow_origin: exact, allow_methods: POST}, protocol_code: null, result: empty, request_events: 0, invocation_events: 0, work: {body_parses: 0, registry: 0, sdk: 0, host: 0}}
+  - id: options_origin_denied
+    phase: cors
+    request: {http_method: OPTIONS, origin: denied, preflight_method: POST, preflight_headers: allowed}
+    expected: {http_status: 403, headers: {cors: absent}, protocol_code: null, result: empty, request_events: 0, invocation_events: 0, work: {body_parses: 0, registry: 0, sdk: 0, host: 0}}
+  - id: options_header_denied
+    phase: cors
+    request: {http_method: OPTIONS, origin: allowed, preflight_method: POST, preflight_headers: includes_x_mcp_header}
+    expected: {http_status: 403, headers: {cors: absent}, protocol_code: null, result: empty, request_events: 0, invocation_events: 0, work: {body_parses: 0, registry: 0, sdk: 0, host: 0}}
+  - id: post_host_denied
+    phase: host_origin
+    request: {http_method: POST, host: denied, origin: absent}
+    expected: {http_status: 400, headers: {}, protocol_code: null, result: empty, request_events: 1, invocation_events: 0, work: {body_parses: 0, registry: 0, sdk: 0, host: 0}}
+  - id: post_origin_denied
+    phase: host_origin
+    request: {http_method: POST, host: allowed, origin: denied}
+    expected: {http_status: 403, headers: {cors: absent}, protocol_code: null, result: empty, request_events: 1, invocation_events: 0, work: {body_parses: 0, registry: 0, sdk: 0, host: 0}}
+  - id: post_host_origin_and_token_denied_prefers_host
+    phase: host_origin
+    request:
+      http_method: POST
+      host: denied
+      origin: denied
+      bearer: missing
+    expected:
+      http_status: 400
+      headers: {}
+      protocol_code: null
+      result: empty
+      request_events: 1
+      invocation_events: 0
+      work:
+        body_parses: 0
+        registry: 0
+        sdk: 0
+        host: 0
+  - id: post_origin_denied_without_token
+    phase: host_origin
+    request:
+      http_method: POST
+      host: allowed
+      origin: denied
+      bearer: missing
+    expected:
+      http_status: 403
+      headers:
+        cors: absent
+      protocol_code: null
+      result: empty
+      request_events: 1
+      invocation_events: 0
+      work:
+        body_parses: 0
+        registry: 0
+        sdk: 0
+        host: 0
+  - id: forwarded_host_cannot_change_public_origin
+    phase: host_origin
+    request: {http_method: POST, host: allowed_ingress_alias, x_forwarded_host: attacker.example, bearer: missing}
+    expected: {http_status: 401, headers: {www_authenticate: canonical_resource_uri}, protocol_code: null, result: empty, request_events: 1, invocation_events: 0, work: {body_parses: 0, registry: 0, sdk: 0, host: 0}}
+  - id: forwarded_proto_cannot_change_public_origin
+    phase: host_origin
+    request: {http_method: POST, host: canonical, x_forwarded_proto: http, bearer: missing}
+    expected: {http_status: 401, headers: {www_authenticate: canonical_resource_uri}, protocol_code: null, result: empty, request_events: 1, invocation_events: 0, work: {body_parses: 0, registry: 0, sdk: 0, host: 0}}
+  - id: host_port_cannot_change_public_origin
+    phase: host_origin
+    request: {http_method: POST, host: allowed_ingress_alias_with_port, forwarded: host_and_proto_attacker_controlled, bearer: missing}
+    expected: {http_status: 401, headers: {www_authenticate: canonical_resource_uri}, protocol_code: null, result: empty, request_events: 1, invocation_events: 0, work: {body_parses: 0, registry: 0, sdk: 0, host: 0}}
+  - id: get_method_denied
+    phase: method
+    request: {http_method: GET, host: allowed, origin: absent}
+    expected: {http_status: 405, headers: {allow: "POST, OPTIONS"}, protocol_code: null, result: empty, request_events: 1, invocation_events: 0, work: {body_parses: 0, registry: 0, sdk: 0, host: 0}}
+  - id: token_missing
+    phase: authentication
+    request: {http_method: POST, bearer: missing}
+    expected: {http_status: 401, headers: {www_authenticate: protected_resource_challenge}, protocol_code: null, result: empty, request_events: 1, invocation_events: 0, work: {body_parses: 0, registry: 0, sdk: 0, host: 0}}
+  - id: token_expired
+    phase: authentication
+    request: {http_method: POST, bearer: expired}
+    expected: {http_status: 401, headers: {www_authenticate: protected_resource_challenge}, protocol_code: null, result: empty, request_events: 1, invocation_events: 0, work: {body_parses: 0, registry: 0, sdk: 0, host: 0}}
+  - id: token_revoked
+    phase: authentication
+    request: {http_method: POST, bearer: revoked}
+    expected: {http_status: 401, headers: {www_authenticate: protected_resource_challenge}, protocol_code: null, result: empty, request_events: 1, invocation_events: 0, work: {body_parses: 0, registry: 0, sdk: 0, host: 0}}
+  - id: token_wrong_audience
+    phase: authentication
+    request: {http_method: POST, bearer: wrong_audience}
+    expected: {http_status: 401, headers: {www_authenticate: protected_resource_challenge}, protocol_code: null, result: empty, request_events: 1, invocation_events: 0, work: {body_parses: 0, registry: 0, sdk: 0, host: 0}}
+  - id: admission_reject
+    phase: admission
+    request: {http_method: POST, bearer: valid, quota: exceeded}
+    expected: {http_status: 429, headers: {retry_after: full_window_seconds}, protocol_code: null, result: empty, request_events: 1, invocation_events: 0, work: {body_parses: 0, registry: 0, sdk: 0, host: 0}}
+  - id: admission_store_failure
+    phase: admission
+    request: {http_method: POST, bearer: valid, quota_store: raises}
+    expected: {http_status: 503, headers: {}, protocol_code: null, result: empty, request_events: 1, invocation_events: 0, work: {body_parses: 0, registry: 0, sdk: 0, host: 0}}
+  - id: content_type_missing
+    phase: media
+    request: {http_method: POST, bearer: valid, content_type: missing}
+    expected: {http_status: 415, headers: {content_type: application/json}, protocol_code: -32600, result: invalid_request_null_id, request_events: 1, invocation_events: 0, work: {body_parses: 0, registry: 0, sdk: 0, host: 0}}
+  - id: content_type_wrong
+    phase: media
+    request: {http_method: POST, bearer: valid, content_type: text/plain}
+    expected: {http_status: 415, headers: {content_type: application/json}, protocol_code: -32600, result: invalid_request_null_id, request_events: 1, invocation_events: 0, work: {body_parses: 0, registry: 0, sdk: 0, host: 0}}
+  - id: accept_missing_sse
+    phase: media
+    request: {http_method: POST, bearer: valid, accept: application_json_only}
+    expected: {http_status: 406, headers: {content_type: application/json}, protocol_code: -32600, result: invalid_request_null_id, request_events: 1, invocation_events: 0, work: {body_parses: 0, registry: 0, sdk: 0, host: 0}}
+  - id: accept_q_zero
+    phase: media
+    request: {http_method: POST, bearer: valid, accept: sse_q_zero}
+    expected: {http_status: 406, headers: {content_type: application/json}, protocol_code: -32600, result: invalid_request_null_id, request_events: 1, invocation_events: 0, work: {body_parses: 0, registry: 0, sdk: 0, host: 0}}
+  - id: request_body_oversize
+    phase: body
+    request: {http_method: POST, bearer: valid, body: exceeds_max_request_bytes}
+    expected: {http_status: 413, headers: {content_type: application/json}, protocol_code: -32600, result: invalid_request_null_id, request_events: 1, invocation_events: 0, work: {body_parses: 0, registry: 0, sdk: 0, host: 0}}
+  - id: invalid_json
+    phase: parse
+    request: {http_method: POST, bearer: valid, body: invalid_json}
+    expected: {http_status: 400, headers: {content_type: application/json}, protocol_code: -32700, result: parse_error_null_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
+  - id: duplicate_object_member
+    phase: parse
+    request: {http_method: POST, bearer: valid, body: duplicate_member_at_any_depth}
+    expected: {http_status: 400, headers: {content_type: application/json}, protocol_code: -32600, result: invalid_request_null_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
+  - id: malformed_envelope
+    phase: envelope
+    request: {http_method: POST, bearer: valid, body: missing_jsonrpc}
+    expected: {http_status: 400, headers: {content_type: application/json}, protocol_code: -32600, result: invalid_request_null_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
+  - id: meta_protocol_missing
+    phase: envelope
+    request: {http_method: POST, bearer: valid, meta: missing_protocol_version}
+    expected: {http_status: 400, headers: {content_type: application/json}, protocol_code: -32602, result: invalid_params_preserved_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
+  - id: meta_capabilities_missing
+    phase: envelope
+    request: {http_method: POST, bearer: valid, meta: missing_client_capabilities}
+    expected: {http_status: 400, headers: {content_type: application/json}, protocol_code: -32602, result: invalid_params_preserved_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
+  - id: meta_client_info_absent
+    phase: dispatch
+    request: {http_method: POST, bearer: valid, method: server/discover, meta: required_only, headers: matching_ows_trimmed}
+    expected: {http_status: 200, headers: {content_type: application/json}, protocol_code: null, result: complete_private_zero_ttl, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 1, sdk: 1, host: 0}}
+  - id: meta_client_info_invalid
+    phase: envelope
+    request: {http_method: POST, bearer: valid, meta: client_info_wrong_type}
+    expected: {http_status: 400, headers: {content_type: application/json}, protocol_code: -32602, result: invalid_params_preserved_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
+  - id: protocol_header_missing
+    phase: headers
+    request: {http_method: POST, bearer: valid, headers: missing_protocol_version}
+    expected: {http_status: 400, headers: {content_type: application/json}, protocol_code: -32020, result: header_mismatch_preserved_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
+  - id: method_header_mismatch
+    phase: headers
+    request: {http_method: POST, bearer: valid, headers: method_mismatch}
+    expected: {http_status: 400, headers: {content_type: application/json}, protocol_code: -32020, result: header_mismatch_preserved_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
+  - id: name_header_mismatch
+    phase: headers
+    request: {http_method: POST, bearer: valid, method: tools/call, headers: name_mismatch}
+    expected: {http_status: 400, headers: {content_type: application/json}, protocol_code: -32020, result: header_mismatch_preserved_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
+  - id: single_value_header_comma_combined
+    phase: headers
+    request: {http_method: POST, bearer: valid, headers: protocol_version_comma_combined}
+    expected: {http_status: 400, headers: {content_type: application/json}, protocol_code: -32020, result: header_mismatch_preserved_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
+  - id: unsupported_protocol_version
+    phase: headers
+    request: {http_method: POST, bearer: valid, protocol_version: unsupported_but_matching}
+    expected: {http_status: 400, headers: {content_type: application/json}, protocol_code: -32022, result: {supportedVersions: ["2026-07-28"]}, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
+  - id: unsupported_rpc_initialize
+    phase: method_allowlist
+    request: {http_method: POST, bearer: valid, method: initialize, headers: matching}
+    expected: {http_status: 404, headers: {content_type: application/json}, protocol_code: -32601, result: method_not_found_preserved_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
+  - id: malformed_call_params
+    phase: call_params
+    request: {http_method: POST, bearer: valid, method: tools/call, params: arguments_array}
+    expected: {http_status: 200, headers: {content_type: application/json}, protocol_code: -32602, result: invalid_params_preserved_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
+  - id: reserved_server_context_explicit
+    phase: call_params
+    request: {http_method: POST, bearer: valid, method: tools/call, schema_form: explicit_property, arguments: top_level_server_context}
+    expected: {http_status: 200, headers: {content_type: application/json}, protocol_code: -32602, result: invalid_params_preserved_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
+  - id: reserved_server_context_open
+    phase: call_params
+    request: {http_method: POST, bearer: valid, method: tools/call, schema_form: additional_properties, arguments: top_level_server_context}
+    expected: {http_status: 200, headers: {content_type: application/json}, protocol_code: -32602, result: invalid_params_preserved_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
+  - id: reserved_server_context_patterned
+    phase: call_params
+    request: {http_method: POST, bearer: valid, method: tools/call, schema_form: pattern_properties, arguments: top_level_server_context}
+    expected: {http_status: 200, headers: {content_type: application/json}, protocol_code: -32602, result: invalid_params_preserved_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
+  - id: reserved_server_context_referenced
+    phase: call_params
+    request: {http_method: POST, bearer: valid, method: tools/call, schema_form: local_ref, arguments: top_level_server_context}
+    expected: {http_status: 200, headers: {content_type: application/json}, protocol_code: -32602, result: invalid_params_preserved_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
+  - id: reserved_server_context_composed
+    phase: call_params
+    request: {http_method: POST, bearer: valid, method: tools/call, schema_form: all_of, arguments: top_level_server_context}
+    expected: {http_status: 200, headers: {content_type: application/json}, protocol_code: -32602, result: invalid_params_preserved_id, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 0, sdk: 0, host: 0}}
+  - id: nested_server_context_valid
+    phase: dispatch
+    request: {http_method: POST, bearer: valid, method: tools/call, arguments: nested_server_context_valid_schema}
+    expected: {http_status: 200, headers: {content_type: application/json}, protocol_code: null, result: complete, request_events: 1, invocation_events: 1, work: {body_parses: 1, registry: 1, sdk: 1, host: 1}}
+  - id: input_schema_invalid
+    phase: sdk_schema
+    request: {http_method: POST, bearer: valid, method: tools/call, arguments: schema_invalid}
+    expected: {http_status: 200, headers: {content_type: application/json}, protocol_code: null, result: generic_tool_error, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 1, sdk: 1, host: 0}}
+  - id: discover_success
+    phase: dispatch
+    request: {http_method: POST, bearer: valid, method: server/discover, headers: matching}
+    expected: {http_status: 200, headers: {content_type: application/json}, protocol_code: null, result: complete_private_zero_ttl_server_info_meta, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 1, sdk: 1, host: 0}}
+  - id: list_success
+    phase: dispatch
+    request: {http_method: POST, bearer: valid, method: tools/list, headers: matching}
+    expected: {http_status: 200, headers: {content_type: application/json}, protocol_code: null, result: complete_private_zero_ttl_sorted, request_events: 1, invocation_events: 0, work: {body_parses: 1, registry: 1, sdk: 1, host: 0}}
+  - id: call_success
+    phase: dispatch
+    request: {http_method: POST, bearer: valid, method: tools/call, headers: matching, arguments: valid}
+    expected: {http_status: 200, headers: {content_type: application/json}, protocol_code: null, result: complete, request_events: 1, invocation_events: 1, work: {body_parses: 1, registry: 1, sdk: 1, host: 1}}

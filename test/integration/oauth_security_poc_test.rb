@@ -21,8 +21,8 @@ class OAuthSecurityPocTest < ActionDispatch::IntegrationTest
     Hitch::Client.delete_all
     Hitch.reset_configuration!
     Hitch.configure do |c|
-      c.principal_model = "User"
       c.resource_uri = RESOURCE
+      c.allowed_hosts = [ "www.example.com" ]
       c.brand_name = "Dummy"
       c.supported_scopes = [ "mcp" ] # server supports ONLY "mcp"
     end
@@ -54,6 +54,7 @@ class OAuthSecurityPocTest < ActionDispatch::IntegrationTest
     sign_in @victim
 
     post "/oauth/authorize", params: {
+      response_type: "code",
       # client_id deliberately omitted — the attacker never registered
       redirect_uri: ATTACKER_REDIRECT,
       code_challenge: @challenge,
@@ -72,12 +73,13 @@ class OAuthSecurityPocTest < ActionDispatch::IntegrationTest
 
   test "HIGH-1: even with a known client, redirect must match its registered set" do
     # An honest client registered ONLY its own callback...
-    post "/oauth/register", params: { client_name: "Claude", redirect_uris: [ HONEST_REDIRECT ] }
+    post "/oauth/register", params: { client_name: "Claude", redirect_uris: [ HONEST_REDIRECT ] }, as: :json
     client = JSON.parse(response.body)
     sign_in @victim
 
     # ...attacker reuses that client_id but swaps the redirect to their host.
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"],
       redirect_uri: ATTACKER_REDIRECT,
       code_challenge: @challenge,
@@ -95,17 +97,19 @@ class OAuthSecurityPocTest < ActionDispatch::IntegrationTest
   #
   # Exploit: client requests scope="admin" (or any string). The server
   # supports only "mcp", but persists "admin" on the token unchanged.
-  # The moment any consumer gates on token.has_scope?("admin") — which
+  # The moment any consumer gates on token.scope?("admin") — which
   # the gem's own docstring advertises as the pattern — the client has
   # self-elevated. RFC 6749 §3.3 lets the AS narrow scope; granting
   # unknown scopes verbatim is the flaw.
   # ───────────────────────────────────────────────────────────────────
   test "HIGH-2: requested scope must be intersected with supported_scopes" do
-    post "/oauth/register", params: { client_name: "Claude", redirect_uris: [ HONEST_REDIRECT ] }
+    Hitch.configuration.supported_scopes = [ "read" ]
+    post "/oauth/register", params: { client_name: "Claude", redirect_uris: [ HONEST_REDIRECT ] }, as: :json
     client = JSON.parse(response.body)
     sign_in @victim
 
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"],
       redirect_uri: HONEST_REDIRECT,
       code_challenge: @challenge,
@@ -119,38 +123,44 @@ class OAuthSecurityPocTest < ActionDispatch::IntegrationTest
     post "/oauth/token", params: {
       grant_type: "authorization_code",
       code: code,
+      client_id: client["client_id"],
       code_verifier: @verifier,
       resource: RESOURCE
     }
     assert_response :success
-    granted = JSON.parse(response.body)["scope"]
+    token_response = JSON.parse(response.body)
+    granted = token_response["scope"]
 
     # SECURE: the granted scope must NOT contain "admin" — it was never
     # a supported scope. It should be clamped to the "mcp" ∩ requested.
     refute_includes granted.to_s.split(/\s+/), "admin",
       "VULNERABLE: client self-granted scope=#{granted.inspect}; server " \
       "only supports #{Hitch.configuration.supported_scopes.inspect}"
+    assert_equal "read", granted
+    assert_equal "read", Hitch::AccessToken.find_by_token(token_response.fetch("access_token")).scopes
   end
 
   test "HIGH-2: a requested supported scope is still granted" do
     Hitch.reset_configuration!
     Hitch.configure do |c|
-      c.principal_model = "User"
       c.resource_uri = RESOURCE
+      c.allowed_hosts = [ "www.example.com" ]
       c.supported_scopes = [ "mcp", "mcp.write" ]
     end
-    post "/oauth/register", params: { client_name: "Claude", redirect_uris: [ HONEST_REDIRECT ] }
+    post "/oauth/register", params: { client_name: "Claude", redirect_uris: [ HONEST_REDIRECT ] }, as: :json
     client = JSON.parse(response.body)
     sign_in @victim
 
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"], redirect_uri: HONEST_REDIRECT,
       code_challenge: @challenge, code_challenge_method: "S256",
       resource: RESOURCE, scope: "mcp.write evil" # one valid, one not
     }
     code = URI.decode_www_form(URI.parse(response.location).query).to_h["code"]
     post "/oauth/token", params: {
-      grant_type: "authorization_code", code: code, code_verifier: @verifier, resource: RESOURCE
+      grant_type: "authorization_code", code: code, client_id: client["client_id"],
+      code_verifier: @verifier, resource: RESOURCE
     }
     granted = JSON.parse(response.body)["scope"].split(/\s+/)
     # Clamp keeps the supported scope, drops the unsupported one.
@@ -165,20 +175,27 @@ class OAuthSecurityPocTest < ActionDispatch::IntegrationTest
   # success, one rejection — never two valid tokens).
   # ───────────────────────────────────────────────────────────────────
   test "L1: an authorization code cannot be redeemed twice" do
-    post "/oauth/register", params: { client_name: "Claude", redirect_uris: [ HONEST_REDIRECT ] }
+    post "/oauth/register", params: { client_name: "Claude", redirect_uris: [ HONEST_REDIRECT ] }, as: :json
     client = JSON.parse(response.body)
     sign_in @victim
     post "/oauth/authorize", params: {
+      response_type: "code",
       client_id: client["client_id"], redirect_uri: HONEST_REDIRECT,
       code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE
     }
     code = URI.decode_www_form(URI.parse(response.location).query).to_h["code"]
 
-    post "/oauth/token", params: { grant_type: "authorization_code", code: code, code_verifier: @verifier, resource: RESOURCE }
+    post "/oauth/token", params: {
+      grant_type: "authorization_code", code: code, client_id: client["client_id"],
+      code_verifier: @verifier, resource: RESOURCE
+    }
     assert_response :success
 
     # Second redemption of the same code must fail.
-    post "/oauth/token", params: { grant_type: "authorization_code", code: code, code_verifier: @verifier, resource: RESOURCE }
+    post "/oauth/token", params: {
+      grant_type: "authorization_code", code: code, client_id: client["client_id"],
+      code_verifier: @verifier, resource: RESOURCE
+    }
     assert_response :bad_request
     assert_equal "invalid_grant", JSON.parse(response.body)["error"]
   end

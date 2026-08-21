@@ -1,0 +1,74 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Verifies that the gem published on RubyGems is byte-for-byte identical to
+# the annotated release tag: same manifest, same file contents.
+
+require "digest"
+require "fileutils"
+require "open3"
+require "rubygems/package"
+require "tmpdir"
+
+ROOT = File.expand_path("..", __dir__)
+GEM_NAME = "hitch-rails"
+
+version = ARGV.shift
+abort "Usage: bin/release-check VERSION" if version.nil? || ARGV.any?
+tag = "v#{version}"
+
+def capture!(*command, chdir: ROOT)
+  output, status = Open3.capture2e(*command, chdir: chdir)
+  return output if status.success?
+
+  warn output
+  abort "command failed (#{status.exitstatus}): #{command.join(' ')}"
+end
+
+tag_type = capture!("git", "cat-file", "-t", "refs/tags/#{tag}").strip
+abort "#{tag} must be an annotated tag (found #{tag_type.inspect})" unless tag_type == "tag"
+
+Dir.mktmpdir("hitch-release-check-") do |directory|
+  archive = File.join(directory, "tag.tar")
+  tag_tree = File.join(directory, "tag")
+  extracted = File.join(directory, "gem")
+  FileUtils.mkdir_p(tag_tree)
+  FileUtils.mkdir_p(extracted)
+
+  capture!("git", "archive", "--format=tar", "--output", archive, tag)
+  capture!("tar", "-xf", archive, "-C", tag_tree)
+  tag_specification = Gem::Specification.load(File.join(tag_tree, "#{GEM_NAME}.gemspec")) ||
+    abort("could not load gemspec from #{tag}")
+  abort "tag gemspec version is #{tag_specification.version}, expected #{version}" unless
+    tag_specification.version.to_s == version
+
+  capture!(
+    "gem", "fetch", GEM_NAME, "--version", version,
+    "--clear-sources", "--source", "https://rubygems.org",
+    chdir: directory
+  )
+  artifact = File.join(directory, "#{GEM_NAME}-#{version}.gem")
+  abort "RubyGems did not return #{File.basename(artifact)}" unless File.file?(artifact)
+
+  package = Gem::Package.new(artifact)
+  abort "published gem version is #{package.spec.version}, expected #{version}" unless
+    package.spec.version.to_s == version
+
+  expected_files = tag_specification.files.sort
+  published_files = package.spec.files.sort
+  abort "published manifest differs from the #{tag} gemspec allowlist" unless
+    published_files == expected_files
+  abort "published contents differ from the embedded gem manifest" unless
+    package.contents.sort == published_files
+
+  package.extract_files(extracted)
+  mismatched = published_files.reject do |path|
+    tag_path = File.join(tag_tree, path)
+    gem_path = File.join(extracted, path)
+    File.file?(tag_path) && File.file?(gem_path) &&
+      Digest::SHA256.file(tag_path).hexdigest == Digest::SHA256.file(gem_path).hexdigest
+  end
+  abort "published files differ from #{tag}: #{mismatched.join(', ')}" if mismatched.any?
+end
+
+puts "Published #{GEM_NAME} #{version} matches #{tag}."

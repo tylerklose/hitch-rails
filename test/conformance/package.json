@@ -1,0 +1,11 @@
+{
+  "name": "hitch-conformance-toolchain",
+  "private": true,
+  "engines": {
+    "node": "23.7.0",
+    "npm": "11.1.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/conformance": "0.2.0-alpha.10"
+  }
+}

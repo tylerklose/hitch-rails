@@ -1,0 +1,11 @@
+# frozen_string_literal: true
+
+<% @controller_modules.each_with_index do |namespace, index| -%>
+<%= "  " * index %>module <%= namespace %>
+<% end -%>
+<%= "  " * @controller_modules.length %>class <%= @controller_leaf %> < ActionController::API
+<%= "  " * (@controller_modules.length + 1) %>include Hitch::MCP::Endpoint
+<%= "  " * @controller_modules.length %>end
+<% @controller_modules.length.times.reverse_each do |index| -%>
+<%= "  " * index %>end
+<% end -%>

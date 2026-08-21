@@ -1,0 +1,81 @@
+{
+  "model_name": "hitch_tool_generator",
+  "_intent_notes": [
+    "Pairwise name, namespace, registry-state, and collision model.",
+    "Every row runs the real Rails generator against a temporary host tree.",
+    "Only a valid normalized name and namespace with an installed registry and no owned collision may write files.",
+    "Successful rows register the tool in the host registry via inject_into_class."
+  ],
+  "parameters": [
+    {
+      "name": "name",
+      "values": [
+        "simple_snake",
+        "nested_slash",
+        "nested_constant",
+        "hyphenated",
+        "invalid"
+      ]
+    },
+    {
+      "name": "namespace",
+      "values": ["default", "custom_valid", "invalid"]
+    },
+    {
+      "name": "registry",
+      "values": ["absent", "present"]
+    },
+    {
+      "name": "collision",
+      "values": [
+        "none",
+        "tool_file",
+        "test_file",
+        "tool_constant",
+        "test_constant"
+      ]
+    }
+  ],
+  "constraints": [
+    {
+      "type": "forced",
+      "_why": "Default simple-name golden path with an installed registry.",
+      "assignments": [
+        {"parameter": "name", "value": "simple_snake"},
+        {"parameter": "namespace", "value": "default"},
+        {"parameter": "registry", "value": "present"},
+        {"parameter": "collision", "value": "none"}
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Slash-nested normalization without a registry refuses and writes nothing.",
+      "assignments": [
+        {"parameter": "name", "value": "nested_slash"},
+        {"parameter": "namespace", "value": "default"},
+        {"parameter": "registry", "value": "absent"},
+        {"parameter": "collision", "value": "none"}
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Constant-nested input plus a custom root namespace remains deterministic.",
+      "assignments": [
+        {"parameter": "name", "value": "nested_constant"},
+        {"parameter": "namespace", "value": "custom_valid"},
+        {"parameter": "registry", "value": "present"},
+        {"parameter": "collision", "value": "none"}
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Hyphenated input has one explicit normalization golden path.",
+      "assignments": [
+        {"parameter": "name", "value": "hyphenated"},
+        {"parameter": "namespace", "value": "default"},
+        {"parameter": "registry", "value": "present"},
+        {"parameter": "collision", "value": "none"}
+      ]
+    }
+  ]
+}

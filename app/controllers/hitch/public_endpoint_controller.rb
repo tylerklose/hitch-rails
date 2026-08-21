@@ -17,7 +17,9 @@ module Hitch
   # in this category — it must integrate with the host's auth concern
   # to identify the user granting consent.
   class PublicEndpointController < ::ActionController::Base
+    include Hitch::HostValidation
     include Hitch::IssuerUrl
+    include Hitch::OauthParameterValidation
 
     # These endpoints serve non-browser MCP clients (CLI / desktop /
     # server-to-server) that carry no Rails session and no CSRF token —
@@ -30,17 +32,5 @@ module Hitch
     # act on. The consent screen (AuthorizationsController) is the only
     # session-backed POST and KEEPS forgery protection.
     skip_forgery_protection if respond_to?(:skip_forgery_protection)
-
-    # Render an OAuth-formatted JSON error.
-    def oauth_error(code, description, status = :bad_request)
-      render json: { error: code, error_description: description }, status: status
-    end
-
-    # Guard against query-string array/hash coercion
-    # (?client_id[]=a&client_id[]=b would otherwise become an Array).
-    def scalar_param(key)
-      value = params[key]
-      value.is_a?(String) ? value.presence : nil
-    end
   end
 end

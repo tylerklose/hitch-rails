@@ -1,0 +1,422 @@
+{
+  "model_name": "hitch_mcp_tool_authorization",
+  "_intent_notes": [
+    "Exhaustive terminal-path model for the authenticated tools/call contract in ROADMAP.md.",
+    "Precedence is token and audience, authenticated request admission, registration, tool availability, static OAuth scope, SDK input schema, argument-aware host policy, then host outcome.",
+    "A request event exists for every non-OPTIONS request. An invocation event exists only after SDK input validation reaches a registered executable Hitch tool.",
+    "The constraints leave exactly twelve valid terminal paths. Forced rows pin every path; this is a state-machine truth table, not a pairwise-reduction claim."
+  ],
+  "parameters": [
+    {
+      "name": "token_state",
+      "values": ["valid", "missing", "expired_or_revoked", "wrong_audience"]
+    },
+    {
+      "name": "request_admission",
+      "values": ["allow", "reject", "not_applicable"]
+    },
+    {
+      "name": "registration",
+      "values": ["registered", "unregistered", "not_applicable"]
+    },
+    {
+      "name": "tool_availability",
+      "values": ["available", "unavailable", "not_applicable"]
+    },
+    {
+      "name": "oauth_scope",
+      "values": ["sufficient", "insufficient", "not_applicable"]
+    },
+    {
+      "name": "input_schema",
+      "values": ["valid", "invalid", "not_applicable"]
+    },
+    {
+      "name": "argument_policy",
+      "values": ["allow", "deny", "not_applicable"]
+    },
+    {
+      "name": "host_outcome",
+      "values": ["success", "safe_error", "raises", "not_applicable"]
+    }
+  ],
+  "constraints": [
+    {
+      "type": "invalid_pair",
+      "_why": "Only an authenticated, audience-valid request reaches authenticated admission.",
+      "if": { "parameter": "token_state", "value": "missing" },
+      "then_not": { "parameter": "request_admission", "value": "allow" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "token_state", "value": "missing" },
+      "then_not": { "parameter": "request_admission", "value": "reject" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "token_state", "value": "expired_or_revoked" },
+      "then_not": { "parameter": "request_admission", "value": "allow" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "token_state", "value": "expired_or_revoked" },
+      "then_not": { "parameter": "request_admission", "value": "reject" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "token_state", "value": "wrong_audience" },
+      "then_not": { "parameter": "request_admission", "value": "allow" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "token_state", "value": "wrong_audience" },
+      "then_not": { "parameter": "request_admission", "value": "reject" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "A valid token must make an admission decision.",
+      "if": { "parameter": "token_state", "value": "valid" },
+      "then_not": { "parameter": "request_admission", "value": "not_applicable" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "Rejected or inapplicable request admission never resolves the registry.",
+      "if": { "parameter": "request_admission", "value": "reject" },
+      "then_not": { "parameter": "registration", "value": "registered" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "request_admission", "value": "reject" },
+      "then_not": { "parameter": "registration", "value": "unregistered" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "request_admission", "value": "not_applicable" },
+      "then_not": { "parameter": "registration", "value": "registered" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "request_admission", "value": "not_applicable" },
+      "then_not": { "parameter": "registration", "value": "unregistered" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "An admitted request always performs a registry lookup.",
+      "if": { "parameter": "request_admission", "value": "allow" },
+      "then_not": { "parameter": "registration", "value": "not_applicable" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "Unknown or inapplicable registration has no tool availability decision.",
+      "if": { "parameter": "registration", "value": "unregistered" },
+      "then_not": { "parameter": "tool_availability", "value": "available" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "registration", "value": "unregistered" },
+      "then_not": { "parameter": "tool_availability", "value": "unavailable" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "registration", "value": "not_applicable" },
+      "then_not": { "parameter": "tool_availability", "value": "available" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "registration", "value": "not_applicable" },
+      "then_not": { "parameter": "tool_availability", "value": "unavailable" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "A registered tool must make an availability decision.",
+      "if": { "parameter": "registration", "value": "registered" },
+      "then_not": { "parameter": "tool_availability", "value": "not_applicable" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "Only an available tool reaches static scope evaluation.",
+      "if": { "parameter": "tool_availability", "value": "unavailable" },
+      "then_not": { "parameter": "oauth_scope", "value": "sufficient" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "tool_availability", "value": "unavailable" },
+      "then_not": { "parameter": "oauth_scope", "value": "insufficient" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "tool_availability", "value": "not_applicable" },
+      "then_not": { "parameter": "oauth_scope", "value": "sufficient" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "tool_availability", "value": "not_applicable" },
+      "then_not": { "parameter": "oauth_scope", "value": "insufficient" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "An available tool must make a static scope decision.",
+      "if": { "parameter": "tool_availability", "value": "available" },
+      "then_not": { "parameter": "oauth_scope", "value": "not_applicable" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "Only a scope-sufficient call reaches SDK input validation.",
+      "if": { "parameter": "oauth_scope", "value": "insufficient" },
+      "then_not": { "parameter": "input_schema", "value": "valid" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "oauth_scope", "value": "insufficient" },
+      "then_not": { "parameter": "input_schema", "value": "invalid" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "oauth_scope", "value": "not_applicable" },
+      "then_not": { "parameter": "input_schema", "value": "valid" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "oauth_scope", "value": "not_applicable" },
+      "then_not": { "parameter": "input_schema", "value": "invalid" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "A scope-sufficient call must make a schema decision.",
+      "if": { "parameter": "oauth_scope", "value": "sufficient" },
+      "then_not": { "parameter": "input_schema", "value": "not_applicable" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "Only schema-valid arguments reach host policy.",
+      "if": { "parameter": "input_schema", "value": "invalid" },
+      "then_not": { "parameter": "argument_policy", "value": "allow" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "input_schema", "value": "invalid" },
+      "then_not": { "parameter": "argument_policy", "value": "deny" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "input_schema", "value": "not_applicable" },
+      "then_not": { "parameter": "argument_policy", "value": "allow" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "input_schema", "value": "not_applicable" },
+      "then_not": { "parameter": "argument_policy", "value": "deny" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "Schema-valid arguments must make a policy decision.",
+      "if": { "parameter": "input_schema", "value": "valid" },
+      "then_not": { "parameter": "argument_policy", "value": "not_applicable" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "Denied or inapplicable policy never executes host behavior.",
+      "if": { "parameter": "argument_policy", "value": "deny" },
+      "then_not": { "parameter": "host_outcome", "value": "success" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "argument_policy", "value": "deny" },
+      "then_not": { "parameter": "host_outcome", "value": "safe_error" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "argument_policy", "value": "deny" },
+      "then_not": { "parameter": "host_outcome", "value": "raises" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "argument_policy", "value": "not_applicable" },
+      "then_not": { "parameter": "host_outcome", "value": "success" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "argument_policy", "value": "not_applicable" },
+      "then_not": { "parameter": "host_outcome", "value": "safe_error" }
+    },
+    {
+      "type": "invalid_pair",
+      "if": { "parameter": "argument_policy", "value": "not_applicable" },
+      "then_not": { "parameter": "host_outcome", "value": "raises" }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "Allowed policy must reach one explicit host outcome.",
+      "if": { "parameter": "argument_policy", "value": "allow" },
+      "then_not": { "parameter": "host_outcome", "value": "not_applicable" }
+    },
+    {
+      "type": "forced",
+      "_why": "Happy path.",
+      "assignments": [
+        { "parameter": "token_state", "value": "valid" },
+        { "parameter": "request_admission", "value": "allow" },
+        { "parameter": "registration", "value": "registered" },
+        { "parameter": "tool_availability", "value": "available" },
+        { "parameter": "oauth_scope", "value": "sufficient" },
+        { "parameter": "input_schema", "value": "valid" },
+        { "parameter": "argument_policy", "value": "allow" },
+        { "parameter": "host_outcome", "value": "success" }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Missing bearer.",
+      "assignments": [
+        { "parameter": "token_state", "value": "missing" },
+        { "parameter": "request_admission", "value": "not_applicable" },
+        { "parameter": "registration", "value": "not_applicable" },
+        { "parameter": "tool_availability", "value": "not_applicable" },
+        { "parameter": "oauth_scope", "value": "not_applicable" },
+        { "parameter": "input_schema", "value": "not_applicable" },
+        { "parameter": "argument_policy", "value": "not_applicable" },
+        { "parameter": "host_outcome", "value": "not_applicable" }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Expired or revoked bearer.",
+      "assignments": [
+        { "parameter": "token_state", "value": "expired_or_revoked" },
+        { "parameter": "request_admission", "value": "not_applicable" },
+        { "parameter": "registration", "value": "not_applicable" },
+        { "parameter": "tool_availability", "value": "not_applicable" },
+        { "parameter": "oauth_scope", "value": "not_applicable" },
+        { "parameter": "input_schema", "value": "not_applicable" },
+        { "parameter": "argument_policy", "value": "not_applicable" },
+        { "parameter": "host_outcome", "value": "not_applicable" }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Wrong audience.",
+      "assignments": [
+        { "parameter": "token_state", "value": "wrong_audience" },
+        { "parameter": "request_admission", "value": "not_applicable" },
+        { "parameter": "registration", "value": "not_applicable" },
+        { "parameter": "tool_availability", "value": "not_applicable" },
+        { "parameter": "oauth_scope", "value": "not_applicable" },
+        { "parameter": "input_schema", "value": "not_applicable" },
+        { "parameter": "argument_policy", "value": "not_applicable" },
+        { "parameter": "host_outcome", "value": "not_applicable" }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Authenticated endpoint rate rejection.",
+      "assignments": [
+        { "parameter": "token_state", "value": "valid" },
+        { "parameter": "request_admission", "value": "reject" },
+        { "parameter": "registration", "value": "not_applicable" },
+        { "parameter": "tool_availability", "value": "not_applicable" },
+        { "parameter": "oauth_scope", "value": "not_applicable" },
+        { "parameter": "input_schema", "value": "not_applicable" },
+        { "parameter": "argument_policy", "value": "not_applicable" },
+        { "parameter": "host_outcome", "value": "not_applicable" }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Unregistered name.",
+      "assignments": [
+        { "parameter": "token_state", "value": "valid" },
+        { "parameter": "request_admission", "value": "allow" },
+        { "parameter": "registration", "value": "unregistered" },
+        { "parameter": "tool_availability", "value": "not_applicable" },
+        { "parameter": "oauth_scope", "value": "not_applicable" },
+        { "parameter": "input_schema", "value": "not_applicable" },
+        { "parameter": "argument_policy", "value": "not_applicable" },
+        { "parameter": "host_outcome", "value": "not_applicable" }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Unavailable tool is concealed as unknown.",
+      "assignments": [
+        { "parameter": "token_state", "value": "valid" },
+        { "parameter": "request_admission", "value": "allow" },
+        { "parameter": "registration", "value": "registered" },
+        { "parameter": "tool_availability", "value": "unavailable" },
+        { "parameter": "oauth_scope", "value": "not_applicable" },
+        { "parameter": "input_schema", "value": "not_applicable" },
+        { "parameter": "argument_policy", "value": "not_applicable" },
+        { "parameter": "host_outcome", "value": "not_applicable" }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Available tool needs scope step-up.",
+      "assignments": [
+        { "parameter": "token_state", "value": "valid" },
+        { "parameter": "request_admission", "value": "allow" },
+        { "parameter": "registration", "value": "registered" },
+        { "parameter": "tool_availability", "value": "available" },
+        { "parameter": "oauth_scope", "value": "insufficient" },
+        { "parameter": "input_schema", "value": "not_applicable" },
+        { "parameter": "argument_policy", "value": "not_applicable" },
+        { "parameter": "host_outcome", "value": "not_applicable" }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "SDK schema rejection precedes Hitch invocation.",
+      "assignments": [
+        { "parameter": "token_state", "value": "valid" },
+        { "parameter": "request_admission", "value": "allow" },
+        { "parameter": "registration", "value": "registered" },
+        { "parameter": "tool_availability", "value": "available" },
+        { "parameter": "oauth_scope", "value": "sufficient" },
+        { "parameter": "input_schema", "value": "invalid" },
+        { "parameter": "argument_policy", "value": "not_applicable" },
+        { "parameter": "host_outcome", "value": "not_applicable" }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Argument policy denial reaches Hitch but not host behavior.",
+      "assignments": [
+        { "parameter": "token_state", "value": "valid" },
+        { "parameter": "request_admission", "value": "allow" },
+        { "parameter": "registration", "value": "registered" },
+        { "parameter": "tool_availability", "value": "available" },
+        { "parameter": "oauth_scope", "value": "sufficient" },
+        { "parameter": "input_schema", "value": "valid" },
+        { "parameter": "argument_policy", "value": "deny" },
+        { "parameter": "host_outcome", "value": "not_applicable" }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Host-approved safe error.",
+      "assignments": [
+        { "parameter": "token_state", "value": "valid" },
+        { "parameter": "request_admission", "value": "allow" },
+        { "parameter": "registration", "value": "registered" },
+        { "parameter": "tool_availability", "value": "available" },
+        { "parameter": "oauth_scope", "value": "sufficient" },
+        { "parameter": "input_schema", "value": "valid" },
+        { "parameter": "argument_policy", "value": "allow" },
+        { "parameter": "host_outcome", "value": "safe_error" }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "Unexpected host exception.",
+      "assignments": [
+        { "parameter": "token_state", "value": "valid" },
+        { "parameter": "request_admission", "value": "allow" },
+        { "parameter": "registration", "value": "registered" },
+        { "parameter": "tool_availability", "value": "available" },
+        { "parameter": "oauth_scope", "value": "sufficient" },
+        { "parameter": "input_schema", "value": "valid" },
+        { "parameter": "argument_policy", "value": "allow" },
+        { "parameter": "host_outcome", "value": "raises" }
+      ]
+    }
+  ]
+}

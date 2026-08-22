@@ -267,9 +267,9 @@ class Hitch::AccessTokenTest < ActiveSupport::TestCase
     record = mint
     exchange_authorization_code(record, verifier: @verifier)
     # Bypass the cant-set-past-expires guard by direct column update. The
-    # family ceiling has to be past too: while it is future the row is
-    # reuse-detection evidence and cleanup deliberately keeps it.
-    record.update_columns(expires_at: 60.days.ago, family_expires_at: 1.day.ago)
+    # refresh clock has to be past too: a row still holding a usable refresh
+    # token is not dead, however long ago its access token lapsed.
+    record.update_columns(expires_at: 60.days.ago, refresh_expires_at: 1.day.ago)
 
     Hitch::AccessToken.cleanup_expired!(revoked_retention_days: 30)
 

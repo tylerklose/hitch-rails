@@ -108,15 +108,22 @@ module Hitch
     # @return [Integer]
     attr_reader :refresh_token_lifetime_seconds
 
-    # Absolute ceiling on a refresh-token family, in seconds. Default
-    # 7_776_000 (90 days), counted from the authorization the family
-    # descends from and never extended by rotation. This is what bounds a
-    # stolen token that is being quietly rotated: idle expiry never fires on
-    # a chain someone is actively using, so without a ceiling that chain
-    # outlives any human decision about it. Lower it to force
-    # re-authorization sooner; it also bounds how many rows a family
-    # accumulates.
-    # @return [Integer]
+    # Optional absolute ceiling on a refresh-token family, in seconds,
+    # counted from the authorization the family descends from and never
+    # extended by rotation. Default nil: no ceiling.
+    #
+    # A ceiling disconnects a person who has done nothing wrong. It does not
+    # reset, so someone using the app every day is cut off the moment it
+    # passes and made to consent again — which is the interruption this
+    # feature exists to remove, arriving on a timer instead of hourly. The
+    # idle window already retires what nobody is using.
+    #
+    # What a ceiling would still buy, for an operator who wants one: rotation
+    # and reuse detection catch a thief the moment the real client refreshes
+    # again, because the replay collides. They cannot catch a theft where the
+    # real client never comes back, so nothing ever collides. A ceiling ends
+    # that case on a clock; without one it ends at revocation.
+    # @return [Integer, nil]
     attr_reader :refresh_token_family_lifetime_seconds
 
     # How long after a refresh token is consumed a repeat presentation is
@@ -242,7 +249,7 @@ module Hitch
       @authorization_code_lifetime_seconds = 600
       @refresh_tokens_enabled = true
       @refresh_token_lifetime_seconds = 30 * 86_400
-      @refresh_token_family_lifetime_seconds = 90 * 86_400
+      @refresh_token_family_lifetime_seconds = nil
       @refresh_token_replay_grace_seconds = 60
       @principal_method = :current_user
       @login_path = nil
@@ -358,8 +365,11 @@ module Hitch
     end
 
     def refresh_token_family_lifetime_seconds=(value)
-      @refresh_token_family_lifetime_seconds =
+      @refresh_token_family_lifetime_seconds = if value.nil?
+        nil
+      else
         positive_lifetime_setting(value, "refresh_token_family_lifetime_seconds")
+      end
     end
 
     def refresh_token_replay_grace_seconds=(value)

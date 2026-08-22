@@ -372,17 +372,60 @@ with nothing revoked. Otherwise anyone who learned a token could log its
 owner out.
 
 ```ruby
-  config.refresh_token_lifetime_seconds = 30 * 86_400         # idle window
-  config.refresh_token_family_lifetime_seconds = 90 * 86_400  # absolute ceiling
-  config.refresh_token_replay_grace_seconds = 60              # 0 = strict one-time-use
+  config.refresh_token_lifetime_seconds = 30 * 86_400  # idle window
+  config.refresh_token_replay_grace_seconds = 60       # 0 = strict one-time-use
 ```
 
 The idle window resets on every rotation, so a connector in regular use never
-reaches it and an abandoned one goes quiet on its own. The ceiling is fixed
-when the family starts and rotation never extends it — that is what bounds a
-stolen token someone is quietly refreshing, since idle expiry never fires on
-a chain that is being used. Lowering it forces re-authorization sooner and
-keeps families smaller.
+reaches it and an abandoned one goes quiet on its own.
+
+### Nothing here is long-lived
+
+"The connection keeps working" is not the same as "a key lives forever," and
+it is worth being precise about which secrets exist and for how long. The
+access token lasts an hour and is **re-minted, never extended**. The refresh
+token is **replaced on every use** — the one presented is spent and a new one
+takes its place. Neither is stored: both are SHA-256 digests at rest.
+
+What continues is the *grant* — the thing the human approved on the consent
+screen — and it continues by being used. Stop using it and it lapses.
+
+### Putting a hard cutoff on a grant
+
+```ruby
+  config.refresh_token_family_lifetime_seconds = nil  # default: no cutoff
+```
+
+By default a grant continues as long as it keeps being used. One that stops
+being used dies after the idle window above. There is no third clock, and
+that is deliberate: an absolute ceiling does not reset, so it disconnects
+someone who has done nothing wrong — use the app every day and you are still
+cut off the moment it passes, and made to consent again. That is exactly the
+interruption this feature exists to remove, arriving on a timer instead of
+hourly.
+
+**The residual risk, plainly.** Rotation and reuse detection catch a thief
+the moment the legitimate client refreshes again: the replay collides with a
+consumed token and the whole family dies. They cannot catch the case where
+the legitimate client *never comes back* — nothing ever collides, so nothing
+trips the alarm. Without a cutoff, a refresh token stolen from a connector
+its owner has abandoned keeps working until someone revokes it, through
+`/oauth/revoke` or by the host destroying the grant.
+
+That case is the reason to set a cutoff, and if your threat model cares about
+it, set one:
+
+```ruby
+  config.refresh_token_family_lifetime_seconds = 90 * 86_400
+```
+
+Every family started after that carries it. A family's terms are fixed when
+it starts, so changing this neither ages nor reprieves families already
+running.
+
+For reference, this default matches what Google ships for published apps: no
+absolute clock, with grants ending by disuse, credential change, or
+revocation.
 
 ### The grace window, and what it costs
 
@@ -482,12 +525,19 @@ class CleanupMCPTokensJob < ApplicationJob
 end
 ```
 
-Idempotent; active tokens are never touched. Consumed refresh-token rows are
-kept while the family they belong to is still live, because they are the
-evidence reuse detection reads — dropping them on the retention schedule
-alone would turn a replayed stolen token into an ordinary `invalid_grant`
-and lose the alarm. Once the family ceiling passes they are collected
-normally.
+Idempotent; active tokens are never touched. Two things also survive the
+retention window: a row still holding a usable refresh token, however long
+ago its access token lapsed, and a consumed row that is still recent enough
+to be reuse-detection evidence. Collecting the first would delete a
+credential the client is about to present; collecting the second would turn
+a replayed stolen token into an ordinary `invalid_grant` and lose the alarm.
+
+Both are deferrals, not exemptions — once the refresh token has expired and
+the evidence is older than `revoked_retention_days`, the rows go. That
+bounds a family to roughly one retention window of rows however long it
+keeps rotating. The residual: a replay of a token consumed longer ago than
+that window is still refused, but no longer raises the alarm. Raise
+`revoked_retention_days` if you want a longer memory.
 
 ## Customizing the consent view
 

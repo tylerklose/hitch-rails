@@ -61,8 +61,42 @@ class Hitch::RefreshTokenTest < ActiveSupport::TestCase
     assert_not_nil result[:raw_refresh_token]
     assert_not_nil row.family_id
     assert_nil row.refresh_consumed_at
-    # Clamped at mint: the idle window never outlives the family ceiling.
-    assert_operator row.refresh_expires_at, :<=, row.family_expires_at
+    # No absolute ceiling by default: a person using the app is never cut off
+    # by a clock they cannot see.
+    assert_nil row.family_expires_at
+  end
+
+  # The whole point of the default. Five months of ordinary use, each refresh
+  # comfortably inside the idle window: nothing interrupts the person. A
+  # 90-day ceiling would cut this off partway through, which is the
+  # disconnection this feature exists to remove arriving on a timer.
+  test "a family still refreshes after longer than a ceiling would have allowed" do
+    result = grant
+    started_at = Time.current
+
+    6.times do |index|
+      travel_to(started_at + ((index + 1) * 25).days) do
+        result = refresh(result.fetch(:raw_refresh_token))
+        assert_not_nil result, "disconnected after #{(index + 1) * 25} days of use"
+      end
+    end
+
+    assert_nil row_for(result.fetch(:raw_refresh_token)).family_expires_at
+  end
+
+  test "an operator who configures a ceiling gets one, clamped into every successor" do
+    Hitch.configuration.refresh_token_family_lifetime_seconds = 3 * 86_400
+    first = grant
+
+    second = refresh(first.fetch(:raw_refresh_token))
+
+    parent = row_for(first.fetch(:raw_refresh_token))
+    child = row_for(second.fetch(:raw_refresh_token))
+    assert_not_nil parent.family_expires_at
+    # The idle window is 30 days and the ceiling 3; the clamp is what stops a
+    # token outliving the family it belongs to.
+    assert_operator child.refresh_expires_at, :<=, child.family_expires_at
+    assert_equal parent.family_expires_at.to_i, child.family_expires_at.to_i
   end
 
   test "rotation consumes the presented token and issues a successor in the same family" do
@@ -76,9 +110,8 @@ class Hitch::RefreshTokenTest < ActiveSupport::TestCase
     assert_not_equal first.fetch(:raw_token), second.fetch(:raw_token)
     assert_not_nil parent.refresh_consumed_at
     assert_equal parent.family_id, child.family_id
-    # The ceiling is fixed by the authorization the line descends from, so
-    # rotating forever cannot outlive it.
-    assert_equal parent.family_expires_at.to_i, child.family_expires_at.to_i
+    # A family's terms are inherited, including the usual absence of a ceiling.
+    assert_nil child.family_expires_at
     assert_equal child.id, Hitch::AccessToken.find_by_token(second.fetch(:raw_token)).id
   end
 
@@ -161,7 +194,12 @@ class Hitch::RefreshTokenTest < ActiveSupport::TestCase
     first = grant
     refresh(first.fetch(:raw_refresh_token))
     age_past_grace(first)
-    row_for(first.fetch(:raw_refresh_token)).update_columns(expires_at: 60.days.ago)
+    # Its own refresh window is past, so the usable-token floor cannot be what
+    # saves this row — a client that refreshed late in the window leaves
+    # exactly this shape, and only the evidence floor stands between it and
+    # a silently missing alarm.
+    row_for(first.fetch(:raw_refresh_token))
+      .update_columns(expires_at: 60.days.ago, refresh_expires_at: 1.day.ago)
 
     Hitch::AccessToken.cleanup_expired!(revoked_retention_days: 30)
 
@@ -171,18 +209,31 @@ class Hitch::RefreshTokenTest < ActiveSupport::TestCase
   end
 
   # The other half of that guard: it defers collection, it does not cancel
-  # it. A guard that stranded these rows forever would trade a silent alarm
-  # loss for unbounded growth.
-  test "cleanup collects the same rows once the family ceiling has passed" do
+  # it. With no ceiling a family can rotate forever, so a floor that never
+  # released would be unbounded growth arriving through the back door.
+  test "cleanup collects the same rows once the evidence is past the window" do
     first = grant
     refresh(first.fetch(:raw_refresh_token))
     family_id = row_for(first.fetch(:raw_refresh_token)).family_id
-    Hitch::AccessToken.where(family_id: family_id)
-      .update_all(expires_at: 60.days.ago, family_expires_at: 1.day.ago)
+    Hitch::AccessToken.where(family_id: family_id).update_all(
+      expires_at: 60.days.ago, refresh_expires_at: 40.days.ago, refresh_consumed_at: 40.days.ago
+    )
 
     Hitch::AccessToken.cleanup_expired!(revoked_retention_days: 30)
 
     assert_equal 0, Hitch::AccessToken.where(family_id: family_id).count
+  end
+
+  # The other floor. A row whose access token lapsed weeks ago may still hold
+  # the refresh token the client is about to present.
+  test "cleanup keeps a row that still holds a usable refresh token" do
+    first = grant
+    row_for(first.fetch(:raw_refresh_token)).update_columns(expires_at: 60.days.ago)
+
+    Hitch::AccessToken.cleanup_expired!(revoked_retention_days: 30)
+
+    assert_not_nil row_for(first.fetch(:raw_refresh_token))
+    assert_not_nil refresh(first.fetch(:raw_refresh_token))
   end
 
   test "a refresh may narrow scopes and may never widen them" do
@@ -216,7 +267,7 @@ class Hitch::RefreshTokenTest < ActiveSupport::TestCase
     assert_family_live(first)
   end
 
-  test "the family ceiling stops a chain that is still being rotated" do
+  test "a configured family ceiling stops a chain that is still being rotated" do
     first = grant
     row = row_for(first.fetch(:raw_refresh_token))
     row.update_columns(family_expires_at: 1.second.ago)

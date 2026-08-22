@@ -37,4 +37,16 @@ Hitch.configure do |config|
   # reviewed and registered in app/tools/mcp_tool_registry.rb.
   config.mcp.enabled = true
   config.mcp.registry = "McpToolRegistry"
+
+  # A connected client renews itself in the background instead of asking the
+  # person again every hour. Nothing here is long-lived: the access token is
+  # an hour and is re-minted rather than extended, and the refresh token is
+  # replaced on every use. What continues is the grant, and it continues by
+  # being used — an unused one expires after 30 days.
+  #
+  # Uncomment to put a hard cutoff on a grant no matter how actively it is
+  # used. Off by default because it disconnects people who have done nothing
+  # wrong; set it if you want a stolen refresh token whose real client never
+  # returns to expire on a clock rather than waiting for a revocation.
+  # config.refresh_token_family_lifetime_seconds = 90 * 86_400
 end

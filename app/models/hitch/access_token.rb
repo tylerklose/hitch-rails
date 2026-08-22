@@ -308,16 +308,19 @@ module Hitch
       return { columns: {}, raw_refresh_token: nil } unless Hitch.configuration.refresh_tokens_enabled
 
       raw = SecureRandom.urlsafe_base64(32)
-      ceiling = family_expires_at ||
-        now + Hitch.configuration.refresh_token_family_lifetime_seconds.seconds
+      # A family's terms are fixed when it starts: a successor inherits the
+      # ceiling its line began with, including the usual absence of one.
+      configured = Hitch.configuration.refresh_token_family_lifetime_seconds
+      ceiling = family_expires_at || (now + configured.seconds if configured)
       idle = now + Hitch.configuration.refresh_token_lifetime_seconds.seconds
       {
         raw_refresh_token: raw,
         columns: {
           refresh_token_digest: Digest::SHA256.hexdigest(raw),
           # Clamped at mint, so "still usable" is one comparison and no caller
-          # has to remember the ceiling separately.
-          refresh_expires_at: [ idle, ceiling ].min,
+          # has to remember the ceiling separately. Usually there is no
+          # ceiling and this is just the idle window.
+          refresh_expires_at: [ idle, ceiling ].compact.min,
           refresh_consumed_at: nil,
           family_id: family_id || SecureRandom.uuid,
           family_expires_at: ceiling
@@ -348,15 +351,25 @@ module Hitch
     #   3) Expired tokens (expires_at < now) older than
     #      `revoked_retention_days` — same audit-window argument.
     #
-    # Class 3 has a floor. A consumed refresh row is the evidence reuse
-    # detection reads, and `expires_at` is the ACCESS token's clock — an hour
-    # — so on the schedule alone that evidence went at 30 days while its
-    # family stayed usable for 90. A replayed stolen token then found nothing
-    # and degraded to an ordinary invalid_grant: the alarm gone, silently,
-    # with no test failing. Rows whose family is still live are kept. Once the
-    # ceiling passes, nothing in the family can be exchanged, a replay is
-    # already refused, and the rows are collectable again — the guard defers
-    # deletion, it does not cancel it.
+    # Class 3 has two floors, because `expires_at` is the ACCESS token's
+    # clock — an hour — and says nothing about the refresh token beside it.
+    #
+    #   - A row still holding a usable refresh token is not dead, however
+    #     long ago its access token lapsed. Collecting it would delete a
+    #     credential the client is about to present.
+    #   - A consumed row is the evidence reuse detection reads. On the
+    #     schedule alone it went while its family was still being refreshed,
+    #     and a replayed stolen token then found nothing and degraded to an
+    #     ordinary invalid_grant — the alarm gone, silently, with no test
+    #     failing. Evidence is held for the same audit window as everything
+    #     else here.
+    #
+    # Both floors defer collection rather than cancelling it: once the
+    # refresh token has expired and the evidence is older than the window,
+    # the row goes. That bounds a long-lived family to one window's worth of
+    # rows however long it keeps rotating. The residual is stated in the
+    # README — a replay of a token consumed longer ago than the window is
+    # refused, but no longer raises the alarm.
     #
     # Returns the number of rows deleted. Idempotent.
     #
@@ -376,7 +389,8 @@ module Hitch
       count += where.not(revoked_at: nil).where("revoked_at < ?", cutoff).delete_all
       count += where.not(expires_at: nil)
         .where("expires_at < ?", cutoff)
-        .where("family_expires_at IS NULL OR family_expires_at < ?", Time.current)
+        .where("refresh_expires_at IS NULL OR refresh_expires_at < ?", Time.current)
+        .where("refresh_consumed_at IS NULL OR refresh_consumed_at < ?", cutoff)
         .delete_all
       count
     end

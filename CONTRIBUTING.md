@@ -29,6 +29,12 @@ smallest focused test, then `bin/ci` before opening a PR.
 - Runtime and security failures fail closed and report fixed categories with
   server-generated correlation IDs — never request bodies, credentials,
   arguments, results, or client-supplied JSON-RPC IDs.
+- Migrations are append-only. The engine appends its `db/migrate` to the
+  host's paths rather than copying, so a shipped migration IS an adopter's
+  migration: editing one applies to fresh installs and silently skips every
+  existing one, whose `schema_migrations` already records that version. Every
+  schema change is a new file, corrections included. See
+  [ADR 0005](docs/adr/0005-migration-append-only.md).
 
 ## Pull requests
 

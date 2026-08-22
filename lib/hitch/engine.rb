@@ -28,6 +28,10 @@ module Hitch
 
     # Host apps see the engine's migrations via db:migrate without needing
     # to copy them — the install generator only writes the initializer.
+    #
+    # The corollary is that a shipped migration IS an adopter's migration, so
+    # editing one applies to fresh installs and silently skips every existing
+    # one. Append only; see docs/adr/0005-migration-append-only.md.
     initializer :append_migrations do |app|
       next if app.root.to_s == root.to_s
       # Skipped when ENGINE_ROOT is defined, which means the process was

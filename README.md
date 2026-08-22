@@ -17,10 +17,10 @@ app's own authentication says is signed in (`current_user` or Rails 8's
 `Current.user`).
 
 The official Ruby MCP SDK (the `mcp` gem) ships client-side OAuth but no
-server-side auth helpers, and no Rails gem packaged the server-side
-OAuth 2.1 + PKCE plumbing an MCP server needs. Hitch fills that gap. It is
-opinionated about **what** to implement (the
-[2026-07-28 MCP authorization spec](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization))
+server-side auth helpers, so the authorization server is left to you. Hitch
+is that server — on the current profile, with the authenticated endpoint and
+tool registry in the same gem. It is opinionated about **what** to implement
+(the [2026-07-28 MCP authorization spec](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization))
 but unopinionated about **whom** that auth identifies — the host supplies the
 signed-in record.
 
@@ -215,7 +215,7 @@ Tools live in `app/tools/`, and the registry in
 module McpTools
   class Echo < Hitch::MCP::Tool
     tool_name "echo"
-    description "Describe one signed-in account"
+    description "Echo a message back to the caller"
     input_schema(
       type: "object",
       properties: { message: { type: "string" } },

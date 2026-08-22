@@ -16,6 +16,7 @@ MINIMUM_TEST_RUNS = 27
 TEST_FILES = %w[
   test/hitch/configuration_test.rb
   test/hitch/mcp/rate_limit_test.rb
+  test/hitch/production_boot_test.rb
   test/integration/mcp_rate_limit_cross_process_contract.rb
   test/integration/mcp_rate_limit_test.rb
 ].freeze

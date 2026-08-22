@@ -75,6 +75,16 @@ writes columns the migration adds.
   reports `resource_discovery: skip / host_blocked`, leaving the hosts check to
   carry the remedy. (#25)
 
+- Rails 8.2 no longer logs two premature-load warnings, each with a full
+  backtrace, on every boot. The production-only check that the rate-limit store
+  can count across processes resolved the default store by asking
+  `ActionController::Base` for it, which loads the controller stack while the
+  application is still initializing. It reads
+  `config.action_controller.cache_store` instead — the same value, without
+  loading a controller — so the check stays eager and an unshared store still
+  fails the boot rather than the first request. Both the MCP and
+  dynamic-registration checks were affected. (#27)
+
 ## [0.2.0] - 2026-08-22
 
 Initial public release: a mountable Rails engine that turns a Rails app into

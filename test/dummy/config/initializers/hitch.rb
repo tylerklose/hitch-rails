@@ -52,9 +52,14 @@ if ENV["HITCH_BOOT_PROBE"]
     config.dynamic_client_registration_enabled = false
   end
   Rails.application.config.action_controller.cache_store =
-    if ENV["HITCH_BOOT_PROBE"] == "shared"
-      shared_store.new
-    else
+    if ENV["HITCH_BOOT_PROBE"] != "shared"
       ActiveSupport::Cache::MemoryStore.new
+    elsif ENV["HITCH_MCP_REDIS_URL"]
+      # bin/ci-rate-limit supplies a real Redis. The synthetic store below
+      # satisfies the same predicate, but only a real one proves the fallback
+      # resolves something a production deployment would actually count with.
+      ActiveSupport::Cache::RedisCacheStore.new(url: ENV.fetch("HITCH_MCP_REDIS_URL"))
+    else
+      shared_store.new
     end
 end

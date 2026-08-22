@@ -11,14 +11,15 @@ module Hitch
       module LocalDiagnosis
         module_function
 
-        def report(subject, error)
+        def report(subject, error = nil)
           return unless Rails.env.local?
 
-          Rails.logger&.error([
-            "[hitch] #{subject}",
-            "  #{error.class}: #{error.message}",
-            *Array(error.backtrace).first(5).map { |line| "    #{line}" }
-          ].join("\n"))
+          lines = [ "[hitch] #{subject}" ]
+          if error
+            lines << "  #{error.class}: #{error.message}"
+            lines.concat(Array(error.backtrace).first(5).map { |line| "    #{line}" })
+          end
+          Rails.logger&.error(lines.join("\n"))
           nil
         # Diagnosing a failure must not become one.
         rescue StandardError, SystemStackError

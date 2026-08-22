@@ -9,7 +9,7 @@ require "generators/hitch/tool_generator"
 
 class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
   tests Hitch::Generators::ToolGenerator
-  destination File.expand_path("../../tmp/tool_generator", __dir__)
+  destination File.expand_path("../../tmp/tool_generator-#{Process.pid}", __dir__)
   setup :prepare_destination
 
   SCENARIO_PATH = Rails.root.join("../lattice/tool_generator_scenarios.json").expand_path

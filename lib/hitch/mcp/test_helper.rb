@@ -30,6 +30,7 @@ module Hitch
       def post_mcp(method:, token:, params: {}, id: "hitch-test", client_info: nil,
         capabilities: {}, protocol_version: PROTOCOL_VERSION)
         resource = mcp_test_resource_uri!
+        mcp_test_match_scheme!(resource)
         normalized_params = mcp_test_json_hash(params, "params")
         raise ArgumentError, "params must not supply _meta" if normalized_params.key?("_meta")
 
@@ -119,6 +120,18 @@ module Hitch
         resource
       rescue URI::InvalidURIError
         raise ArgumentError, "Hitch resource_uri must be an absolute HTTP URI"
+      end
+
+      # The endpoint binds to the canonical resource_uri exactly — scheme
+      # included — and an integration test speaks http unless told otherwise.
+      # A host whose resource_uri is https therefore got a 400 with an empty
+      # body and nothing in the log, for want of one `https!`. The helper
+      # already derives the Host from resource_uri; it derives the scheme
+      # from it too.
+      def mcp_test_match_scheme!(resource)
+        return unless respond_to?(:https!)
+
+        https!(resource.scheme == "https")
       end
 
       def mcp_test_headers(resource:, token:, method:, name:, protocol_version:)

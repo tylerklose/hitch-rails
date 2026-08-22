@@ -41,6 +41,18 @@ module StubClassMethod
   end
 end
 
+# Hitch::ClientIdMetadata keeps one throttle per process, keyed by an actor
+# string that is usually "User:1". A test that drives /oauth/authorize spends
+# that budget, and the next test charging the same actor is silently refused —
+# reported as an unrelated failure in whichever test the seed happened to run
+# next. Scrub it for everyone rather than per class.
+ActiveSupport::TestCase.teardown do
+  Hitch::ClientIdMetadata.instance_variable_set(
+    :@throttle, Hitch::ClientIdMetadata::Throttle.new
+  )
+  Hitch::ClientIdMetadata.instance_variable_set(:@warned, {})
+end
+
 ActiveSupport::TestCase.include(StubClassMethod)
 ActiveSupport::TestCase.include(AccessTokenExchange)
 ActiveSupport::TestCase.include(RackInputTestSupport)

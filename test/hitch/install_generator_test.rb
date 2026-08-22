@@ -10,7 +10,7 @@ require "generators/hitch/install/install_generator"
 # generator still copies it, or copies that one.
 class Hitch::InstallGeneratorTest < Rails::Generators::TestCase
   tests Hitch::Generators::InstallGenerator
-  destination File.expand_path("../../tmp/generator", __dir__)
+  destination File.expand_path("../../tmp/generator-#{Process.pid}", __dir__)
   setup :prepare_destination
 
   ROUTES = "Rails.application.routes.draw do\nend\n"

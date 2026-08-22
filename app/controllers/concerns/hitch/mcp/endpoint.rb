@@ -21,15 +21,22 @@ module Hitch
       end
 
       def handle
-        return hitch_mcp_protocol_error!(415, -32600, "Invalid Request") unless
-          Internal::MediaType.json_content_type?(request.get_header("CONTENT_TYPE"))
-        return hitch_mcp_protocol_error!(406, -32600, "Invalid Request") unless
-          Internal::MediaType.accepts_required_types?(request.get_header("HTTP_ACCEPT"))
+        unless Internal::MediaType.json_content_type?(request.get_header("CONTENT_TYPE"))
+          hitch_mcp_explain!("Content-Type must be exactly application/json")
+          return hitch_mcp_protocol_error!(415, -32600, "Invalid Request")
+        end
+        unless Internal::MediaType.accepts_required_types?(request.get_header("HTTP_ACCEPT"))
+          hitch_mcp_explain!("Accept must admit both application/json and text/event-stream")
+          return hitch_mcp_protocol_error!(406, -32600, "Invalid Request")
+        end
 
         max_request_bytes = Hitch.configuration.mcp.max_request_bytes
         raw_body = hitch_read_bounded_request_body(max_request_bytes)
         @hitch_mcp_observation&.request_bytes!(raw_body ? raw_body.bytesize : max_request_bytes + 1)
-        return hitch_mcp_protocol_error!(413, -32600, "Invalid Request") unless raw_body
+        unless raw_body
+          hitch_mcp_explain!("request body exceeds mcp.max_request_bytes (#{max_request_bytes})")
+          return hitch_mcp_protocol_error!(413, -32600, "Invalid Request")
+        end
 
         verified_request = Internal::VerifiedRequest.call(
           raw_body: raw_body,
@@ -119,6 +126,11 @@ module Hitch
         end
         return if Internal::HostAuthority.allowed?(request)
 
+        hitch_mcp_explain!(
+          "request does not match the canonical resource_uri " \
+            "(#{Hitch.configuration.resource_uri}) — scheme, host, port, path and query " \
+            "must all match, and an integration test speaks http unless told otherwise"
+        )
         head :bad_request
       end
 
@@ -252,6 +264,7 @@ module Hitch
       end
 
       def hitch_mcp_origin_denied!
+        hitch_mcp_explain!("Origin is not in config.allowed_origins")
         response.headers.delete("Access-Control-Allow-Origin")
         head :forbidden
       end
@@ -271,6 +284,7 @@ module Hitch
       end
 
       def hitch_mcp_unauthorized!
+        hitch_mcp_explain!("no usable bearer token for this resource")
         response.headers["WWW-Authenticate"] = Internal::BearerChallenge.challenge
         response.headers["Access-Control-Expose-Headers"] = "WWW-Authenticate"
         head :unauthorized
@@ -281,6 +295,13 @@ module Hitch
           Internal::BearerChallenge.insufficient_scope(required_scopes)
         response.headers["Access-Control-Expose-Headers"] = "WWW-Authenticate"
         head :forbidden
+      end
+
+      # Every refusal above answers with an empty body on purpose. In
+      # development and test the reason goes to the local log instead, so a
+      # 400 is a sentence rather than a silence.
+      def hitch_mcp_explain!(reason)
+        Internal::LocalDiagnosis.report("MCP request refused: #{reason}")
       end
 
       def hitch_mcp_append_vary!(value)

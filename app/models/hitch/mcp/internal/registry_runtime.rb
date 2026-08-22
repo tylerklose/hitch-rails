@@ -153,7 +153,8 @@ module Hitch
             class_name = declaration.class_name
             unless class_name.is_a?(String) && CONSTANT_NAME_PATTERN.match?(class_name)
               raise ArgumentError,
-                "mcp.registry entry #{index + 1} must register a named Hitch::MCP::Tool class"
+                "mcp.registry entry #{index + 1} got #{declaration.source}; " \
+                "register a named Hitch::MCP::Tool subclass, as in `register EchoTool`"
             end
 
             # Named from here on. Counting registry entries at someone whose

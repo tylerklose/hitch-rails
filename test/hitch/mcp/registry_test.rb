@@ -289,6 +289,25 @@ class Hitch::MCP::RegistryTest < ActiveSupport::TestCase
     assert_equal reserved, contract_class.new(reserved, label: "schema").call
   end
 
+  test "an unnamed registration is reported by what the host wrote, not its position" do
+    cases = {
+      "an anonymous class" => Class.new(Hitch::MCP::Tool),
+      "no argument" => nil,
+      ":echo (a Symbol)" => :echo,
+      "\"EchoTool\" (a String)" => "EchoTool"
+    }
+
+    cases.each do |expected_source, value|
+      @configuration.registry = define_registry([ value, [ "mcp" ] ]).name
+      message = assert_raises(ArgumentError) { prepare_registry }.message
+
+      assert_includes message, expected_source,
+        "expected the boot error to name #{expected_source}, got: #{message}"
+      assert_includes message, "register EchoTool",
+        "expected the boot error to show the fix, got: #{message}"
+    end
+  end
+
   private
 
   def define_tool(

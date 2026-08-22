@@ -237,6 +237,10 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
     hardened = identity_for_raw("generated/locked_tool", "McpTools")
     script = <<~RUBY
       require "test_helper"
+      # Hitch's own test_helper sets https! for every integration test; an
+      # adopter's does not. Start where their generated test starts, so a
+      # template that only passes on this suite's defaults fails here.
+      ActionDispatch::IntegrationTest.setup { https!(false) }
       require #{destination_path(working.fetch(:tool_path)).dump}
       require #{destination_path(hardened.fetch(:tool_path)).dump}
       # The registry file carries the injected registrations; loading it

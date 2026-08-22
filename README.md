@@ -291,8 +291,10 @@ end
 
 `mint_mcp_token` mints a real access token through the production
 authorization-code path for any persisted record your app signs in as;
-`post_mcp` builds the JSON-RPC envelope with the canonical Host and modern
-MCP headers; `mcp_headers(token:, method:)` is available for manual requests.
+`post_mcp` builds the JSON-RPC envelope with modern MCP headers and the Host
+and scheme your `resource_uri` declares — the endpoint matches the canonical
+resource exactly, so you never call `https!` yourself;
+`mcp_headers(token:, method:)` is available for manual requests.
 `rails g hitch:tool` generates a test in exactly this shape.
 
 ## Headless agents

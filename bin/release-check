@@ -29,46 +29,54 @@ tag_type = capture!("git", "cat-file", "-t", "refs/tags/#{tag}").strip
 abort "#{tag} must be an annotated tag (found #{tag_type.inspect})" unless tag_type == "tag"
 
 Dir.mktmpdir("hitch-release-check-") do |directory|
-  archive = File.join(directory, "tag.tar")
   tag_tree = File.join(directory, "tag")
   extracted = File.join(directory, "gem")
-  FileUtils.mkdir_p(tag_tree)
   FileUtils.mkdir_p(extracted)
 
-  capture!("git", "archive", "--format=tar", "--output", archive, tag)
-  capture!("tar", "-xf", archive, "-C", tag_tree)
-  tag_specification = Gem::Specification.load(File.join(tag_tree, "#{GEM_NAME}.gemspec")) ||
-    abort("could not load gemspec from #{tag}")
-  abort "tag gemspec version is #{tag_specification.version}, expected #{version}" unless
-    tag_specification.version.to_s == version
+  # A real checkout, not a `git archive` extraction. The gemspec derives
+  # spec.files by intersecting its globs with `git ls-files`, which needs a
+  # repository: extracted, ls-files fails, the allowlist loads empty, and the
+  # manifest comparison below passes only for a gem with no files.
+  capture!("git", "worktree", "add", "--detach", tag_tree, tag)
+  begin
+    tag_specification = Gem::Specification.load(File.join(tag_tree, "#{GEM_NAME}.gemspec")) ||
+      abort("could not load gemspec from #{tag}")
+    abort "tag gemspec version is #{tag_specification.version}, expected #{version}" unless
+      tag_specification.version.to_s == version
 
-  capture!(
-    "gem", "fetch", GEM_NAME, "--version", version,
-    "--clear-sources", "--source", "https://rubygems.org",
-    chdir: directory
-  )
-  artifact = File.join(directory, "#{GEM_NAME}-#{version}.gem")
-  abort "RubyGems did not return #{File.basename(artifact)}" unless File.file?(artifact)
+    capture!(
+      "gem", "fetch", GEM_NAME, "--version", version,
+      "--clear-sources", "--source", "https://rubygems.org",
+      chdir: directory
+    )
+    artifact = File.join(directory, "#{GEM_NAME}-#{version}.gem")
+    abort "RubyGems did not return #{File.basename(artifact)}" unless File.file?(artifact)
 
-  package = Gem::Package.new(artifact)
-  abort "published gem version is #{package.spec.version}, expected #{version}" unless
-    package.spec.version.to_s == version
+    package = Gem::Package.new(artifact)
+    abort "published gem version is #{package.spec.version}, expected #{version}" unless
+      package.spec.version.to_s == version
 
-  expected_files = tag_specification.files.sort
-  published_files = package.spec.files.sort
-  abort "published manifest differs from the #{tag} gemspec allowlist" unless
-    published_files == expected_files
-  abort "published contents differ from the embedded gem manifest" unless
-    package.contents.sort == published_files
+    expected_files = tag_specification.files.sort
+    published_files = package.spec.files.sort
+    abort "published manifest differs from the #{tag} gemspec allowlist" unless
+      published_files == expected_files
+    abort "published contents differ from the embedded gem manifest" unless
+      package.contents.sort == published_files
 
-  package.extract_files(extracted)
-  mismatched = published_files.reject do |path|
-    tag_path = File.join(tag_tree, path)
-    gem_path = File.join(extracted, path)
-    File.file?(tag_path) && File.file?(gem_path) &&
-      Digest::SHA256.file(tag_path).hexdigest == Digest::SHA256.file(gem_path).hexdigest
+    package.extract_files(extracted)
+    mismatched = published_files.reject do |path|
+      tag_path = File.join(tag_tree, path)
+      gem_path = File.join(extracted, path)
+      File.file?(tag_path) && File.file?(gem_path) &&
+        Digest::SHA256.file(tag_path).hexdigest == Digest::SHA256.file(gem_path).hexdigest
+    end
+    abort "published files differ from #{tag}: #{mismatched.join(', ')}" if mismatched.any?
+  ensure
+    # Dir.mktmpdir deletes the checkout; the worktree registration inside .git
+    # would outlive every abort above.
+    output, status = Open3.capture2e("git", "worktree", "remove", "--force", tag_tree, chdir: ROOT)
+    warn output unless status.success?
   end
-  abort "published files differ from #{tag}: #{mismatched.join(', ')}" if mismatched.any?
 end
 
 puts "Published #{GEM_NAME} #{version} matches #{tag}."

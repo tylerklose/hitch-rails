@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_08_17_000000) do
+ActiveRecord::Schema[8.0].define(version: 2026_08_22_000000) do
   create_table "hitch_access_tokens", force: :cascade do |t|
     t.string "principal_type", null: false
     t.string "principal_id", null: false
@@ -28,8 +28,15 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_17_000000) do
     t.string "scopes", default: "mcp", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "refresh_token_digest"
+    t.datetime "refresh_expires_at"
+    t.datetime "refresh_consumed_at"
+    t.string "family_id"
+    t.datetime "family_expires_at"
     t.index ["authorization_code_digest"], name: "index_hitch_access_tokens_on_authorization_code_digest", unique: true, where: "authorization_code_digest IS NOT NULL"
+    t.index ["family_id"], name: "index_hitch_access_tokens_on_family_id", where: "family_id IS NOT NULL"
     t.index ["principal_type", "principal_id"], name: "index_hitch_access_tokens_on_principal"
+    t.index ["refresh_token_digest"], name: "index_hitch_access_tokens_on_refresh_token_digest", unique: true, where: "refresh_token_digest IS NOT NULL"
     t.index ["token_digest"], name: "index_hitch_access_tokens_on_token_digest", unique: true, where: "token_digest IS NOT NULL"
   end
 

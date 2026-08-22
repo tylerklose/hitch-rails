@@ -61,6 +61,36 @@ module Hitch
       token_digest.present? && !expired? && !revoked?
     end
 
+    # The ceiling the whole lineage descends from. Never extended by
+    # rotation, so a chain someone is quietly refreshing forever still stops.
+    def family_expired?
+      family_expires_at.present? && family_expires_at < Time.current
+    end
+
+    # A consumed token presented again inside the grace window: the client
+    # asking for a reply it never received. Outside it, the same request is a
+    # replay of a spent credential and kills the family.
+    def honest_retry?(now = Time.current)
+      return false if refresh_consumed_at.nil?
+
+      refresh_consumed_at + Hitch.configuration.refresh_token_replay_grace_seconds.seconds >= now
+    end
+
+    # RFC 6749 §6: a refresh may narrow the granted scopes and may never
+    # widen them. Asking for nothing keeps what was granted.
+    def narrowed_scopes(requested)
+      granted = scopes.to_s.split(/\s+/)
+      asked = Array(requested).flat_map { |value| value.to_s.split(/\s+/) }.reject(&:empty?).uniq
+      return scopes.to_s if asked.empty?
+
+      widened = asked - granted
+      unless widened.empty?
+        raise OAuthError.new("invalid_scope", "Refresh may narrow scopes but not widen them")
+      end
+
+      asked.join(" ")
+    end
+
     # Space-delimited scope check per OAuth 2.1 §3.3. Hosts call this to
     # gate operations behind a specific scope the client requested at
     # consent — e.g. `token.scope?("write")` before mutating ops.
@@ -179,22 +209,122 @@ module Hitch
       record.send(:verify_pkce!, code_verifier)
       raw_token = SecureRandom.urlsafe_base64(32)
       now = Time.current
+      refresh = mint_refresh_attributes(now: now, family_id: nil, family_expires_at: nil)
       updated = where(
         id: record.id,
         authorization_code_digest: code_digest,
         token_digest: nil
       ).where("code_expires_at > ?", now).update_all(
-        token_digest: Digest::SHA256.hexdigest(raw_token),
-        authorization_code_digest: nil,
-        code_expires_at: nil,
-        expires_at: now + Hitch.configuration.access_token_lifetime_seconds.seconds,
-        updated_at: now
+        {
+          token_digest: Digest::SHA256.hexdigest(raw_token),
+          authorization_code_digest: nil,
+          code_expires_at: nil,
+          expires_at: now + Hitch.configuration.access_token_lifetime_seconds.seconds,
+          updated_at: now
+        }.merge(refresh.fetch(:columns))
       )
 
       return nil unless updated == 1
 
-      { raw_token: raw_token, scope: record.scopes }
+      { raw_token: raw_token, raw_refresh_token: refresh[:raw_refresh_token], scope: record.scopes }
     end
+
+    # RFC 6749 §6 / OAuth 2.1 §4.3. Consumes the presented refresh token and
+    # issues a successor pair, or refuses.
+    #
+    # Rotation is the same conditional state transition the authorization code
+    # already uses: consumption is the guard, so two concurrent refreshes race
+    # on one UPDATE and exactly one wins. The loser did not steal anything —
+    # it lands in the replay path below, where a just-consumed token is an
+    # honest retry.
+    def self.exchange_refresh_token!(raw_refresh_token:, client_id:, resource_uri:, scopes: nil)
+      unless Hitch.configuration.refresh_tokens_enabled
+        raise OAuthError.new("unsupported_grant_type", "Refresh tokens are not enabled")
+      end
+
+      digest = Digest::SHA256.hexdigest(raw_refresh_token.to_s)
+      record = find_by(refresh_token_digest: digest)
+      return nil unless record
+
+      # Before consumed-state, deliberately. A different client presenting
+      # this token is a mismatched grant, not a theft alarm — revoking a
+      # family on it would let anyone who learns a token log its owner out.
+      unless record.client_id == client_id
+        raise OAuthError.new("invalid_grant", "Refresh token was not issued to this client")
+      end
+      unless record.resource_uri == resource_uri
+        raise OAuthError.new("invalid_target", "resource does not match the authorized resource")
+      end
+      return nil if record.revoked? || record.family_expired?
+
+      now = Time.current
+      # Reuse detection runs before anything the request can get wrong, so a
+      # replay cannot dodge the alarm by also asking for a bad scope.
+      if record.refresh_consumed_at
+        unless record.honest_retry?(now)
+          revoke_family!(record.family_id)
+          raise OAuthError.new("invalid_grant", "Refresh token has already been used")
+        end
+
+        # Inside the window a repeat presentation is the client asking again
+        # for a reply it never got: a fresh pair off the same parent, not a
+        # revoked family.
+        return record.send(:issue_successor!, granted: record.narrowed_scopes(scopes), now: now)
+      end
+      return nil if record.refresh_expires_at.nil? || record.refresh_expires_at < now
+
+      granted = record.narrowed_scopes(scopes)
+      consumed = where(id: record.id, refresh_consumed_at: nil)
+        .update_all(refresh_consumed_at: now, updated_at: now)
+      # Lost the race to a concurrent refresh microseconds ago. That is the
+      # honest-retry case arriving by a different door, not a replay.
+      return nil unless consumed == 1
+
+      record.send(:issue_successor!, granted: granted, now: now)
+    end
+
+    # A consumed refresh token presented again by its own client, past the
+    # grace window, is a replay of a credential its owner already spent. The
+    # family is the blast radius: every row descended from that one
+    # authorization, revoked in a single statement.
+    def self.revoke_family!(family_id)
+      return 0 if family_id.blank?
+
+      where(family_id: family_id, revoked_at: nil).update_all(
+        revoked_at: Time.current, updated_at: Time.current
+      )
+    end
+
+    def self.find_by_refresh_token(raw_refresh_token)
+      return nil if raw_refresh_token.blank?
+
+      find_by(refresh_token_digest: Digest::SHA256.hexdigest(raw_refresh_token))
+    end
+
+    # Columns for a freshly minted refresh token. A root passes no family and
+    # starts one; a successor inherits both, so the ceiling is fixed by the
+    # authorization the line descends from and rotation can never extend it.
+    def self.mint_refresh_attributes(now:, family_id:, family_expires_at:)
+      return { columns: {}, raw_refresh_token: nil } unless Hitch.configuration.refresh_tokens_enabled
+
+      raw = SecureRandom.urlsafe_base64(32)
+      ceiling = family_expires_at ||
+        now + Hitch.configuration.refresh_token_family_lifetime_seconds.seconds
+      idle = now + Hitch.configuration.refresh_token_lifetime_seconds.seconds
+      {
+        raw_refresh_token: raw,
+        columns: {
+          refresh_token_digest: Digest::SHA256.hexdigest(raw),
+          # Clamped at mint, so "still usable" is one comparison and no caller
+          # has to remember the ceiling separately.
+          refresh_expires_at: [ idle, ceiling ].min,
+          refresh_consumed_at: nil,
+          family_id: family_id || SecureRandom.uuid,
+          family_expires_at: ceiling
+        }
+      }
+    end
+    private_class_method :mint_refresh_attributes
 
     def revoke!
       update!(revoked_at: Time.current)
@@ -218,6 +348,16 @@ module Hitch
     #   3) Expired tokens (expires_at < now) older than
     #      `revoked_retention_days` — same audit-window argument.
     #
+    # Class 3 has a floor. A consumed refresh row is the evidence reuse
+    # detection reads, and `expires_at` is the ACCESS token's clock — an hour
+    # — so on the schedule alone that evidence went at 30 days while its
+    # family stayed usable for 90. A replayed stolen token then found nothing
+    # and degraded to an ordinary invalid_grant: the alarm gone, silently,
+    # with no test failing. Rows whose family is still live are kept. Once the
+    # ceiling passes, nothing in the family can be exchanged, a replay is
+    # already refused, and the rows are collectable again — the guard defers
+    # deletion, it does not cancel it.
+    #
     # Returns the number of rows deleted. Idempotent.
     #
     # Hosts schedule this via whatever background job framework they
@@ -234,7 +374,10 @@ module Hitch
       count = 0
       count += where(token_digest: nil).where("code_expires_at < ?", Time.current).delete_all
       count += where.not(revoked_at: nil).where("revoked_at < ?", cutoff).delete_all
-      count += where.not(expires_at: nil).where("expires_at < ?", cutoff).delete_all
+      count += where.not(expires_at: nil)
+        .where("expires_at < ?", cutoff)
+        .where("family_expires_at IS NULL OR family_expires_at < ?", Time.current)
+        .delete_all
       count
     end
 
@@ -254,6 +397,41 @@ module Hitch
     end
 
     private
+
+    # One rotation: a new row carrying the family it descended from, active
+    # the moment it lands. The spent code_challenge is copied because the
+    # column is NOT NULL and validated — it records which authorization this
+    # line came from, which is true of every descendant.
+    def issue_successor!(granted:, now:)
+      raw_token = SecureRandom.urlsafe_base64(32)
+      refresh = self.class.send(
+        :mint_refresh_attributes,
+        now: now,
+        family_id: family_id,
+        family_expires_at: family_expires_at
+      )
+      successor = self.class.create!(
+        {
+          principal_type: principal_type,
+          principal_id: principal_id,
+          client_id: client_id,
+          client_name: client_name,
+          redirect_uri: redirect_uri,
+          resource_uri: resource_uri,
+          code_challenge: code_challenge,
+          code_challenge_method: code_challenge_method,
+          scopes: granted,
+          token_digest: Digest::SHA256.hexdigest(raw_token),
+          expires_at: now + Hitch.configuration.access_token_lifetime_seconds.seconds
+        }.merge(refresh.fetch(:columns))
+      )
+
+      {
+        raw_token: raw_token,
+        raw_refresh_token: refresh[:raw_refresh_token],
+        scope: successor.scopes
+      }
+    end
 
     def verify_pkce!(code_verifier)
       raise OAuthError.new("invalid_grant", "Authorization code expired") if code_expires_at.nil? || code_expires_at < Time.current

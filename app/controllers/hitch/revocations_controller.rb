@@ -12,10 +12,7 @@ module Hitch
       return head :ok unless request.media_type == Hitch::OauthRequestParameters::FORM_MEDIA_TYPE
 
       token_value = oauth_parameters(:token, form_only: true)[:token]
-      if token_value.present?
-        access_token = Hitch::AccessToken.find_by_token(token_value)
-        access_token&.revoke!
-      end
+      revoke(token_value) if token_value.present?
 
       head :ok
     rescue Hitch::OauthRequestParameters::Invalid
@@ -23,6 +20,18 @@ module Hitch
     end
 
     private
+
+    # RFC 7009 §2.1: the endpoint takes either token type. An access token
+    # revokes itself; a refresh token revokes the family it belongs to,
+    # because the trust a human granted at the consent screen is the family,
+    # and revoking one link would leave the rest of the chain usable.
+    def revoke(token_value)
+      access_token = Hitch::AccessToken.find_by_token(token_value)
+      return access_token.revoke! if access_token
+
+      refresh_token = Hitch::AccessToken.find_by_refresh_token(token_value)
+      Hitch::AccessToken.revoke_family!(refresh_token.family_id) if refresh_token
+    end
 
     def reject_oversized_oauth_form_body!
       head :ok

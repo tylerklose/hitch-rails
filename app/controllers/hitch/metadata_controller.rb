@@ -16,7 +16,7 @@ module Hitch
         token_endpoint: canonical_endpoint("/oauth/token"),
         revocation_endpoint: canonical_endpoint("/oauth/revoke"),
         response_types_supported: [ "code" ],
-        grant_types_supported: [ "authorization_code" ],
+        grant_types_supported: Hitch::GrantTypes.supported,
         code_challenge_methods_supported: [ "S256" ],
         scopes_supported: Hitch.configuration.supported_scopes,
         token_endpoint_auth_methods_supported: Hitch::Client::TOKEN_ENDPOINT_AUTH_METHODS,

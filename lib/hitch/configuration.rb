@@ -12,6 +12,9 @@ module Hitch
   #   spec conformance.
   class Configuration
     MAX_RESOURCE_URI_BYTES = 2_048
+    # An hour. Past this the window stops being "the response was lost" and
+    # starts being a second life for a spent credential.
+    MAX_REPLAY_GRACE_SECONDS = 3_600
     MAX_SCOPES = 32
     MAX_SCOPE_BYTES = 64
     MAX_SCOPE_SET_BYTES = 255
@@ -85,6 +88,49 @@ module Hitch
     # Authorization code lifetime in seconds. Default 600 (10 minutes).
     # @return [Integer]
     attr_accessor :authorization_code_lifetime_seconds
+
+    # Issue a refresh token alongside each access token, and accept
+    # grant_type=refresh_token at the token endpoint. Default true.
+    #
+    # The one setting in this file whose library fallback is ON. An access
+    # token lives an hour; without a refresh token a hosted client's only
+    # renewal is the full consent redirect, so a flag nobody flips leaves
+    # every adopter's connector asking the same human the same question every
+    # hour. The flag exists to let an adopter close the surface deliberately,
+    # not to decide whether the feature does its job.
+    # @return [Boolean]
+    attr_reader :refresh_tokens_enabled
+
+    # Idle window for one refresh token, in seconds. Default 2_592_000
+    # (30 days). Each rotation issues a successor with a fresh window, so a
+    # connector in regular use never reaches it and an abandoned one goes
+    # quiet on its own.
+    # @return [Integer]
+    attr_reader :refresh_token_lifetime_seconds
+
+    # Absolute ceiling on a refresh-token family, in seconds. Default
+    # 7_776_000 (90 days), counted from the authorization the family
+    # descends from and never extended by rotation. This is what bounds a
+    # stolen token that is being quietly rotated: idle expiry never fires on
+    # a chain someone is actively using, so without a ceiling that chain
+    # outlives any human decision about it. Lower it to force
+    # re-authorization sooner; it also bounds how many rows a family
+    # accumulates.
+    # @return [Integer]
+    attr_reader :refresh_token_family_lifetime_seconds
+
+    # How long after a refresh token is consumed a repeat presentation is
+    # read as an honest retry rather than a replay, in seconds. Default 60.
+    # Set 0 for strict one-time-use.
+    #
+    # A token request is a POST whose response can be lost — a sleeping
+    # laptop, a network handoff, a server restarting between commit and
+    # response. Without this window the client's retry is indistinguishable
+    # from a thief's replay, so a dropped packet revokes the family and logs
+    # a real user out with a theft alarm. Within it, the retry rotates again
+    # and returns a fresh pair.
+    # @return [Integer]
+    attr_reader :refresh_token_replay_grace_seconds
 
     # Accept an https URL as a client_id and fetch client metadata from
     # it (Client ID Metadata Documents, the successor to Dynamic Client
@@ -194,6 +240,10 @@ module Hitch
       @supported_scopes = [ "mcp".freeze ].freeze
       @access_token_lifetime_seconds = 3600
       @authorization_code_lifetime_seconds = 600
+      @refresh_tokens_enabled = true
+      @refresh_token_lifetime_seconds = 30 * 86_400
+      @refresh_token_family_lifetime_seconds = 90 * 86_400
+      @refresh_token_replay_grace_seconds = 60
       @principal_method = :current_user
       @login_path = nil
       @client_id_metadata_enabled = false
@@ -294,6 +344,35 @@ module Hitch
         "Hitch.configuration.resource_uri is required; set it to the canonical MCP endpoint URI"
     end
 
+    def refresh_tokens_enabled=(value)
+      unless value == true || value == false
+        raise ArgumentError, "refresh_tokens_enabled must be true or false"
+      end
+
+      @refresh_tokens_enabled = value
+    end
+
+    def refresh_token_lifetime_seconds=(value)
+      @refresh_token_lifetime_seconds =
+        positive_lifetime_setting(value, "refresh_token_lifetime_seconds")
+    end
+
+    def refresh_token_family_lifetime_seconds=(value)
+      @refresh_token_family_lifetime_seconds =
+        positive_lifetime_setting(value, "refresh_token_family_lifetime_seconds")
+    end
+
+    def refresh_token_replay_grace_seconds=(value)
+      seconds = integer_setting(value, "refresh_token_replay_grace_seconds")
+      # Zero is strict one-time-use, which is a posture rather than a mistake.
+      unless seconds >= 0 && seconds <= MAX_REPLAY_GRACE_SECONDS
+        raise ArgumentError,
+          "refresh_token_replay_grace_seconds must be 0 to #{MAX_REPLAY_GRACE_SECONDS}"
+      end
+
+      @refresh_token_replay_grace_seconds = seconds
+    end
+
     def dynamic_client_registration_limit=(value)
       unless value.respond_to?(:to_h)
         raise ArgumentError, "dynamic_client_registration_limit must contain :to and :within"
@@ -370,6 +449,18 @@ module Hitch
       origin == Hitch::ResourceUri.origin(canonical)
     rescue URI::InvalidURIError
       false
+    end
+
+    # A lifetime past AccessToken::MAX_LIFETIME_SECONDS overflows a Postgres
+    # timestamp and sorts before today on SQLite, which would hand an operator
+    # a credential that silently never resolves.
+    def positive_lifetime_setting(value, name)
+      seconds = integer_setting(value, name)
+      return seconds if seconds.positive? && seconds <= Hitch::AccessToken::MAX_LIFETIME_SECONDS
+
+      raise ArgumentError,
+        "#{name} must be a positive number of seconds, at most " \
+          "#{Hitch::AccessToken::MAX_LIFETIME_SECONDS}"
     end
 
     def integer_setting(value, name)

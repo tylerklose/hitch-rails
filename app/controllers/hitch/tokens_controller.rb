@@ -19,6 +19,8 @@ module Hitch
       code_verifier
       resource
       redirect_uri
+      refresh_token
+      scope
     ].freeze
 
     def create
@@ -27,7 +29,22 @@ module Hitch
       end
 
       oauth = oauth_parameters(*TOKEN_PARAMETER_NAMES, form_only: true)
-      return oauth_error("invalid_request", "grant_type must be authorization_code") unless oauth[:grant_type] == "authorization_code"
+      case oauth[:grant_type]
+      when "authorization_code" then authorization_code_grant(oauth)
+      when "refresh_token" then refresh_token_grant(oauth)
+      else
+        oauth_error("invalid_request", "grant_type must be #{Hitch::GrantTypes.supported.join(' or ')}")
+      end
+    rescue Hitch::ClientAuthentication::Invalid => error
+      response.headers["WWW-Authenticate"] = 'Basic realm="oauth/token"' if error.http_status == :unauthorized
+      oauth_error(error.oauth_code, error.message, error.http_status)
+    rescue Hitch::AccessToken::OAuthError => e
+      oauth_error(e.oauth_code, e.description)
+    end
+
+    private
+
+    def authorization_code_grant(oauth)
       return oauth_error("invalid_request", "code is required") if oauth[:code].blank?
       return oauth_error("invalid_request", "code_verifier is required") if oauth[:code_verifier].blank?
       unless Hitch::Pkce.valid_verifier?(oauth[:code_verifier])
@@ -40,11 +57,7 @@ module Hitch
       resource = require_canonical_resource(oauth[:resource])
       return unless resource
 
-      client_id = Hitch::ClientAuthentication.resolve(
-        request: request,
-        body_client_id: oauth[:client_id],
-        body_secret_present: oauth[:client_secret].present?
-      )
+      client_id = resolved_client_id(oauth)
       result = Hitch::AccessToken.exchange_authorization_code!(
         raw_code: oauth[:code],
         code_verifier: oauth[:code_verifier],
@@ -55,20 +68,48 @@ module Hitch
 
       return oauth_error("invalid_grant", "Invalid or expired authorization code") if result.nil?
 
-      render json: {
+      render_token(result)
+    end
+
+    def refresh_token_grant(oauth)
+      return oauth_error("invalid_request", "refresh_token is required") if oauth[:refresh_token].blank?
+
+      resource = require_canonical_resource(oauth[:resource])
+      return unless resource
+
+      client_id = resolved_client_id(oauth)
+      result = Hitch::AccessToken.exchange_refresh_token!(
+        raw_refresh_token: oauth[:refresh_token],
+        client_id: client_id,
+        resource_uri: resource,
+        scopes: oauth[:scope]
+      )
+
+      return oauth_error("invalid_grant", "Invalid or expired refresh token") if result.nil?
+
+      render_token(result)
+    end
+
+    def resolved_client_id(oauth)
+      Hitch::ClientAuthentication.resolve(
+        request: request,
+        body_client_id: oauth[:client_id],
+        body_secret_present: oauth[:client_secret].present?
+      )
+    end
+
+    # One shape for both grants. A refresh_token key is present only when the
+    # feature is on, so a client cannot read the absence as an error.
+    def render_token(result)
+      body = {
         access_token: result[:raw_token],
         token_type: "Bearer",
         expires_in: Hitch.configuration.access_token_lifetime_seconds,
         scope: result[:scope]
       }
-    rescue Hitch::ClientAuthentication::Invalid => error
-      response.headers["WWW-Authenticate"] = 'Basic realm="oauth/token"' if error.http_status == :unauthorized
-      oauth_error(error.oauth_code, error.message, error.http_status)
-    rescue Hitch::AccessToken::OAuthError => e
-      oauth_error(e.oauth_code, e.description)
+      body[:refresh_token] = result[:raw_refresh_token] if result[:raw_refresh_token].present?
+      render json: body
     end
-
-    private
 
     # RFC 6749 section 5.1 requires token responses to be non-cacheable.
     # This hook runs in OauthFormAdmission before Rails instrumentation, so

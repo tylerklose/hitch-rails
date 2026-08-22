@@ -43,7 +43,9 @@ class AuthorizationMetadataProfileTest < ActionDispatch::IntegrationTest
     assert_equal "https://www.example.com/oauth/authorize", authorization.fetch("authorization_endpoint")
     assert_equal "https://www.example.com/oauth/token", authorization.fetch("token_endpoint")
     assert_equal "https://www.example.com/oauth/register", authorization.fetch("registration_endpoint")
-    assert_equal [ "authorization_code" ], authorization.fetch("grant_types_supported")
+    # Advertised grants are a promise a conformant client acts on, so this
+    # tracks the flag rather than a fixed list.
+    assert_equal [ "authorization_code", "refresh_token" ], authorization.fetch("grant_types_supported")
     assert_equal [ "code" ], authorization.fetch("response_types_supported")
     assert_equal [ "S256" ], authorization.fetch("code_challenge_methods_supported")
     assert_equal %w[none client_secret_basic], authorization.fetch("token_endpoint_auth_methods_supported")

@@ -266,8 +266,10 @@ class Hitch::AccessTokenTest < ActiveSupport::TestCase
   test "cleanup_expired! drops expired tokens older than retention" do
     record = mint
     exchange_authorization_code(record, verifier: @verifier)
-    # Bypass the cant-set-past-expires guard by direct column update
-    record.update_columns(expires_at: 60.days.ago)
+    # Bypass the cant-set-past-expires guard by direct column update. The
+    # family ceiling has to be past too: while it is future the row is
+    # reuse-detection evidence and cleanup deliberately keeps it.
+    record.update_columns(expires_at: 60.days.ago, family_expires_at: 1.day.ago)
 
     Hitch::AccessToken.cleanup_expired!(revoked_retention_days: 30)
 

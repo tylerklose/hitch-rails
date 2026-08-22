@@ -331,6 +331,75 @@ that database access did not already carry.
 Refresh-token issuance is deliberately not implemented, so an expired agent
 token is reissued the same way.
 
+## Refresh tokens
+
+An access token lives an hour, which is the right lifetime for a credential
+that might leak. Without a way to renew it, though, that hour is all a hosted
+client ever gets: when it lapses the connector's only move is the full OAuth
+redirect, and the human who already granted consent gets asked again. And
+again.
+
+So Hitch issues a refresh token alongside every access token and accepts
+`grant_type=refresh_token` at the token endpoint. Every use rotates: the
+presented token is consumed and a new pair is issued, per the OAuth 2.1
+BCP's mandatory rotation for public clients.
+
+**This is the one setting in the gem that defaults to on.** Everything else
+here is deny-default — tools are hidden until you register them, origins are
+refused until you list them. The flag is different because it guards
+*exposure*, not whether the feature does its job, and a flag nobody flips
+would leave every adopter's connector nagging hourly. Close it deliberately
+if your threat model wants it closed:
+
+```ruby
+  config.refresh_tokens_enabled = false
+```
+
+Turning it off also drops `refresh_token` from `grant_types_supported` in
+discovery metadata, so clients stop being told about a door that is shut.
+
+### Rotation, families, and reuse detection
+
+Every rotation descends from the authorization that started it, and those
+descendants form a *family*. If a refresh token that was already consumed is
+presented again by its own client, someone is replaying a spent credential —
+Hitch revokes the entire family, access tokens included. Revoking a refresh
+token at `/oauth/revoke` does the same thing, because the trust a human
+granted at the consent screen is the family, not one link in it.
+
+A different `client_id` presenting the token is an ordinary `invalid_grant`
+with nothing revoked. Otherwise anyone who learned a token could log its
+owner out.
+
+```ruby
+  config.refresh_token_lifetime_seconds = 30 * 86_400         # idle window
+  config.refresh_token_family_lifetime_seconds = 90 * 86_400  # absolute ceiling
+  config.refresh_token_replay_grace_seconds = 60              # 0 = strict one-time-use
+```
+
+The idle window resets on every rotation, so a connector in regular use never
+reaches it and an abandoned one goes quiet on its own. The ceiling is fixed
+when the family starts and rotation never extends it — that is what bounds a
+stolen token someone is quietly refreshing, since idle expiry never fires on
+a chain that is being used. Lowering it forces re-authorization sooner and
+keeps families smaller.
+
+### The grace window, and what it costs
+
+A token request is a POST whose response can be lost — a sleeping laptop, a
+network handoff, a server restarting between commit and response. Strict
+one-time-use cannot tell that client's retry from a thief's replay, so a
+dropped packet would revoke the family and log a real user out with a theft
+alarm. Within `refresh_token_replay_grace_seconds` a repeat presentation is
+read as that retry and gets a fresh pair instead.
+
+Worth stating plainly: inside that window a stolen token can be presented
+repeatedly, each time minting another live branch of the family. The window
+is the price of not logging people out over dropped packets, and 60 seconds
+is a narrow race for an attacker who must also already hold the token. Set it
+to `0` for strict one-time-use, and note that Ory Hydra — whose graceful
+rotation this follows — defaults the equivalent window off rather than on.
+
 ## Operator diagnosis
 
 ```sh
@@ -413,7 +482,12 @@ class CleanupMCPTokensJob < ApplicationJob
 end
 ```
 
-Idempotent; active tokens are never touched.
+Idempotent; active tokens are never touched. Consumed refresh-token rows are
+kept while the family they belong to is still live, because they are the
+evidence reuse detection reads — dropping them on the retention schedule
+alone would turn a replayed stolen token into an ordinary `invalid_grant`
+and lose the alarm. Once the family ceiling passes they are collected
+normally.
 
 ## Customizing the consent view
 

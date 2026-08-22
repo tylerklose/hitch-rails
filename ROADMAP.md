@@ -12,6 +12,8 @@ authorization policy.
   admission, generators, test helper, and doctor.
 - Generator and developer-experience polish: generated tools that work out of
   the box, fewer install moving parts, better failure messages.
+- Refresh tokens with rotation and reuse detection, so a hosted connector
+  renews itself instead of re-asking the human every hour.
 - Track the MCP specification and Ruby SDK as they evolve, staying on the
   current authorization profile.
 
@@ -21,7 +23,7 @@ authorization policy.
 - Prompts, resources, tasks, and Apps
 - Multiple named surfaces/resources/registries
 - API-only consent/auth patterns and MySQL
-- `client_secret_post`, JWT/mTLS/DPoP, refresh-token issuance, device flow
+- `client_secret_post`, JWT/mTLS/DPoP, device flow
 - Named authorization adapters or bundled Pundit integration
 - Per-tool quotas, distributed concurrency leases, a Hitch-owned admission
   store, and framework-owned durable audit persistence

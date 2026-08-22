@@ -6,15 +6,13 @@ require "digest"
 require "json"
 require "securerandom"
 require "uri"
+require "hitch/mcp/protocol"
 
 module Hitch
   module MCP
     module TestHelper
-      # Public: host test suites pin this. Spelled out rather than read from
-      # Internal::Protocol, which lives in app/models and is not loaded when a
-      # host requires this file before booting Rails. A test asserts the two
-      # never drift.
-      PROTOCOL_VERSION = "2026-07-28"
+      # Public: host test suites pin this.
+      PROTOCOL_VERSION = Protocol::VERSION
 
       TOKEN_PATTERN = /\A[A-Za-z0-9\-._~+\/]+=*\z/
 
@@ -149,11 +147,11 @@ module Hitch
 
       def mcp_test_validate_method_and_name!(method, name)
         raise ArgumentError, "method is not a supported Hitch MCP method" unless
-          Internal::Protocol::METHODS.include?(method)
+          Protocol::METHODS.include?(method)
 
         if method == "tools/call"
           raise ArgumentError, "name is required for tools/call" unless
-            Internal::Protocol.tool_name?(name)
+            Protocol.tool_name?(name)
         elsif !name.nil?
           raise ArgumentError, "name is only valid for tools/call"
         end

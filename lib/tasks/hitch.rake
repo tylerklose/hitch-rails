@@ -6,9 +6,6 @@ module Hitch
   # Argument parsing for hitch:tokens:issue. Kept out of the task body so a
   # bad PRINCIPAL aborts with a sentence instead of a NameError.
   module TokenIssueTask
-    MAX_DAYS = 3650
-    NUMERIC_KEY_TYPES = %i[integer decimal float].freeze
-
     module_function
 
     # rpartition, not split: a namespaced principal (Accounts::User:5) has
@@ -29,8 +26,10 @@ module Hitch
       # keys are matched exactly by the adapter, or raise, so they are left
       # alone — including the upcased and undashed UUID forms that resolve
       # correctly.
-      if NUMERIC_KEY_TYPES.include?(model.type_for_attribute(model.primary_key).type) &&
-          !id.match?(/\A\d+\z/)
+      numeric_key = %i[integer decimal float].include?(
+        model.type_for_attribute(model.primary_key).type
+      )
+      if numeric_key && !id.match?(/\A\d+\z/)
         abort "PRINCIPAL id #{id.inspect} is not a whole number"
       end
 
@@ -46,10 +45,10 @@ module Hitch
 
       days = Integer(value, 10, exception: false)
       abort "EXPIRES_IN_DAYS must be a positive whole number of days" unless days&.positive?
-      # A decade is already far past "an unnoticed leak expires", and past it
-      # lie a Postgres datetime overflow and a SQLite year that sorts before
-      # today's, which would make the token silently unusable there.
-      abort "EXPIRES_IN_DAYS must not exceed #{MAX_DAYS}" if days > MAX_DAYS
+      # The ceiling is the model's, so there is one answer to how long a
+      # token may live rather than two that can drift.
+      max = Hitch::AccessToken::MAX_LIFETIME_SECONDS / 86_400
+      abort "EXPIRES_IN_DAYS must not exceed #{max}" if days > max
 
       days
     end

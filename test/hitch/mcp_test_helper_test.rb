@@ -27,12 +27,6 @@ class Hitch::MCPTestHelperTest < ActiveSupport::TestCase
     @helper = Harness.new
   end
 
-  # TestHelper spells the version out so the file loads before Rails boots.
-  # These two are the same fact and must not drift.
-  test "the public version constant matches the protocol Hitch speaks" do
-    assert_equal Hitch::MCP::Internal::Protocol::VERSION, Hitch::MCP::TestHelper::PROTOCOL_VERSION
-  end
-
   # A host requires this from spec_helper, above `require config/environment`.
   test "the test helper loads without Rails booted" do
     loaded = system(

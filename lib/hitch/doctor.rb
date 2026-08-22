@@ -85,6 +85,12 @@ module Hitch
       end
     end
 
+    # Rails host authorization answers a rejected Host with its HTML 403 page,
+    # which the discovery probe's JSON parser reported as a JSON::ParserError:
+    # one blocked host, two alarms, and the louder one naming a bug that does
+    # not exist. The middleware records the rejection on the env it was handed.
+    HostBlocked = Class.new(StandardError)
+
     class System
       REQUIRED_TABLES = %w[
         hitch_access_tokens
@@ -312,6 +318,8 @@ module Hitch
           "HTTPS" => ("on" if resource.scheme == "https")
         ).compact
         status, _headers, body = Rails.application.call(environment)
+        raise HostBlocked if environment["action_dispatch.blocked_hosts"]&.any?
+
         bytes = +""
         body.each do |part|
           bytes << part.to_s
@@ -505,6 +513,12 @@ module Hitch
       return pass("resource_discovery", "coherent", "Canonical resource and discovery documents agree", details) if coherent
 
       fail_check("resource_discovery", "mismatch", "Canonical resource and discovery documents do not agree", details)
+    rescue HostBlocked
+      skip(
+        "resource_discovery",
+        "host_blocked",
+        "Discovery probe cannot run while Rails host authorization blocks the canonical host"
+      )
     rescue StandardError => error
       probe_failure("resource_discovery", error)
     end
@@ -642,6 +656,6 @@ module Hitch
       fail_check(id, "probe_error", "The #{id.tr('_', ' ')} diagnostic could not complete", "error_class" => error.class.name)
     end
 
-    private_constant :Check, :Report, :System
+    private_constant :Check, :Report, :System, :HostBlocked
   end
 end

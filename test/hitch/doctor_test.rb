@@ -506,6 +506,36 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     assert_equal "shadowed", check.code
   end
 
+  # Rails drops HostAuthorization from the stack entirely when config.hosts is
+  # empty, which is what the test environment does. Putting the real middleware
+  # back is the only way to see what a host with a narrow config.hosts sees.
+  test "a blocked canonical host reports the hosts failure and no phantom parse error" do
+    original_resource = Hitch.configuration.resource_uri
+    original_app = Rails.application.app
+    original_hosts = Rails.application.config.hosts
+    blocking = [ "somewhere-else.example" ]
+    Hitch.configuration.resource_uri = "https://dummy.test/mcp"
+    Rails.application.instance_variable_set(
+      :@app, ActionDispatch::HostAuthorization.new(original_app, blocking)
+    )
+    Rails.application.config.hosts = blocking
+
+    report = Doctor.call
+    human = Doctor.render(report, format: "human")
+    discovery = report.checks.find { |check| check.id == "resource_discovery" }
+    hosts = report.checks.find { |check| check.id == "hosts" }
+
+    assert_equal [ "skip", "host_blocked" ], [ discovery.status, discovery.code ]
+    assert_equal [ "fail", "blocked" ], [ hosts.status, hosts.code ]
+    assert_equal "error", report.status
+    assert_includes human, Doctor::REMEDIES.fetch("blocked")
+    refute_includes human, "JSON::ParserError"
+  ensure
+    Rails.application.instance_variable_set(:@app, original_app)
+    Rails.application.config.hosts = original_hosts
+    Hitch.configuration.resource_uri = original_resource
+  end
+
   private
 
   def expected_overall(report)

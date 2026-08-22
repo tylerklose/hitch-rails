@@ -11,6 +11,13 @@ Hitch.configure do |config|
   # Display name shown on the OAuth consent screen.
   config.brand_name = "Your App"
 
+  # Where to send a signed-out visitor who lands on the consent screen.
+  # Without it the browser OAuth flow answers a bare 401 and no MCP client
+  # can complete sign-in. "/session/new" is what Rails 8's own
+  # `bin/rails generate authentication` creates; Devise uses
+  # "/users/sign_in".
+  config.login_path = "/session/new"
+
   # Exact browser origins allowed to call the endpoint, including scheme and
   # non-default port. Denied by default; development and test also accept
   # loopback origins.

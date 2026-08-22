@@ -42,6 +42,7 @@ module Hitch
         if behavior == :revoke
           remove_files
           remove_routes
+          print_removal_steps
         else
           preflight!
           create_files
@@ -139,6 +140,20 @@ module Hitch
       end
 
       def refusal_subject = "Hitch"
+
+      # Removing the initializer leaves the engine's boot validation with no
+      # resource_uri, so the app will not start until the gem is gone too.
+      # Saying so here is the difference between a clean uninstall and an
+      # application that suddenly refuses to boot.
+      def print_removal_steps
+        say ""
+        say "hitch-rails files removed.", :green
+        say "The application will not boot until you also:"
+        say "  1. Remove the hitch-rails line from your Gemfile, then: bundle install"
+        say "  2. Roll back Hitch's tables if you no longer want them"
+        say "  3. Delete any tools you generated under app/tools/"
+        say "See docs/removing.md for the full order."
+      end
 
       def print_next_steps
         say ""

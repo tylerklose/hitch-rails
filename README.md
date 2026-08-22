@@ -76,6 +76,48 @@ instead: hidden, denying, and unimplemented until you fill it in.
 `bin/rails destroy hitch:install` / `destroy hitch:tool NAME` reverse the
 generators.
 
+## Calling it
+
+Everything below is required. Two of the headers and the `_meta` block are
+easy to miss, and the endpoint answers a bare `-32602` when any is absent,
+so start from this and change one thing at a time:
+
+```bash
+TOKEN=$(cat agent.token)   # see Headless agents, below
+
+curl -sS -X POST https://your-app.example.com/mcp \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "MCP-Protocol-Version: 2026-07-28" \
+  -H "Mcp-Method: tools/call" \
+  -H "Mcp-Name: echo" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": "1",
+    "method": "tools/call",
+    "params": {
+      "name": "echo",
+      "arguments": {},
+      "_meta": {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {}
+      }
+    }
+  }'
+```
+
+- `Accept` must name **both** types. Either alone is a `406`.
+- `Mcp-Method` and `Mcp-Name` repeat the method and tool name from the body,
+  and must match it exactly. `Mcp-Name` is sent only for `tools/call`.
+- `_meta` must carry **both** `protocolVersion` and `clientCapabilities`.
+- `tools/list` and `server/discover` take the same shape without
+  `Mcp-Name`, and still require `params` with its `_meta`.
+
+Real MCP clients send all of this for you. You need it for `curl`, and for
+understanding a `400` while you are getting set up. In development and test,
+a rejected request also writes the reason to your Rails log.
+
 ## Configuration
 
 The generated `config/initializers/hitch.rb` holds the knobs every host must
@@ -109,7 +151,7 @@ config.mcp.request_limit = { to: 120, within: 1.minute }
 config.mcp.max_request_bytes = 1.megabyte
 config.mcp.max_result_bytes = 1.megabyte
 config.principal_method = :current_user  # method on controllers
-config.login_path = "/sign_in"           # where to redirect when unauth'd
+config.login_path = "/session/new"       # where to redirect when unauth'd
 ```
 
 The generated route and controller:
@@ -151,11 +193,13 @@ module McpTools
     annotations read_only_hint: true, destructive_hint: false
 
     def self.available_to?(context)
-      context.scope.can_use_echo?
+      # Whether this tool is listed and callable at all, for this principal.
+      context.principal.present?
     end
 
     def self.authorize!(context, arguments:)
-      raise Hitch::MCP::Forbidden unless context.scope.may_echo?(arguments.fetch("message"))
+      # Returning without raising allows the call. Your policy goes here.
+      raise Hitch::MCP::Forbidden if arguments.fetch("message").length > 500
     end
 
     def self.perform(_context, arguments:)

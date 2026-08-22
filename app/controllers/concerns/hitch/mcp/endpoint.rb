@@ -43,6 +43,13 @@ module Hitch
 
         hitch_mcp_dispatch!(verified_request)
       rescue Internal::VerifiedRequest::Failure => error
+        # The wire deliberately says only "Invalid params" for a dozen
+        # different rejections. Locally the first backtrace frame names the
+        # exact check that refused, which is the difference between a
+        # developer fixing their request and guessing at it.
+        Internal::LocalDiagnosis.report(
+          "MCP request rejected (#{error.code} #{error.message})", error
+        )
         hitch_mcp_protocol_error!(
           error.http_status,
           error.code,

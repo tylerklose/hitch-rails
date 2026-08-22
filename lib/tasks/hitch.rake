@@ -56,23 +56,14 @@ module Hitch
   module ClientCredentialTask
     module_function
 
+    # The block returns the exact bytes to disclose. A client registration
+    # hands over two values and labels them; a token is one value, and what
+    # lands in the file has to be usable as `Authorization: Bearer $(cat …)`
+    # without anyone having to know a file format.
     def disclose(stdin: $stdin, tty_path: "/dev/tty")
       with_output(stdin: stdin, tty_path: tty_path) do |output|
-        Hitch::Client.transaction do
-          credentials = yield
-          output.write(
-            "client_id=#{credentials.client.client_id}\n" \
-            "client_secret=#{credentials.client_secret}\n"
-          )
-          output.flush
-        end
-      end
-    end
-
-    def disclose_token(stdin: $stdin, tty_path: "/dev/tty")
-      with_output(stdin: stdin, tty_path: tty_path) do |output|
-        Hitch::AccessToken.transaction do
-          output.write("access_token=#{yield}\n")
+        Hitch::ApplicationRecord.transaction do
+          output.write(yield)
           output.flush
         end
       end
@@ -125,11 +116,12 @@ namespace :hitch do
       redirect_uri = ENV["REDIRECT_URI"].presence || abort("REDIRECT_URI is required")
 
       Hitch::ClientCredentialTask.disclose do
-        Hitch::Client.register_confidential!(
+        credentials = Hitch::Client.register_confidential!(
           client_id: client_id,
           client_name: ENV["NAME"],
           redirect_uris: [ redirect_uri ]
         )
+        "client_id=#{credentials.client.client_id}\nclient_secret=#{credentials.client_secret}\n"
       end
     end
 
@@ -141,7 +133,8 @@ namespace :hitch do
         client = Hitch::Client.find_by(client_id: client_id)
         abort "Confidential client not found" unless client&.confidential_client?
 
-        client.rotate_secret!
+        credentials = client.rotate_secret!
+        "client_id=#{credentials.client.client_id}\nclient_secret=#{credentials.client_secret}\n"
       end
     end
   end
@@ -154,15 +147,21 @@ namespace :hitch do
       scopes = ENV["SCOPES"].to_s.split
       days = Hitch::TokenIssueTask.days!(ENV["EXPIRES_IN_DAYS"])
 
-      Hitch::ClientCredentialTask.disclose_token do
+      client_id = ENV["CLIENT_ID"].presence || "hitch-cli"
+      Hitch::ClientCredentialTask.disclose do
         Hitch::AccessToken.issue!(
           principal: principal,
-          client_id: ENV["CLIENT_ID"].presence || "hitch-cli",
+          client_id: client_id,
           client_name: ENV["NAME"],
           scopes: scopes,
           expires_in: days * 86_400
         )
       end
+
+      # The secret went to the file or the terminal; this goes to stdout, so a
+      # silent success is not mistaken for a no-op.
+      warn "Issued an access token for #{principal.class.name}:#{principal.id} " \
+        "(client_id #{client_id}, #{days} days). The file holds the token and nothing else."
     end
   end
 

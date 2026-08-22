@@ -68,18 +68,22 @@ class HitchTokensTaskTest < ActionDispatch::IntegrationTest
 
       stdout, stderr = capture_io { Rake::Task[TASK].invoke }
 
-      assert_empty stdout
-      assert_empty stderr
+      # The file is what someone runs through `cat`. It has to hold the token
+      # and nothing else, or `Bearer $(cat agent.token)` is a silent 401.
+      token = File.read(path)
+      assert_equal token.strip, token
       assert_equal 0o600, File.stat(path).mode & 0o777
-      token = File.read(path).lines.map(&:chomp).filter_map do |line|
-        line.delete_prefix("access_token=") if line.start_with?("access_token=")
-      end
-      assert_equal 1, token.length
+
+      # The confirmation goes to stderr so a silent success is not mistaken
+      # for a no-op, and it must never carry the secret.
+      assert_empty stdout
+      assert_includes stderr, "Issued an access token"
+      refute_includes stderr, token
 
       record = Hitch::AccessToken.sole
-      refute_includes record.attributes.values, token.first
-      assert_equal record, Hitch::AccessToken.find_by_token(token.first)
-      post_mcp(method: "tools/list", token: token.first)
+      refute_includes record.attributes.values, token
+      assert_equal record, Hitch::AccessToken.find_by_token(token)
+      post_mcp(method: "tools/list", token: token)
       assert_response :success
     end
   end

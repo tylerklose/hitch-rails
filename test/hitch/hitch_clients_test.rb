@@ -96,7 +96,9 @@ class HitchClientsTaskTest < ActiveSupport::TestCase
       task_writer = Hitch.const_get(:ClientCredentialTask, false)
 
       stdout, stderr = capture_io do
-        task_writer.disclose(stdin: fake_tty, tty_path: tty_path) { credentials }
+        task_writer.disclose(stdin: fake_tty, tty_path: tty_path) do
+          "client_id=#{credentials.client.client_id}\nclient_secret=#{credentials.client_secret}\n"
+        end
       end
 
       assert_empty stdout

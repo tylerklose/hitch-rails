@@ -7,13 +7,8 @@ authorization policy.
 
 ## Next
 
-- Publish `0.2.0` to RubyGems: the authenticated endpoint, explicit
-  deny-default registry, safe invocation and results, cache-store request
-  admission, generators, test helper, and doctor.
 - Generator and developer-experience polish: generated tools that work out of
   the box, fewer install moving parts, better failure messages.
-- Refresh tokens with rotation and reuse detection, so a hosted connector
-  renews itself instead of re-asking the human every hour.
 - Track the MCP specification and Ruby SDK as they evolve, staying on the
   current authorization profile.
 

@@ -400,8 +400,6 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
   end
 
   test "real route probe detects a dynamic predecessor that recognizes the MCP path" do
-    original_resource = Hitch.configuration.resource_uri
-    Hitch.configuration.resource_uri = "https://dummy.test/mcp"
     Rails.application.routes.draw do
       match "*path", to: "host_forms#create", via: :all
       match "mcp", to: "mcp#handle", via: :all
@@ -419,7 +417,6 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
       facts.dig("recognized_targets", "options"))
   ensure
     Rails.application.reload_routes!
-    Hitch.configuration.resource_uri = original_resource
   end
 
   test "real route probe honors the canonical host when checking predecessors" do
@@ -444,8 +441,6 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
   end
 
   test "real route probe checks non-POST methods that the endpoint must own" do
-    original_resource = Hitch.configuration.resource_uri
-    Hitch.configuration.resource_uri = "https://dummy.test/mcp"
     Rails.application.routes.draw do
       get "*path", to: "host_forms#create"
       match "mcp", to: "mcp#handle", via: :all
@@ -461,12 +456,9 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
       facts.dig("recognized_targets", "post"))
   ensure
     Rails.application.reload_routes!
-    Hitch.configuration.resource_uri = original_resource
   end
 
   test "real route probe checks every method Rails can recognize" do
-    original_resource = Hitch.configuration.resource_uri
-    Hitch.configuration.resource_uri = "https://dummy.test/mcp"
     Rails.application.routes.draw do
       match "*path", to: "host_forms#create", via: :trace
       match "mcp", to: "mcp#handle", via: :all
@@ -483,7 +475,6 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
       facts.dig("recognized_targets", "post"))
   ensure
     Rails.application.reload_routes!
-    Hitch.configuration.resource_uri = original_resource
   end
 
   test "route check fails when recognition is shadowed without an exact-path predecessor" do
@@ -510,11 +501,9 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
   # empty, which is what the test environment does. Putting the real middleware
   # back is the only way to see what a host with a narrow config.hosts sees.
   test "a blocked canonical host reports the hosts failure and no phantom parse error" do
-    original_resource = Hitch.configuration.resource_uri
     original_app = Rails.application.app
     original_hosts = Rails.application.config.hosts
     blocking = [ "somewhere-else.example" ]
-    Hitch.configuration.resource_uri = "https://dummy.test/mcp"
     Rails.application.instance_variable_set(
       :@app, ActionDispatch::HostAuthorization.new(original_app, blocking)
     )
@@ -533,7 +522,6 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
   ensure
     Rails.application.instance_variable_set(:@app, original_app)
     Rails.application.config.hosts = original_hosts
-    Hitch.configuration.resource_uri = original_resource
   end
 
   private

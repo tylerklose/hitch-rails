@@ -34,3 +34,27 @@ Hitch.configure do |config|
   config.mcp.max_request_bytes = 1_024
   config.mcp.max_result_bytes = 1_024
 end
+
+# Boot probe for the production-only rate-limit-store checks. Every other test
+# in this suite configures mcp.rate_limit_store explicitly, above — so the fall
+# back to the application's own cache store, which is what every adopter gets
+# by default, is exercised nowhere else. That gap is how a boot-killing
+# regression shipped once already.
+if ENV["HITCH_BOOT_PROBE"]
+  shared_store = Class.new(ActiveSupport::Cache::Store) do
+    def increment(name, amount = 1, **options) = amount
+  end
+
+  Hitch.configure do |config|
+    config.mcp.rate_limit_store = nil
+    # Leaves exactly one boot check running, so a failure names the setting
+    # under test rather than whichever check happened to run first.
+    config.dynamic_client_registration_enabled = false
+  end
+  Rails.application.config.action_controller.cache_store =
+    if ENV["HITCH_BOOT_PROBE"] == "shared"
+      shared_store.new
+    else
+      ActiveSupport::Cache::MemoryStore.new
+    end
+end

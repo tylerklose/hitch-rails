@@ -99,10 +99,7 @@ module Hitch
 
       next unless Rails.env.production?
 
-      Hitch::RateLimitStore.assert_shared!(
-        configuration.dynamic_client_registration_rate_store,
-        setting: Hitch::DynamicRegistrationRateLimit::SETTING
-      )
+      configuration.validate_dynamic_client_registration_rate_store!
     end
 
     initializer "hitch.validate_configuration", after: :load_config_initializers do

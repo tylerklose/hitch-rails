@@ -122,10 +122,13 @@ module Hitch
       # Resolved separately from validate! because the application's cache store
       # is assembled by Rails' own initializers; this runs from to_prepare, once
       # config.cache_store is settled.
+      # The raw setting is passed, not the resolving reader: reading it here
+      # would ask ActionController::Base for the default store during
+      # initialization, which is the premature load this avoids.
       def validate_rate_limit_store!
         return true unless Rails.env.production?
 
-        Hitch::RateLimitStore.assert_shared!(rate_limit_store, setting: SETTING)
+        Hitch::RateLimitStore.assert_shared_at_boot!(@rate_limit_store, setting: SETTING)
       end
 
       # Framework lifecycle, not a host knob: the engine's to_prepare hook

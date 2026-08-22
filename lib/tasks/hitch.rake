@@ -7,6 +7,7 @@ module Hitch
   # bad PRINCIPAL aborts with a sentence instead of a NameError.
   module TokenIssueTask
     MAX_DAYS = 3650
+    NUMERIC_KEY_TYPES = %i[integer decimal float].freeze
 
     module_function
 
@@ -23,12 +24,13 @@ module Hitch
       abort "PRINCIPAL model #{model_name} is abstract; name the model that stores the record" if
         model.abstract_class?
 
-      # Only integer keys silently absorb junk: Rails casts "12 34" to 12, so
-      # a typo would issue a token for somebody else. UUID, ULID and string
-      # keys match exactly or raise, and comparing their canonical form back
-      # against what was typed rejects an upcased or undashed UUID that found
-      # the right row.
-      if model.type_for_attribute(model.primary_key).type == :integer && !id.match?(/\A\d+\z/)
+      # Numeric keys silently absorb junk: Rails casts "12 34" to 12, so a
+      # typo would issue a token for somebody else. UUID, ULID and string
+      # keys are matched exactly by the adapter, or raise, so they are left
+      # alone — including the upcased and undashed UUID forms that resolve
+      # correctly.
+      if NUMERIC_KEY_TYPES.include?(model.type_for_attribute(model.primary_key).type) &&
+          !id.match?(/\A\d+\z/)
         abort "PRINCIPAL id #{id.inspect} is not a whole number"
       end
 

@@ -19,6 +19,11 @@ module Hitch
   class AccessToken < ApplicationRecord
     self.table_name = "hitch_access_tokens"
 
+    # Ten years. Past it a Postgres timestamp overflows, and a SQLite
+    # five-digit year sorts before today's — which would hand an operator a
+    # token that silently never resolves.
+    MAX_LIFETIME_SECONDS = 3650 * 86_400
+
     class OAuthError < StandardError
       attr_reader :oauth_code, :description
 
@@ -108,18 +113,20 @@ module Hitch
         raise ArgumentError,
           "scopes are not present in Hitch.configuration.supported_scopes: #{unsupported.join(', ')}"
       end
-      # to_s first, then base 10: Integer(x, 10) rejects a non-String, and
-      # without the base "0700" parses as octal 448.
-      seconds = expires_in.nil? ? nil : Integer(expires_in.to_s, 10, exception: false)
-      raise ArgumentError, "expires_in must be a positive number of seconds" if
-        !expires_in.nil? && !seconds&.positive?
+      # Seconds, as a number or a Duration. A String is a caller mistake, not
+      # something to guess at: the rake task parses ENV before it gets here,
+      # and Integer("0700") would quietly mean 448.
+      seconds = expires_in.to_i if expires_in.is_a?(Numeric) || expires_in.is_a?(ActiveSupport::Duration)
+      unless expires_in.nil? || (seconds&.positive? && seconds <= MAX_LIFETIME_SECONDS)
+        raise ArgumentError,
+          "expires_in must be a positive number of seconds, at most #{MAX_LIFETIME_SECONDS}"
+      end
 
       resource_uri = Hitch.configuration.resource_uri
       verifier = SecureRandom.urlsafe_base64(64)
       # requires_new, not a plain transaction: a bare `transaction` JOINS a
-      # caller's open one and opens no savepoint, so a host calling issue!
-      # inside its own transaction and rescuing kept the very row this exists
-      # to roll back.
+      # caller's open one, so a host calling issue! inside its own
+      # transaction and rescuing kept the very row this exists to roll back.
       transaction(requires_new: true) do
         record = create_authorization!(
           principal: principal,

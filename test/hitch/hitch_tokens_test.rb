@@ -122,14 +122,6 @@ class HitchTokensTaskTest < ActionDispatch::IntegrationTest
     end
   end
 
-  # A UUID key matches exactly or raises, so it needs no digit rule — and
-  # upcased or undashed forms that resolve correctly must not be refused.
-  test "a non-integer key is left to the adapter to match" do
-    parsed = Hitch::TokenIssueTask.principal!("Accounts::Operator:#{@principal.id}")
-
-    assert_equal @principal.id, parsed.id
-  end
-
   test "a namespaced principal model resolves" do
     parsed = Hitch::TokenIssueTask.principal!("Accounts::Operator:#{@principal.id}")
 
@@ -207,10 +199,36 @@ class HitchTokensTaskTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "expires_in reads decimal, so a leading zero is not octal" do
-    Hitch::AccessToken.issue!(principal: @principal, client_id: "cron-agent", expires_in: "0700")
+  # A Duration is the natural console spelling, including a fractional one.
+  test "expires_in takes a number or a duration" do
+    [ 1.5.hours, 3600, 3600.0, 2.days ].each do |lifetime|
+      Hitch::AccessToken.delete_all
+      Hitch::AccessToken.issue!(principal: @principal, client_id: "cron-agent", expires_in: lifetime)
 
-    assert_in_delta 700.seconds.from_now, Hitch::AccessToken.sole.expires_at, 5.seconds
+      assert_in_delta lifetime.to_i.seconds.from_now, Hitch::AccessToken.sole.expires_at, 5.seconds
+    end
+  end
+
+  # The rake task parses ENV; a String reaching the method is a mistake, and
+  # guessing at it is how "0700" came to mean 448 seconds.
+  test "expires_in refuses a string rather than guessing its base" do
+    [ "3600", "0700", "90abc" ].each do |bad|
+      assert_raises(ArgumentError, bad) do
+        Hitch::AccessToken.issue!(principal: @principal, client_id: "cron-agent", expires_in: bad)
+      end
+    end
+
+    assert_equal 0, Hitch::AccessToken.count
+  end
+
+  test "the public method caps the lifetime too, not just the task" do
+    assert_raises(ArgumentError) do
+      Hitch::AccessToken.issue!(
+        principal: @principal, client_id: "cron-agent", expires_in: 300_000_000_000
+      )
+    end
+
+    assert_equal 0, Hitch::AccessToken.count
   end
 
   test "a lifetime past the cap aborts rather than overflowing the column" do

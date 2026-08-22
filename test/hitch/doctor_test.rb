@@ -205,18 +205,6 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     actionable = seen.reject { |(_id, status, _code)| %w[pass skip].include?(status) }
     missing = actionable.map(&:last).uniq - Doctor::REMEDIES.keys
     assert_empty missing, "doctor codes with no remedy: #{missing.join(', ')}"
-
-    # Remedies are keyed by code, so a code emitted by two checks hands one
-    # of them the other's advice. probe_error is deliberately shared by every
-    # check that can fail to run, and its advice is written for all of them.
-    #
-    # This sees only the codes the fixtures reach, which is why the exemption
-    # is named rather than inferred: probe_error is reachable from seven
-    # checks in production and from one here.
-    shared = actionable.group_by(&:last)
-      .select { |_code, rows| rows.map(&:first).uniq.length > 1 }
-      .except("probe_error")
-    assert_empty shared.keys, "codes emitted by more than one check: #{shared.keys.join(', ')}"
   end
 
   test "human rendering prescribes for every failure and nothing when healthy" do

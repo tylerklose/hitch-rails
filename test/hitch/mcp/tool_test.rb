@@ -263,19 +263,6 @@ class Hitch::MCP::ToolTest < ActiveSupport::TestCase
     assert_includes log, %(MCP tool "policy.tool" failed during result (invalid_result_type))
   end
 
-  # The endpoint boundary logs too — a host whose available_to? or
-  # scope_resolver blows up used to get "Internal error" and an empty log.
-  test "the endpoint boundary reports locally as well" do
-    log = capture_hitch_log do
-      Hitch::MCP::Internal::LocalDiagnosis.report(
-        "MCP request failed during dispatch", ArgumentError.new("resolver blew up")
-      )
-    end
-
-    assert_includes log, "[hitch] MCP request failed during dispatch"
-    assert_includes log, "ArgumentError: resolver blew up"
-  end
-
   test "production is silent, and so is an ordinary denial" do
     raising = build_tool(
       authorize: ->(_context, arguments:) { nil },

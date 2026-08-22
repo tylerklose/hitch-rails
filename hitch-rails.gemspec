@@ -5,15 +5,22 @@ Gem::Specification.new do |spec|
   spec.version     = Hitch::VERSION
   spec.authors     = [ "Tyler Klose" ]
   spec.homepage    = "https://github.com/tylerklose/hitch-rails"
-  spec.summary     = "Opinionated authenticated MCP framework for Rails"
+  spec.summary     = "Let AI agents call your Rails app's tools: an OAuth 2.1 authorization server plus an authenticated MCP endpoint, built on the sign-in you already have"
   spec.description = <<~DESC
-    Hitch turns a Rails app into an MCP authorization server: OAuth 2.1 +
-    PKCE, audience-bound tokens, discovery metadata, revocation, and
-    default-deny CORS, built on the sign-in the app already has. It adds an
-    authenticated /mcp endpoint backed by the official Ruby MCP SDK and an
-    explicit deny-default tool registry with schema-validated, size-capped
-    results. Request admission counts through the app's own cache store — no
-    Redis, no separate auth server — with SQLite and PostgreSQL supported.
+    Hitch lets MCP clients -- Claude, ChatGPT, Cursor -- call your Rails
+    app's tools as a specific signed-in user, with access you can revoke.
+
+    You do not stand up a separate auth server, add Redis, or adopt a new
+    sign-in system. Hitch uses the authentication your app already has
+    (current_user or Current.user) and your configured cache store.
+
+    Underneath it is a full OAuth 2.1 authorization server implementing the
+    MCP 2026-07-28 authorization profile: PKCE (S256), audience-bound tokens
+    (RFC 8707), discovery metadata (RFC 8414 + RFC 9728), revocation
+    (RFC 7009), Client ID Metadata Documents, and optional Dynamic Client
+    Registration (RFC 7591). It adds an authenticated /mcp endpoint backed by
+    the official Ruby MCP SDK and a deny-default tool registry with schema
+    validation and size caps. SQLite and PostgreSQL supported.
   DESC
   spec.license = "MIT"
 

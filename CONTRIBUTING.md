@@ -16,6 +16,10 @@ bin/rails test
 conformance/package checks) and is what CI runs. While iterating, run the
 smallest focused test, then `bin/ci` before opening a PR.
 
+Working conventions for this repository — including the testing discipline it
+expects — are in [AGENTS.md](AGENTS.md). They apply to humans and coding agents
+alike.
+
 ## Design boundary
 
 - Hitch owns OAuth/MCP protocol mechanics, request admission, the explicit

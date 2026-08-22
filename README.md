@@ -580,7 +580,9 @@ The exact public surface is documented in
 
 ## Contributing
 
-Issues and PRs welcome — see [CONTRIBUTING.md](https://github.com/tylerklose/hitch-rails/blob/main/CONTRIBUTING.md). Spec
+Issues and PRs welcome — see [CONTRIBUTING.md](https://github.com/tylerklose/hitch-rails/blob/main/CONTRIBUTING.md)
+and [AGENTS.md](https://github.com/tylerklose/hitch-rails/blob/main/AGENTS.md)
+for how work gets done here. Spec
 conformance is the primary correctness bar; citations to the
 [MCP authorization spec](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization)
 and the underlying RFCs are appreciated.

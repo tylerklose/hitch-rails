@@ -213,13 +213,13 @@ Tools live in `app/tools/`, and the registry in
 
 ```ruby
 module McpTools
-  class Echo < Hitch::MCP::Tool
-    tool_name "echo"
-    description "Echo a message back to the caller"
+  class AccountSummary < Hitch::MCP::Tool
+    tool_name "account_summary"
+    description "Describe one account"
     input_schema(
       type: "object",
-      properties: { message: { type: "string" } },
-      required: [ "message" ],
+      properties: { account_id: { type: "string" } },
+      required: [ "account_id" ],
       additionalProperties: false
     )
     annotations read_only_hint: true, destructive_hint: false
@@ -230,18 +230,21 @@ module McpTools
     end
 
     def self.authorize!(context, arguments:)
-      # Returning without raising allows the call. Your policy goes here.
-      raise Hitch::MCP::Forbidden if arguments.fetch("message").length > 500
+      # Returning without raising allows the call. This hook sees the
+      # arguments too, so policy can turn on what is asked, not only who
+      # asks. Hitch does not supply the policy — your app does.
+      raise Hitch::MCP::Forbidden unless
+        context.principal.may_read_account?(arguments.fetch("account_id"))
     end
 
     def self.perform(_context, arguments:)
-      Hitch::MCP::Result.text(arguments.fetch("message"))
+      Hitch::MCP::Result.text(Account.find(arguments.fetch("account_id")).summary)
     end
   end
 end
 
 class McpToolRegistry < Hitch::MCP::Registry
-  register McpTools::Echo, scopes: [ "mcp" ]
+  register McpTools::AccountSummary, scopes: [ "mcp" ]
 end
 ```
 
@@ -275,7 +278,10 @@ class AccountToolsTest < ActionDispatch::IntegrationTest
     post_mcp(
       method: "tools/call",
       token: token,
-      params: { name: "echo", arguments: { message: "hello" } }
+      params: {
+        name: "account_summary",
+        arguments: { account_id: accounts(:one).id.to_s }
+      }
     )
 
     assert_response :success

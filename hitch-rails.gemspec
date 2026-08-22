@@ -23,7 +23,9 @@ Gem::Specification.new do |spec|
   # same place.
   spec.metadata["changelog_uri"] = "https://github.com/tylerklose/hitch-rails/blob/main/CHANGELOG.md"
   spec.metadata["bug_tracker_uri"] = "https://github.com/tylerklose/hitch-rails/issues"
-  spec.metadata["documentation_uri"] = "https://github.com/tylerklose/hitch-rails/blob/main/docs/public_api/0.2.0.md"
+  # A mis-set RUBYGEMS_HOST would otherwise publish this somewhere else.
+  spec.metadata["allowed_push_host"] = "https://rubygems.org"
+  spec.metadata["documentation_uri"] = "https://github.com/tylerklose/hitch-rails/blob/v0.2.0/docs/public_api/0.2.0.md"
   spec.metadata["rubygems_mfa_required"] = "true"
 
   spec.required_ruby_version = Gem::Requirement.new(">= 3.3", "< 4.1")
@@ -53,7 +55,11 @@ Gem::Specification.new do |spec|
         "lib/**/*.rb"
       ]
     )
-    files.select { |path| File.file?(path) }.sort
+    # Intersected with what git tracks: the globs are convenient, but on
+    # their own an untracked scratch file in app/ or lib/ would be packaged
+    # and published, and nothing before `gem push` would catch it.
+    tracked = `git ls-files -z`.split("\x0")
+    files.select { |path| File.file?(path) && tracked.include?(path) }.sort
   end
 
   spec.add_dependency "json", ">= 2.13", "< 3"

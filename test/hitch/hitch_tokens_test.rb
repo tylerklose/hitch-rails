@@ -70,8 +70,10 @@ class HitchTokensTaskTest < ActionDispatch::IntegrationTest
 
       # The file is what someone runs through `cat`. It has to hold the token
       # and nothing else, or `Bearer $(cat agent.token)` is a silent 401.
-      token = File.read(path)
-      assert_equal token.strip, token
+      # One line, one value, no label — `$(...)` strips the trailing newline.
+      assert_equal 1, File.readlines(path).length
+      token = File.read(path).chomp
+      refute_includes token, "="
       assert_equal 0o600, File.stat(path).mode & 0o777
 
       # The confirmation goes to stderr so a silent success is not mistaken

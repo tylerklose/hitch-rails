@@ -116,7 +116,8 @@ module Hitch
       # Seconds, as a number or a Duration. A String is a caller mistake, not
       # something to guess at: the rake task parses ENV before it gets here,
       # and Integer("0700") would quietly mean 448.
-      seconds = expires_in.to_i if expires_in.is_a?(Numeric) || expires_in.is_a?(ActiveSupport::Duration)
+      numeric = expires_in.is_a?(Numeric) || expires_in.is_a?(ActiveSupport::Duration)
+      seconds = expires_in.to_i if numeric && expires_in.to_f.finite?
       unless expires_in.nil? || (seconds&.positive? && seconds <= MAX_LIFETIME_SECONDS)
         raise ArgumentError,
           "expires_in must be a positive number of seconds, at most #{MAX_LIFETIME_SECONDS}"

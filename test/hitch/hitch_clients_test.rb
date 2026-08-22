@@ -155,11 +155,12 @@ class HitchClientsTaskTest < ActiveSupport::TestCase
     stub_class_method(File, :open, open_writer) do
       assert_raises(Errno::ENOSPC) do
         task_writer.disclose(stdin: fake_tty, tty_path: "/unused") do
-          Hitch::Client.register_confidential!(
+          credentials = Hitch::Client.register_confidential!(
             client_id: "write-failed",
             client_name: "Write Failed",
             redirect_uris: [ "https://client.test/callback" ]
           )
+          "client_id=#{credentials.client.client_id}\nclient_secret=#{credentials.client_secret}\n"
         end
       end
     end
@@ -189,7 +190,10 @@ class HitchClientsTaskTest < ActiveSupport::TestCase
 
     stub_class_method(File, :open, open_writer) do
       assert_raises(Errno::ENOSPC) do
-        task_writer.disclose(stdin: fake_tty, tty_path: "/unused") { client.rotate_secret! }
+        task_writer.disclose(stdin: fake_tty, tty_path: "/unused") do
+          rotated = client.rotate_secret!
+          "client_id=#{rotated.client.client_id}\nclient_secret=#{rotated.client_secret}\n"
+        end
       end
     end
 

@@ -64,7 +64,13 @@ module Hitch
     def disclose(stdin: $stdin, tty_path: "/dev/tty")
       with_output(stdin: stdin, tty_path: tty_path) do |output|
         Hitch::ApplicationRecord.transaction do
-          output.write(yield)
+          disclosed = yield
+          # A secret is what gets written; anything else is a caller mistake
+          # worth failing on rather than serialising.
+          raise TypeError, "disclose must be given the exact bytes to write" unless
+            disclosed.is_a?(String)
+
+          output.write(disclosed.end_with?("\n") ? disclosed : "#{disclosed}\n")
           output.flush
         end
       end
@@ -159,10 +165,11 @@ namespace :hitch do
         )
       end
 
-      # The secret went to the file or the terminal; this goes to stdout, so a
-      # silent success is not mistaken for a no-op.
+      # The secret went to the file or the terminal; this goes to stderr, so a
+      # silent success is not mistaken for a no-op. It never names where the
+      # token went, because on a terminal there is no file.
       warn "Issued an access token for #{principal.class.name}:#{principal.id} " \
-        "(client_id #{client_id}, #{days} days). The file holds the token and nothing else."
+        "(client_id #{client_id}, #{days} days)."
     end
   end
 

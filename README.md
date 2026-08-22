@@ -40,7 +40,9 @@ needs:
 - **Client ID Metadata Documents** — the mechanism MCP 2026-07-28 deprecates
   DCR in favour of; an `https` URL as `client_id`, with the metadata fetched
   from it (opt-in)
-- **Optional Dynamic Client Registration** (RFC 7591), disabled by default
+- **Optional Dynamic Client Registration** (RFC 7591) — the generated
+  initializer disables it; the library default stays `true`, so adding the
+  gem to an existing installation never changes its behaviour silently
 - **Resource Indicators with audience binding** (RFC 8707), discovery
   metadata (RFC 8414 + RFC 9728), and token revocation (RFC 7009)
 - **Default-deny CORS** with exact host-owned origin configuration
@@ -72,15 +74,18 @@ the generated tool answers `tools/call` — its generated test proves it over
 real HTTP once you point the test's one `principal:` line at however your
 tests get a signed-in user. Add `--deny-default` to generate a hardened tool
 instead: hidden, denying, and unimplemented until you fill it in.
-`bin/rails hitch:doctor` gives a read-only diagnosis of the install, and
-`bin/rails destroy hitch:install` / `destroy hitch:tool NAME` reverse the
-generators.
+`bin/rails hitch:doctor` gives a read-only diagnosis of the install.
+`bin/rails destroy hitch:tool NAME` and then `destroy hitch:install` reverse
+the generators — tools first, because removing the initializer stops the app
+booting and `destroy` cannot run after that. See
+[docs/removing.md](docs/removing.md) for the full order.
 
 ## Calling it
 
 Everything below is required. Two of the headers and the `_meta` block are
-easy to miss, and the endpoint answers a bare `-32602` when any is absent,
-so start from this and change one thing at a time:
+easy to miss, so start from this and change one thing at a time. In
+development and test, the reason for any refusal is written to your Rails
+log — that is the fastest way to find which piece is wrong:
 
 ```bash
 TOKEN=$(cat agent.token)   # see Headless agents, below
@@ -107,7 +112,9 @@ curl -sS -X POST https://your-app.example.com/mcp \
   }'
 ```
 
-- `Accept` must name **both** types. Either alone is a `406`.
+- `Accept` must name **both** types. Either alone is a `406`. A wrong or
+  missing header answers `400` with `-32020`; bad `_meta` answers `400` with
+  `-32602`.
 - `Mcp-Method` and `Mcp-Name` repeat the method and tool name from the body,
   and must match it exactly. `Mcp-Name` is sent only for `tools/call`.
 - `_meta` must carry **both** `protocolVersion` and `clientCapabilities`.
@@ -117,6 +124,31 @@ curl -sS -X POST https://your-app.example.com/mcp \
 Real MCP clients send all of this for you. You need it for `curl`, and for
 understanding a `400` while you are getting set up. In development and test,
 a rejected request also writes the reason to your Rails log.
+
+### Running it locally
+
+`resource_uri` is matched exactly — scheme, host, port, path and query — so
+in development it has to name the address you are actually serving:
+
+```ruby
+config.resource_uri = "http://localhost:3000/mcp"   # match your real port
+```
+
+Plain `http` is accepted for loopback hosts in development and test only.
+If you change ports, change this too and reissue any token, since the
+audience is bound at issue time.
+
+A browser client also needs a `client_id` that resolves. Client ID Metadata
+Documents need a public `https` host, and Dynamic Client Registration is off
+in the generated initializer, so for local work register one directly:
+
+```ruby
+Hitch::Client.register!(
+  client_id: "local-probe",
+  client_name: "Local Probe",
+  redirect_uris: [ "http://127.0.0.1:9999/callback" ]
+)
+```
 
 ## Configuration
 
@@ -412,7 +444,7 @@ The exact public surface is documented in
 
 ## Contributing
 
-Issues and PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Spec
+Issues and PRs welcome — see [CONTRIBUTING.md](https://github.com/tylerklose/hitch-rails/blob/main/CONTRIBUTING.md). Spec
 conformance is the primary correctness bar; citations to the
 [MCP authorization spec](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization)
 and the underlying RFCs are appreciated.

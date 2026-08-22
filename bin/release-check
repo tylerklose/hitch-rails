@@ -44,6 +44,11 @@ Dir.mktmpdir("hitch-release-check-") do |directory|
     abort "tag gemspec version is #{tag_specification.version}, expected #{version}" unless
       tag_specification.version.to_s == version
 
+    # --clear-sources sets the source; it does not invalidate the index
+    # cached under Gem.spec_cache_dir. A cache written before the push reports
+    # the new version as nonexistent for as long as it lives, in the same
+    # words as a gem that was never published. A private cache is cold.
+    ENV["GEM_SPEC_CACHE"] = File.join(directory, "spec-cache")
     capture!(
       "gem", "fetch", GEM_NAME, "--version", version,
       "--clear-sources", "--source", "https://rubygems.org",

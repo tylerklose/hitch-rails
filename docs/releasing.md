@@ -18,8 +18,11 @@ So the commit comes after the gate, not before.
    `vVERSION` tag, pushes the branch and tag, and publishes to RubyGems.
    `rubygems_mfa_required` is set, so this prompts for an OTP.
 7. `bin/release-check VERSION` — verifies the published RubyGems bytes match
-   the tag exactly. Allow a minute for CDN propagation; `gem fetch` can 404
-   briefly right after a push.
+   the tag exactly. It fetches with its own empty spec cache, so a "could not
+   find a valid gem" from it is real CDN propagation and clears within a
+   minute. `gem fetch` or `gem install` run by hand reports those same words
+   off a stale index, for far longer than waiting fixes; that one is
+   `gem sources --clear-all`.
 8. Publish a GitHub release for the tag, pointing at the CHANGELOG entry.
 
 When the minor version changes, `docs/public_api/<version>.md` is a new file

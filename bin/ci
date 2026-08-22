@@ -10,6 +10,19 @@ RELEASE_PROFILES = YAML.safe_load_file(
   aliases: false
 ).fetch("lanes").map { |lane| lane.fetch("name") }.freeze
 
+# bin/ci-rate-limit is the only gate that resolves the rate-limit fallback —
+# and the production boot depending on it — against a real Redis rather than a
+# synthetic store that merely satisfies the predicate. It is also the only gate
+# here that needs Docker, so the answer is settled before anything long runs.
+REDIS_LANE = system("docker", "info", out: File::NULL, err: File::NULL)
+unless REDIS_LANE || ENV["HITCH_SKIP_REDIS_LANE"] == "1"
+  abort <<~MESSAGE
+    Docker is unavailable, so bin/ci-rate-limit cannot run.
+    Start Docker, or pass HITCH_SKIP_REDIS_LANE=1 to run the rest without
+    proving the rate-limit fallback against a real Redis.
+  MESSAGE
+end
+
 def run!(*command, environment: {})
   puts
   puts "+ #{command.join(' ')}"
@@ -36,8 +49,16 @@ RELEASE_PROFILES.each do |profile|
 end
 
 run!(File.join(ROOT, "bin/ci-migrations"))
+
+run!(File.join(ROOT, "bin/ci-rate-limit")) if REDIS_LANE
+
 run!(File.join(ROOT, "bin/conformance-server"))
 run!(File.join(ROOT, "bin/package-smoke"))
 
 puts
-puts "All Hitch CI gates passed."
+if REDIS_LANE
+  puts "All Hitch CI gates passed."
+else
+  puts "Hitch CI gates passed, EXCEPT bin/ci-rate-limit: the rate-limit " \
+       "fallback and the production boot never met a real Redis."
+end

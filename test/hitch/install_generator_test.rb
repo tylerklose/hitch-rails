@@ -57,6 +57,10 @@ class Hitch::InstallGeneratorTest < Rails::Generators::TestCase
     assert_match(/^\s*config\.dynamic_client_registration_enabled = false$/, initializer)
   end
 
+  # Parses, which is not the same as works: this suite once asserted exactly
+  # this while the generated tests failed on every realistic configuration.
+  # That the emitted code RUNS is proven in tool_generator_test, against the
+  # real endpoint.
   test "what it emits is valid Ruby that configures Hitch" do
     invoke_generator!
 

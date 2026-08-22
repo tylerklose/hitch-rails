@@ -12,13 +12,14 @@ bin/rails db:prepare
 bin/rails test
 ```
 
-`bin/ci` runs the full gate (rubocop, every appraisal lane, SDK/wire/
-conformance/package checks) and is what CI runs. While iterating, run the
+`bin/ci` runs rubocop, every appraisal lane, and the migration, rate-limit,
+conformance, and package gates. It needs Docker for the rate-limit lane. CI
+runs it, plus `bin/conformance-auth` in its own steps. While iterating, run the
 smallest focused test, then `bin/ci` before opening a PR.
 
-Working conventions for this repository — including the testing discipline it
-expects — are in [AGENTS.md](AGENTS.md). They apply to humans and coding agents
-alike.
+Working conventions are in [AGENTS.md](AGENTS.md) and the testing discipline
+this repository expects is in [docs/testing.md](docs/testing.md). Both apply to
+humans and coding agents alike.
 
 ## Design boundary
 

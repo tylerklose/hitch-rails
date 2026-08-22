@@ -333,6 +333,10 @@ token is reissued the same way.
 
 ## Refresh tokens
 
+> **Upgrading from 0.2?** This feature adds a migration and is on by default.
+> See [docs/upgrading/0.2-to-0.3.md](docs/upgrading/0.2-to-0.3.md).
+
+
 An access token lives an hour, which is the right lifetime for a credential
 that might leak. Without a way to renew it, though, that hour is all a hosted
 client ever gets: when it lapses the connector's only move is the full OAuth

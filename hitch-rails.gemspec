@@ -32,7 +32,7 @@ Gem::Specification.new do |spec|
   spec.metadata["bug_tracker_uri"] = "https://github.com/tylerklose/hitch-rails/issues"
   # A mis-set RUBYGEMS_HOST would otherwise publish this somewhere else.
   spec.metadata["allowed_push_host"] = "https://rubygems.org"
-  spec.metadata["documentation_uri"] = "https://github.com/tylerklose/hitch-rails/blob/v0.2.0/docs/public_api/0.2.0.md"
+  spec.metadata["documentation_uri"] = "https://github.com/tylerklose/hitch-rails/blob/v0.3.0/docs/public_api/0.3.0.md"
   spec.metadata["rubygems_mfa_required"] = "true"
 
   spec.required_ruby_version = Gem::Requirement.new(">= 3.3", "< 4.1")
@@ -44,10 +44,11 @@ Gem::Specification.new do |spec|
       README.md
       SECURITY.md
       config/routes.rb
-      docs/public_api/0.2.0.md
+      docs/public_api/0.3.0.md
       docs/operator/doctor.md
       docs/operator/rate_limiting.md
       docs/removing.md
+      docs/upgrading/0.2-to-0.3.md
       lib/generators/hitch/install/templates/controller.rb.tt
       lib/generators/hitch/tool/templates/tool.rb.tt
       lib/generators/hitch/tool/templates/tool_test.rb.tt

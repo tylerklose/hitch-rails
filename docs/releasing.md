@@ -25,3 +25,11 @@ So the commit comes after the gate, not before.
 When the minor version changes, `docs/public_api/<version>.md` is a new file
 and the gemspec names the old one twice — in `spec.files` and in
 `documentation_uri`. Both need updating.
+`Hitch::PackageIntegrityTest` derives the expected filename from
+`Hitch::VERSION` and fails if either reference is stale, so `bin/ci` catches a
+half-done bump rather than shipping one.
+
+An upgrade that needs adopter action — a migration, a changed default, a
+removed method — also wants `docs/upgrading/<from>-to-<to>.md`, packaged in
+`spec.files` and linked from the CHANGELOG entry. It is what an adopter's
+agent reads to perform the upgrade.

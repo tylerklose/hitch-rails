@@ -15,7 +15,6 @@ class Hitch::PackageIntegrityTest < ActiveSupport::TestCase
     app/models/hitch/mcp/tool.rb
     docs/operator/doctor.md
     docs/operator/rate_limiting.md
-    docs/public_api/0.2.0.md
     docs/removing.md
     lib/generators/hitch/install/install_generator.rb
     lib/generators/hitch/tool_generator.rb
@@ -33,6 +32,19 @@ class Hitch::PackageIntegrityTest < ActiveSupport::TestCase
     end
 
     assert_empty required.uniq.sort - SPECIFICATION.files
+  end
+
+  # Derived rather than listed. The gemspec names the public API document
+  # twice — spec.files and documentation_uri — and a hardcoded expectation
+  # here would be a third place to update in lockstep, silently passing on the
+  # release where someone forgot. This fails both ways: a new document that
+  # was never packaged, and a superseded one still riding along.
+  test "the gemspec packages exactly the public API document for this version" do
+    expected = "docs/public_api/#{Hitch::VERSION.split('.').first(2).join('.')}.0.md"
+
+    assert_path_exists ROOT.join(expected)
+    assert_equal [ expected ], SPECIFICATION.files.grep(%r{\Adocs/public_api/})
+    assert_includes SPECIFICATION.metadata.fetch("documentation_uri"), expected
   end
 
   test "the gemspec packages no test, spec, tmp, or log files" do

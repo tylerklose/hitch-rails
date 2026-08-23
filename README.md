@@ -567,7 +567,15 @@ or undermine its guarantees:
 - **`config.allowed_hosts` / `config.allowed_origins`** — exact allowlists;
   keep them minimal.
 - **`protect_from_forgery`** — keep CSRF protection active on the consent
-  (`POST /oauth/authorize`) path.
+  (`POST /oauth/authorize`) path. On Rails 8.2 defaults (`load_defaults
+  8.2`), forgery protection verifies the browser's `Sec-Fetch-Site` header
+  instead of the token the consent form renders
+  (`forgery_protection_verification_strategy = :header_only`). Browsers
+  send that header automatically, so ordinary approvals are unaffected —
+  but a non-browser agent driving the consent form over HTTPS without it
+  gets a 422 on Approve, token or no token. That is Rails' verification,
+  not a Hitch bug; the strategy is host-owned Rails config
+  (`:header_or_legacy_token` restores the token fallback).
 - **`config.action_dispatch.trusted_proxies`** — set correctly behind a
   reverse proxy so `remote_ip` and scheme are interpreted correctly.
 

@@ -36,8 +36,9 @@ module Hitch
     # protection enabled — an API-only host, or one that disables it
     # app-wide, would otherwise leave Approve forgeable (an attacker
     # auto-approving an authorization in a logged-in victim's session).
-    # The rendered consent form (form_with) carries the token, so
-    # legitimate submits are unaffected. Guarded: an
+    # The rendered consent form (form_with) carries the token, and
+    # browsers send Sec-Fetch-Site — whichever the host's verification
+    # strategy consults, legitimate submits are unaffected. Guarded: an
     # ActionController::API-derived host base doesn't define the macro,
     # and such a host can't serve the HTML consent screen anyway.
     protect_from_forgery with: :exception if respond_to?(:protect_from_forgery)

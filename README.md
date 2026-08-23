@@ -331,6 +331,34 @@ that database access did not already carry.
 Refresh-token issuance is deliberately not implemented, so an expired agent
 token is reissued the same way.
 
+### Agents as principals
+
+A principal is any persisted record. Nothing requires it to be a person, so an
+agent can hold its own account rather than borrowing someone's:
+
+```sh
+bin/rails hitch:tokens:issue PRINCIPAL=Agent:1 CLIENT_ID=nightly NAME="Nightly report"
+```
+
+Tools then authorize against that principal like any other, so an agent gets
+the policy you write for agents rather than a person's:
+
+```ruby
+def self.available_to?(context)
+  context.principal.is_a?(Agent)
+end
+```
+
+`principal_id` is stored as a string, so an `Agent` may key on an integer,
+a UUID, or a ULID.
+
+Agents arrive through this path rather than the OAuth flow for a structural
+reason, not a missing feature: the consent screen resolves the principal from
+your app's own sign-in (`config.principal_method`, default `:current_user`),
+and an agent has no session for it to read. A browser flow always yields the
+signed-in human. Creating the `Agent` record is your application's business —
+Hitch never creates principals.
+
 ## Refresh tokens
 
 > **Upgrading from 0.2?** This feature adds a migration and is on by default.

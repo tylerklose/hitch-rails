@@ -29,7 +29,19 @@ RELEASE_APPRAISALS = release_matrix.fetch("lanes").to_h do |lane|
     }
   ]
 end.freeze
-APPRAISALS = RELEASE_APPRAISALS
+# Rails main (currently 8.2.0.alpha) is what production dogfoods, and no 8.2
+# prerelease gem exists to pin. Not a release lane: bin/ci never runs it, and
+# CI keeps its job non-blocking.
+APPRAISALS = RELEASE_APPRAISALS.merge(
+  "rails_main_sqlite" => {
+    gemfile: File.join(ROOT, "gemfiles/rails_main_sqlite.gemfile"),
+    adapter: "sqlite3",
+    database_url: "sqlite3::memory:",
+    rails_requirement: ">= 8.2.0.alpha",
+    mcp_requirement: ">= 1.2, < 2",
+    ruby: "4.0"
+  }
+).freeze
 
 def abort_with_usage(message = nil, status: 64)
   warn message if message

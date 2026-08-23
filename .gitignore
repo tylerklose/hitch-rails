@@ -8,4 +8,6 @@
 /test/dummy/tmp/
 *.gem
 Gemfile.lock
+# The edge lane tracks Rails main; a committed lockfile would pin a SHA.
+/gemfiles/rails_main_sqlite.gemfile.lock
 .mutant/

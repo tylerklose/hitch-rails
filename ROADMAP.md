@@ -18,7 +18,7 @@ authorization policy.
 - Prompts, resources, tasks, and Apps
 - Multiple named surfaces/resources/registries
 - API-only consent/auth patterns and MySQL
-- `client_secret_post`, JWT/mTLS/DPoP, device flow
+- `client_secret_post`, JWT/mTLS/DPoP
 - Named authorization adapters or bundled Pundit integration
 - Per-tool quotas, distributed concurrency leases, a Hitch-owned admission
   store, and framework-owned durable audit persistence

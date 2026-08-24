@@ -11,6 +11,7 @@ require "hitch/mcp/protocol"
 require "hitch/mcp/configuration"
 require "hitch/configuration"
 require "hitch/dynamic_registration_rate_limit"
+require "hitch/device_authorization_rate_limit"
 
 # hitch-rails turns a Rails app into an authorization server implemented
 # against the MCP 2026-07-28 authorization profile — OAuth 2.1 + PKCE (S256),

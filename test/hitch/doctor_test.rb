@@ -371,7 +371,7 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
       error = assert_raises(Hitch::DynamicRegistrationRateLimit::Unavailable) do
         system.validate_configuration!
       end
-      assert_includes error.message, "cannot count registration attempts"
+      assert_includes error.message, "dynamic_client_registration_rate_store cannot count"
     end
   ensure
     Hitch.reset_configuration!
@@ -393,7 +393,34 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
       error = assert_raises(Hitch::DynamicRegistrationRateLimit::Unavailable) do
         system.validate_configuration!
       end
-      assert_includes error.message, "cannot count registration attempts"
+      assert_includes error.message, "dynamic_client_registration_rate_store cannot count"
+    end
+  ensure
+    Hitch.reset_configuration!
+  end
+
+  test "real configuration probe drives an explicit production device store, not just its class" do
+    system = Doctor.const_get(:System, false).new
+    Hitch.reset_configuration!
+    outage_store = Class.new(ActiveSupport::Cache::Store) do
+      def increment(_name, _amount = 1, **) = nil
+      def delete(_name, _options = nil) = true
+    end.new
+    Hitch.configure do |configuration|
+      configuration.resource_uri = "https://doctor.example/mcp"
+      # Isolated, so a failure names the device store rather than whichever
+      # check ran first.
+      configuration.dynamic_client_registration_enabled = false
+      configuration.device_authorization_enabled = true
+      configuration.device_authorization_rate_store = outage_store
+    end
+    production = ActiveSupport::EnvironmentInquirer.new("production")
+
+    stub_class_method(Rails, :env, -> { production }) do
+      error = assert_raises(Hitch::RateLimitStore::Unavailable) do
+        system.validate_configuration!
+      end
+      assert_includes error.message, "device_authorization_rate_store cannot count"
     end
   ensure
     Hitch.reset_configuration!

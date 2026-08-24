@@ -10,6 +10,7 @@ module Hitch
     include Hitch::CorsSupport
     include Hitch::OauthFormAdmission
     include Hitch::UriValidation
+    include Hitch::ClientResolution
 
     TOKEN_PARAMETER_NAMES = %i[
       grant_type
@@ -17,6 +18,7 @@ module Hitch
       client_id
       client_secret
       code_verifier
+      device_code
       resource
       redirect_uri
       refresh_token
@@ -32,12 +34,10 @@ module Hitch
       case oauth[:grant_type]
       when "authorization_code" then authorization_code_grant(oauth)
       when "refresh_token" then refresh_token_grant(oauth)
+      when Hitch::GrantTypes::DEVICE_CODE then device_code_grant(oauth)
       else
         oauth_error("invalid_request", "grant_type must be #{Hitch::GrantTypes.supported.join(' or ')}")
       end
-    rescue Hitch::ClientAuthentication::Invalid => error
-      response.headers["WWW-Authenticate"] = 'Basic realm="oauth/token"' if error.http_status == :unauthorized
-      oauth_error(error.oauth_code, error.message, error.http_status)
     rescue Hitch::AccessToken::OAuthError => e
       oauth_error(e.oauth_code, e.description)
     end
@@ -90,12 +90,36 @@ module Hitch
       render_token(result)
     end
 
-    def resolved_client_id(oauth)
-      Hitch::ClientAuthentication.resolve(
-        request: request,
-        body_client_id: oauth[:client_id],
-        body_secret_present: oauth[:client_secret].present?
+    # RFC 8628 §3.4. The model raises the §3.5 polling responses
+    # (authorization_pending, slow_down, access_denied, expired_token) as
+    # OAuthError, so they flow through the same rescue as every other grant.
+    def device_code_grant(oauth)
+      # Before any parameter or client validation: while the feature is off
+      # this grant has exactly one answer (unsupported_grant_type, RFC 6749
+      # §5.2), and no validation — client authentication included — runs
+      # for it. The model repeats the gate for its own callers.
+      unless Hitch.configuration.device_authorization_enabled
+        return oauth_error("unsupported_grant_type", "Device authorization is not enabled")
+      end
+      return oauth_error("invalid_request", "device_code is required") if oauth[:device_code].blank?
+
+      resource = require_canonical_resource(oauth[:resource])
+      return unless resource
+
+      client_id = resolved_client_id(oauth)
+      result = Hitch::DeviceGrant.exchange_device_code!(
+        raw_device_code: oauth[:device_code],
+        client_id: client_id,
+        resource_uri: resource
       )
+
+      return oauth_error("invalid_grant", "Invalid or expired device code") if result.nil?
+
+      render_token(result)
+    end
+
+    def client_authentication_realm
+      "oauth/token"
     end
 
     # One shape for both grants. A refresh_token key is present only when the
@@ -115,8 +139,7 @@ module Hitch
     # This hook runs in OauthFormAdmission before Rails instrumentation, so
     # successful exchanges and early admission failures get the same policy.
     def prepare_oauth_form_response!
-      response.headers["Cache-Control"] = "no-store"
-      response.headers["Pragma"] = "no-cache"
+      hitch_no_store!
     end
 
     def reject_oversized_oauth_form_body!

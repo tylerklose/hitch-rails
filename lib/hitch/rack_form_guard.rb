@@ -15,9 +15,16 @@ module Hitch
       "hitch/authorizations" => "create",
       "hitch/registrations" => "create",
       "hitch/revocations" => "create",
-      "hitch/tokens" => "create"
+      "hitch/tokens" => "create",
+      "hitch/device_authorizations" => "create",
+      "hitch/activations" => "create"
     }.freeze
-    OAUTH_CANDIDATE_PATH = %r{/(?:oauth)/(?:authorize|register|revoke|token)(?:\.[^/]*)?/?\z}
+    # /activate is anchored to the root: the /oauth/* names are distinctive
+    # enough to probe as suffixes under any mount, but bare "activate" is a
+    # common host member-action name, and the engine's well-known routes
+    # already require a root mount.
+    OAUTH_CANDIDATE_PATH =
+      %r{/oauth/(?:authorize|register|revoke|token|device_authorization)(?:\.[^/]*)?/?\z|\A/+activate(?:\.[^/]*)?/?\z}
 
     def initialize(app, routes: -> { Rails.application.routes })
       @app = app

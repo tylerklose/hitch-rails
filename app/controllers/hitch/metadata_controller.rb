@@ -27,7 +27,9 @@ module Hitch
         # AuthorizationsController#build_redirect_uri appends it
         # unconditionally; the two must never be separated.
         authorization_response_iss_parameter_supported: issuer_is_https?
-      }.merge(dynamic_client_registration_advertisement).merge(client_id_metadata_advertisement)
+      }.merge(dynamic_client_registration_advertisement)
+        .merge(device_authorization_advertisement)
+        .merge(client_id_metadata_advertisement)
     end
 
     def resource
@@ -50,6 +52,15 @@ module Hitch
       return {} unless Hitch.configuration.dynamic_client_registration_enabled
 
       { registration_endpoint: canonical_endpoint("/oauth/register") }
+    end
+
+    # RFC 8628 §4. GrantTypes.supported adds the device grant urn under the
+    # same flag, so the endpoint and the grant advertise and disappear
+    # together.
+    def device_authorization_advertisement
+      return {} unless Hitch.configuration.device_authorization_enabled
+
+      { device_authorization_endpoint: canonical_endpoint("/oauth/device_authorization") }
     end
 
     # RFC 9207 §2: the `iss` value "MUST be a URL that uses the 'https'

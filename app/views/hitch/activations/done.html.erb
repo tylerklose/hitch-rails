@@ -1,0 +1,18 @@
+<%# Device activation: the outcome. The device learns the same answer on
+   its next poll; this page just tells the person they are finished. %>
+
+<div class="hitch-rails-activate">
+  <% if @decision == :approved %>
+    <h1>Device connected</h1>
+    <p>
+      You can close this page. The device will pick up its access the next
+      time it checks in — usually within a few seconds.
+    </p>
+  <% else %>
+    <h1>Request denied</h1>
+    <p>
+      The device has been told no, and its code no longer works. If this
+      was a code someone sent you, you did exactly the right thing.
+    </p>
+  <% end %>
+</div>

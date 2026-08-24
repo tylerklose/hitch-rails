@@ -204,6 +204,51 @@ class CsrfProtectionTest < ActionDispatch::IntegrationTest
     end
   end
 
+  # The device activation approve is the same session-authenticated,
+  # state-changing shape as consent, so it gets the same isolation cells:
+  # the credential the lane's strategy does NOT consult must be refused
+  # alone. This is what pins ActivationsController's own guarded
+  # protect_from_forgery — the dummy host supplies protection too, so a
+  # both-credentials test alone would stay green with the declaration
+  # deleted.
+  test "activate verification trusts exactly the strategy's own credential" do
+    Hitch.configure do |c|
+      c.device_authorization_enabled = true
+      c.device_authorization_rate_store = ActiveSupport::Cache::MemoryStore.new
+    end
+    client = Hitch::Client.register_confidential!(
+      client_id: "csrf-device",
+      client_name: "CSRF Device",
+      redirect_uris: [ "https://agent.example/cb" ]
+    ).client
+    grant = Hitch::DeviceGrant.mint!(
+      client_id: client.client_id, scopes: "mcp", resource_uri: "https://dummy.test/mcp"
+    )
+    sign_in @victim
+    get "/activate"
+    assert_response :success
+    token = response.body[/name="authenticity_token" value="([^"]+)"/, 1]
+    approve = { user_code: grant.raw_user_code, decision: "approve" }
+
+    if HEADER_VERIFIED
+      post "/activate", params: approve.merge(authenticity_token: token)
+      assert_response :unprocessable_entity,
+        "header-only strategy accepted a token with no Sec-Fetch-Site on /activate"
+
+      post "/activate", params: approve, headers: BROWSER_SAME_ORIGIN
+    else
+      post "/activate", params: approve, headers: BROWSER_SAME_ORIGIN
+      assert_response :unprocessable_entity,
+        "token strategy accepted Sec-Fetch-Site alone on /activate — a header must not stand in for the token"
+
+      post "/activate", params: approve.merge(authenticity_token: token)
+    end
+    assert_response :success
+    assert Hitch::DeviceGrant.find_by(user_code_digest: nil, client_id: client.client_id).approved_at.present?
+  ensure
+    Hitch::DeviceGrant.delete_all
+  end
+
   # On token-verified lanes these exercise token parsing; on header-only
   # lanes the same requests are refused for lacking the browser header
   # before any token is parsed. Fail-closed either way.

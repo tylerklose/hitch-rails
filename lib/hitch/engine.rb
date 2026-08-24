@@ -102,6 +102,18 @@ module Hitch
       configuration.validate_dynamic_client_registration_rate_store!
     end
 
+    initializer "hitch.validate_device_authorization", after: :load_config_initializers do
+      configuration = Hitch.configuration
+      next unless configuration.device_authorization_enabled
+      next if Hitch::Engine.doctor_command?
+      next unless Rails.env.production?
+
+      # The verification quota is what makes short user codes safe, and it
+      # fails closed — so a store that cannot count across processes must
+      # refuse the boot, not every /activate submission.
+      configuration.validate_device_authorization_rate_store!
+    end
+
     initializer "hitch.validate_configuration", after: :load_config_initializers do
       # A fresh host has to boot once to run this generator, and the
       # initializer it creates is what sets resource_uri. Keep the exception
@@ -148,7 +160,11 @@ module Hitch
         :client_secret_digest,
         :access_token,
         :authorization_code,
-        :token
+        :token,
+        # Both device-flow codes are lookup credentials, and user_code also
+        # rides the verification_uri_complete query string on GET /activate.
+        :device_code,
+        :user_code
       ]
     end
   end

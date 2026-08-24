@@ -5,6 +5,47 @@ All notable changes to hitch-rails will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - Unreleased
+
+Upgrading from 0.3.0 requires running one new migration. See
+[`docs/upgrading/0.3-to-0.4.md`](docs/upgrading/0.3-to-0.4.md). The feature
+it carries is **off by default**, so nothing changes until you enable it.
+
+### Added
+
+- **Device Authorization Grant (RFC 8628)** — the headless leg of token
+  acquisition. A client with no browser POSTs
+  `/oauth/device_authorization` and receives a short code like `WDJB-MJHT`
+  plus a verification URL; its human opens `/activate` on any device, signs
+  in the way the host app always signs them in, and approves on a consent
+  screen; the polling client receives an ordinary token via
+  `grant_type=urn:ietf:params:oauth:grant-type:device_code`, with the §3.5
+  responses (`authorization_pending`, `slow_down`, `access_denied`,
+  `expired_token`) along the way. The issued token runs through the same
+  authorization-code exchange as every other grant — revocable,
+  audience-bound, digest-at-rest, refresh token included while that feature
+  is on.
+
+  The security posture — a vouched client required to mint (CIMD, or an
+  operator-registered confidential client; self-registered public clients
+  are refused), code entropy and fail-closed counting, the §5.4 phishing
+  copy, voucher-only branding, no metadata fetches from the unauthenticated
+  mint endpoint — is documented in the README's "Device authorization"
+  section and the reasoning in
+  [ADR 0006](docs/adr/0006-device-authorization-grant.md).
+
+  **Off by default** (`config.device_authorization_enabled`), matching the
+  registration posture: disabled means 404 at the endpoints,
+  `unsupported_grant_type` at the token endpoint, and no advertisement in
+  discovery. New settings: `device_code_lifetime_seconds` (600),
+  `device_authorization_interval_seconds` (5), `device_authorization_limit`
+  (20/60s per IP), `device_code_verification_limit` (10/60s per principal),
+  `device_authorization_rate_store` (defaults to the app's cache store).
+
+  Hosts with a cleanup job add `Hitch::DeviceGrant.cleanup_expired!` beside
+  the access-token call. Design decisions are recorded in
+  [ADR 0006](docs/adr/0006-device-authorization-grant.md).
+
 ## [0.3.0] - 2026-08-22
 
 Upgrading from 0.2.0 requires running one new migration. See

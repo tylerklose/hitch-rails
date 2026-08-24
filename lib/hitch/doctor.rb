@@ -96,6 +96,7 @@ module Hitch
         hitch_access_tokens
         hitch_clients
         hitch_client_redirect_uris
+        hitch_device_grants
       ].freeze
 
       def versions
@@ -114,21 +115,33 @@ module Hitch
       def validate_configuration!
         configuration = Hitch.configuration
         configuration.validate!
-        if Rails.env.production? && configuration.dynamic_client_registration_enabled
-          store = configuration.dynamic_client_registration_rate_store
-          Hitch::RateLimitStore.assert_shared!(
-            store, setting: Hitch::DynamicRegistrationRateLimit::SETTING
+        return true unless Rails.env.production?
+
+        if configuration.dynamic_client_registration_enabled
+          check_production_rate_store!(
+            configuration.dynamic_client_registration_rate_store,
+            Hitch::DynamicRegistrationRateLimit::SETTING
           )
-          probe_registration_store!(store)
+        end
+        if configuration.device_authorization_enabled
+          check_production_rate_store!(
+            configuration.device_authorization_rate_store,
+            Hitch::DeviceAuthorizationRateLimit::SETTING
+          )
         end
         true
       end
 
-      # A dedicated-but-unreachable registration store passes the class check
-      # while every production registration 503s; drive it like the admission
-      # probe does. Registration refuses on an uncountable store, so this
-      # mirrors the request path rather than adding a stricter one.
-      def probe_registration_store!(store)
+      def check_production_rate_store!(store, setting)
+        Hitch::RateLimitStore.assert_shared!(store, setting: setting)
+        probe_rate_store!(store, setting)
+      end
+
+      # A dedicated-but-unreachable store passes the class check while every
+      # production request it guards 503s; drive it like the admission probe
+      # does. Both limiters refuse on an uncountable store, so this mirrors
+      # the request path rather than adding a stricter one.
+      def probe_rate_store!(store, setting)
         key = "hitch:doctor:v1:#{SecureRandom.hex(16)}"
         count = begin
           store.increment(key, 1, expires_in: 5)
@@ -137,8 +150,7 @@ module Hitch
         end
         return true if count.is_a?(Integer)
 
-        raise Hitch::DynamicRegistrationRateLimit::Unavailable,
-          "#{Hitch::DynamicRegistrationRateLimit::SETTING} cannot count registration attempts"
+        raise Hitch::RateLimitStore::Unavailable, "#{setting} cannot count attempts"
       ensure
         begin
           store&.delete(key)

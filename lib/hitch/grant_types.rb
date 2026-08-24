@@ -9,11 +9,14 @@ module Hitch
   # would send clients to a door this server answers with
   # unsupported_grant_type.
   module GrantTypes
+    DEVICE_CODE = "urn:ietf:params:oauth:grant-type:device_code"
+
     module_function
 
     def supported
       types = [ "authorization_code" ]
       types << "refresh_token" if Hitch.configuration.refresh_tokens_enabled
+      types << DEVICE_CODE if Hitch.configuration.device_authorization_enabled
       types.freeze
     end
   end

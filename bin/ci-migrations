@@ -10,6 +10,7 @@ APPRAISAL = File.join(ROOT, "bin/ci-appraisal")
 TEST_FILES = %w[
   test/hitch/client_redirect_uri_test.rb
   test/integration/concurrent_code_exchange_test.rb
+  test/integration/concurrent_device_grant_test.rb
 ].freeze
 
 missing_tests = TEST_FILES.reject { |path| File.file?(File.join(ROOT, path)) }

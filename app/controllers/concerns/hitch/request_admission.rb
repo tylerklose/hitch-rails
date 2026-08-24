@@ -42,5 +42,27 @@ module Hitch
     def finalize_hitch_admission_rejection!
       set_cors_headers if respond_to?(:set_cors_headers, true)
     end
+
+    # RFC 6749 §5.1: responses carrying credentials are never cacheable.
+    # Pragma for the HTTP/1.0 caches still out there.
+    def hitch_no_store!
+      response.headers["Cache-Control"] = "no-store"
+      response.headers["Pragma"] = "no-cache"
+    end
+
+    # One JSON mapping for a fixed-window refusal, shared by every counted
+    # machine endpoint: 429 with Retry-After when counted out, 503 when the
+    # store cannot count. Yields to the limiter; returns whether to proceed.
+    def hitch_admit_rate!(activity)
+      yield
+      true
+    rescue Hitch::RateLimitStore::Exceeded => error
+      response.headers["Retry-After"] = error.retry_after.to_s
+      oauth_error("temporarily_unavailable", "#{activity} rate limit exceeded", :too_many_requests)
+      false
+    rescue Hitch::RateLimitStore::Unavailable
+      oauth_error("temporarily_unavailable", "#{activity} is temporarily unavailable", :service_unavailable)
+      false
+    end
   end
 end

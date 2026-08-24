@@ -122,32 +122,9 @@ module Hitch
     # already passed exact registered-URI validation, so construct the 302
     # directly and keep the credential out of redirect instrumentation.
     def redirect_to_client(location)
-      response.headers["Cache-Control"] = "no-store"
-      response.headers["Pragma"] = "no-cache"
+      hitch_no_store!
       response.headers["Location"] = location
       head :found
-    end
-
-    def require_principal!
-      # Remember where the user was headed so the host's auth flow returns
-      # them to the consent screen after login. Rails 8's built-in
-      # authentication reads session[:return_to_after_authenticating] in
-      # after_authentication_url; normally its own require_authentication
-      # callback sets this, but the consent controller skips that callback
-      # (see ApplicationController) and redirects to login_path itself, so
-      # we set the return location here. Harmless for hosts that never read
-      # the key. Only meaningful on the GET consent render — a POST without
-      # a session isn't a real flow.
-      session[:return_to_after_authenticating] = request.url if request.get?
-
-      path = Hitch.configuration.login_path
-      target = path.respond_to?(:call) ? path.call(request) : path
-
-      if target.present?
-        redirect_to target, allow_other_host: true
-      else
-        render plain: "Authentication required", status: :unauthorized
-      end
     end
   end
 end

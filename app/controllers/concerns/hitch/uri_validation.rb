@@ -41,6 +41,16 @@ module Hitch
       Hitch::ResourceUri::LOOPBACK_HOSTS.include?(host)
     end
 
+    # One answer to "does this URI point at the user's own machine" — both
+    # consent surfaces ask it for their own-computer warning. hostname, not
+    # host: URI#host keeps IPv6 brackets, so "[::1]" would never match.
+    def loopback_http_uri?(candidate)
+      parsed = URI.parse(candidate)
+      parsed.scheme == "http" && loopback_host?(parsed.hostname)
+    rescue URI::InvalidURIError
+      false
+    end
+
     def userinfo_component_present?(value)
       Hitch::ResourceUri.userinfo_component_present?(value)
     end

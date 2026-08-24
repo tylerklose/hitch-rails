@@ -80,6 +80,19 @@ class Hitch::AuthorizationRequestTest < ActiveSupport::TestCase
     end
   end
 
+  test "a principal that cannot be counted drives no metadata fetch" do
+    # The per-actor fetch limit is the bound on amplification; with no
+    # actor to count, the fetch must not happen at all.
+    Hitch.configure { |configuration| configuration.client_id_metadata_enabled = true }
+    unidentifiable = Struct.new(:id).new(nil)
+    request = Hitch::AuthorizationRequest.new({ client_id: CIMD_URL }, principal: unidentifiable)
+    fetch_forbidden = ->(*, **) { raise "fetched on behalf of an uncountable principal" }
+
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, fetch_forbidden) do
+      assert_nil request.client
+    end
+  end
+
   test "an unregistered redirect_uri is refused; loopback matches port-agnostically" do
     client = register_client(redirect_uris: [ REDIRECT, "http://127.0.0.1:7777/cb" ])
 

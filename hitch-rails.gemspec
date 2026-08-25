@@ -44,6 +44,7 @@ Gem::Specification.new do |spec|
       README.md
       SECURITY.md
       config/routes.rb
+      docs/adr/0006-device-authorization-grant.md
       docs/public_api/0.4.0.md
       docs/operator/doctor.md
       docs/operator/rate_limiting.md

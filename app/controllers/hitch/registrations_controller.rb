@@ -125,7 +125,13 @@ module Hitch
       }
 
       if auth_method == "client_secret_basic"
-        credentials = Hitch::Client.register_confidential!(**attributes)
+        # A secret proves continuity at the token endpoint; it does not turn
+        # anonymous DCR into an operator endorsement. Device authorization
+        # must be able to distinguish this row from one created at a console.
+        credentials = Hitch::Client.register_confidential!(
+          **attributes,
+          operator_registered: false
+        )
         [ credentials.client, credentials.client_secret ]
       else
         [ Hitch::Client.register!(**attributes), nil ]

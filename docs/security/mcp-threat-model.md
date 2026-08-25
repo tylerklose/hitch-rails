@@ -47,8 +47,8 @@ separate trust boundary owned by the adopting Rails application.
   doctor); every grant transition is one conditional UPDATE, so no
   approved-but-unowned or twice-consumed state exists; the §5.4 phishing
   surface is answered structurally — a device grant needs a vouched client
-  (a CIMD document, or an operator-registered confidential client
-  authenticated by its secret), so an anonymous self-registered client
+  (a CIMD document, or an operator-registered confidential client whose
+  provenance is stored and whose secret authenticates it), so an anonymous self-registered client
   cannot mint one at all — and by display: the screen shows only the
   voucher's word (document host, or operator-chosen name labeled as such),
   never a self-declared name or a redirect host this flow delivers nothing

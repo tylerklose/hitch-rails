@@ -66,10 +66,9 @@ the grant expires rather than being auto-denied — a fetch failure is
 weather, and `access_denied` is a statement about the person's intent that
 weather must not be allowed to make. The same no-Approve answer covers the
 states the revoke gestures create mid-grant: a registered client deleted
-while its grant was pending, and a CIMD scheme switched off (whether a
-client_id is a CIMD reference is decided by its shape, fixed at mint —
-deciding by the live flag would let disabling CIMD reclassify the client
-as approvable-but-anonymous).
+while its grant was pending, and a CIMD scheme switched off. The stored
+token-endpoint authentication method fixes which voucher the grant may use;
+live flags and registration races cannot reclassify it.
 
 **Consumption runs the real exchange and honors the mint-time scope clamp
 verbatim.** The grant's scopes are clamped to `supported_scopes` when the
@@ -93,10 +92,14 @@ are pure self-assertion, and with open registration anyone could mint a
 grant and dress the phish as any brand the `client_names` table knows. The
 answer is structural: minting requires a client somebody real vouches for —
 a CIMD reference (its host earned by serving the document) or a
-confidential client the operator registered at a console (authenticated by
-its secret at every machine leg) — and the screen displays exactly the
-voucher's word: document host, or operator-chosen name labeled as the
-operator's. A self-registered public client is refused at the mint endpoint
+confidential client the operator registered at a console (its provenance is
+stored, and its secret authenticates every machine leg) — and the grant stores that authentication
+method. The mint endpoint, activation screen, and polling endpoint must all
+agree with it, so a concurrent registration change cannot lend the grant a
+different voucher and deleting a client cannot downgrade an approved grant
+to public. The screen displays the voucher's word: document host, or
+operator-chosen name labeled as the operator's. A self-registered DCR client,
+public or confidential, is refused at the mint endpoint
 and independently refused verification on /activate, so the guarantee holds
 whichever door a grant came through. The rejected alternatives, both ways:
 CIMD-only was too strict (it amputates the operator-badged pattern — the
@@ -120,18 +123,18 @@ overriding hosts to keep its meaning.
   decision UPDATE erases the digest, and mint retries the rare collision
   with a live one instead of surfacing it (an unauthenticated 500 would be
   a collision oracle).
-- A grant can never be approved-but-unowned or decided twice; the
-  principal binding rides in the same statement as the decision. The
-  cross-adapter concurrency gate (`bin/ci-migrations`) pins this on both
-  SQLite and PostgreSQL.
+- A grant can never be approved-but-unowned, decided twice, or consumed before
+  approval. The principal binding rides in the same statement as the
+  decision, and database check constraints make those invalid states
+  unrepresentable even outside the model. The cross-adapter migration and
+  concurrency gate (`bin/ci-migrations`) pins this on SQLite and PostgreSQL.
 - An adopter who narrows `supported_scopes` mid-flight ships tokens with
   the scopes the person actually approved. That is the intended reading of
   the clamp, not a gap. The clamp lives in `DeviceGrant.mint!` itself, so
   every caller — the endpoint or host code — mints only grantable scopes.
-- `expires_at` bounds how long a grant waits for a person, not the
-  redemption of a yes already given: an approved grant is consumable by a
-  poll that lands after the mark (a device backed off past it collects the
-  token its human approved in time), bounded by cleanup's day floor.
+- `expires_at` is the RFC 8628 lifetime of the device and user codes. Once it
+  passes, pending and approved grants answer `expired_token`; approval never
+  extends the bearer device code's lifetime.
 - `hitch_device_grants` rows are disposable: `DeviceGrant.cleanup_expired!`
   deletes them a day past expiry (the issued token rows carry the audit
   trail). The day is a floor for wire honesty, not evidence retention — a

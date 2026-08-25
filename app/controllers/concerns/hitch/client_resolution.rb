@@ -19,6 +19,10 @@ module Hitch
     private
 
     def resolved_client_id(oauth)
+      resolved_client_authentication(oauth).client_id
+    end
+
+    def resolved_client_authentication(oauth)
       Hitch::ClientAuthentication.resolve(
         request: request,
         body_client_id: oauth[:client_id],

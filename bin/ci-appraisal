@@ -156,7 +156,7 @@ rails_test_command = command.length >= 2 &&
   File.expand_path(command.fetch(0), ROOT) == File.join(ROOT, "bin/rails") &&
   command.fetch(1) == "test"
 
-if rails_test_command
+if rails_test_command && ENV["HITCH_APPRAISAL_REUSE_DATABASE"] != "1"
   status = Dir.mktmpdir("hitch-appraisal-#{appraisal.fetch(:adapter)}-") do |directory|
     schema = File.join(directory, "schema.rb")
     database_url = if appraisal.fetch(:adapter) == "sqlite3"

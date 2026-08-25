@@ -14,8 +14,8 @@ module Hitch
   # is branded by its client_id's own URL host, earned by serving the
   # document there. A confidential client is branded by the name the
   # operator chose when they registered it at a console. A client that
-  # only ever vouched for itself — open registration's public clients —
-  # is the §5.4 phishing shape: the mint endpoint refuses it, and this
+  # only ever vouched for itself through open registration — even one DCR
+  # issued a secret — is the §5.4 phishing shape: the mint endpoint refuses it, and this
   # object independently refuses to verify it, so the guarantee holds
   # whichever door a grant came through.
   #
@@ -31,23 +31,25 @@ module Hitch
 
     attr_reader :grant
 
-    # A client with no live voucher right now: a CIMD reference whose
-    # document does not resolve (or whose scheme has been switched off
-    # since mint), a registered client deleted while its grant was pending
-    # — deletion is the operator's revoke gesture, and this is where the
-    # pending grant meets it — or a self-registered public client, which
-    # never had a voucher at all. The screen says so and offers no
-    # Approve. The grant is left pending, not denied: none of these says
-    # anything about the person's intent, and it expires on its own.
+    # The live voucher must still exist and must agree with the immutable
+    # authentication posture recorded at mint. That refuses both directions
+    # of a registration race: a public/CIMD grant cannot borrow an operator
+    # registration, and a confidential grant cannot fall back to CIMD after
+    # its operator registration disappears.
     def unverified?
-      cimd_reference? ? document.nil? : !client&.confidential_client?
+      case grant.token_endpoint_auth_method
+      when "client_secret_basic" then !operator_registered?
+      when "none" then document.nil?
+      else true
+      end
     end
 
     # A confidential client the operator registered at a console; its
     # display name is the operator's word, and the view says whose word
     # it is.
     def operator_registered?
-      !cimd_reference?
+      grant.token_endpoint_auth_method == "client_secret_basic" &&
+        client&.operator_registered_confidential_client?
     end
 
     def display_client_name
@@ -77,17 +79,15 @@ module Hitch
 
     private
 
-    # A registered row wins over shape: operators may create clients with
-    # URL-shaped ids while CIMD is off, and those must not read as forever-
-    # unresolvable documents. No attacker reaches this arm — registration
-    # generates its own opaque ids, so no anonymous client carries a chosen
-    # URL. Past that, shape decides, not the live flag: disabling CIMD
-    # mid-grant must not reclassify a metadata client as
-    # approvable-but-anonymous.
+    # "none" is the posture of a CIMD-vouched grant. A registered row still
+    # wins over URL shape, including one that appeared after mint; it cannot
+    # lend the grant a different voucher than the one the polling client must
+    # present at the token endpoint.
     def cimd_reference?
       return @cimd_reference if defined?(@cimd_reference)
 
-      @cimd_reference = client.nil? && ClientIdMetadata.document_url?(grant.client_id)
+      @cimd_reference = grant.token_endpoint_auth_method == "none" &&
+        client.nil? && ClientIdMetadata.document_url?(grant.client_id)
     end
 
     # Only a CIMD-classified client resolves — a registered client must

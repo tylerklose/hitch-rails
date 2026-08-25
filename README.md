@@ -498,9 +498,16 @@ bin/rails hitch:clients:create_confidential CLIENT_ID=nightly-reporter \
   NAME="Nightly Reporter" REDIRECT_URI=https://agent.example/callback
 ```
 
-A client that only ever vouched for itself (open registration's public
-clients) is refused at the endpoint: it is exactly the anonymous shape the
-§5.4 phishing scam mints from.
+A client that only ever vouched for itself through open registration is
+refused at the endpoint, even if DCR issued it a secret: client authentication
+proves continuity, not operator endorsement. That anonymous registration is
+exactly the shape the §5.4 phishing scam mints from.
+
+The grant remembers how the client authenticated when it was minted. An
+operator-registered client must present `client_secret_basic` again when it
+polls, and `/activate` trusts only the matching voucher. Deleting,
+reclassifying, or concurrently registering that client cannot turn the grant
+into a different kind of client.
 
 The agent asks for access and relays what it gets back to its human:
 
@@ -520,7 +527,8 @@ The agent, polling `POST /oauth/token` with
 `interval`, receives an ordinary token: revocable, audience-bound, refresh
 token included while that feature is on. Until then it hears
 `authorization_pending`, or `slow_down` when it polls too eagerly; a deny is
-a hard `access_denied`.
+a hard `access_denied`. Once `expires_in` has elapsed, approved and pending
+device codes both answer `expired_token` and cannot mint a token.
 
 No SSH, no secret pasted into a chat, no browser on the machine that needs
 the token. The human is still the root of trust — they just tap instead of
@@ -708,8 +716,8 @@ or undermine its guarantees:
 ## Status
 
 0.2.0 is the first public release. The public API may change before v1.0.0.
-The exact public surface is documented in
-[`docs/public_api/0.2.0.md`](docs/public_api/0.2.0.md); removal is covered in
+The exact 0.2 public surface is documented in
+[`docs/public_api/0.2.0.md`](https://github.com/tylerklose/hitch-rails/blob/v0.2.0/docs/public_api/0.2.0.md); removal is covered in
 [`docs/removing.md`](docs/removing.md).
 
 ## Contributing

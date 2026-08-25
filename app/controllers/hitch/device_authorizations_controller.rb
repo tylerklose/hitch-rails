@@ -29,18 +29,30 @@ module Hitch
       resource = require_canonical_resource(oauth[:resource])
       return unless resource
 
-      client_id = resolved_client_id(oauth)
+      authentication = resolved_client_authentication(oauth)
+      client_id = authentication.client_id
       # A device grant needs a client somebody real vouches for: a
       # metadata document (its host is earned by serving it), or a
-      # confidential client the operator registered — which resolve just
-      # authenticated by its secret. A client that only vouched for
-      # itself, via open registration, is the §5.4 phishing shape and
-      # cannot mint. A registered row decides first, exactly as /activate
-      # classifies, so nothing can mint a grant the screen would never
-      # approve.
-      client = Hitch::Client.find_by(client_id: client_id)
-      vouched = client ? client.confidential_client? : Hitch::ClientIdMetadata.reference?(client_id)
-      unless vouched
+      # confidential client the operator registered — whose row records that
+      # provenance and which just authenticated by its secret. A client that
+      # only vouched for itself via open registration is the §5.4 phishing
+      # shape, whether or not DCR gave it a secret, and cannot mint. A
+      # registered row decides first, exactly as /activate classifies, so
+      # nothing can mint a grant the screen would never approve.
+      live_client = Hitch::Client.find_by(client_id: client_id)
+      voucher_auth_method = case authentication.token_endpoint_auth_method
+      when "client_secret_basic"
+        if authentication.operator_registered &&
+            live_client&.operator_registered_confidential_client?
+          "client_secret_basic"
+        end
+      when "none"
+        if !authentication.registered_client && live_client.nil? &&
+            Hitch::ClientIdMetadata.reference?(client_id)
+          "none"
+        end
+      end
+      unless voucher_auth_method == authentication.token_endpoint_auth_method
         return oauth_error(
           "invalid_client",
           "device authorization requires a client metadata document or an operator-registered client",
@@ -51,7 +63,8 @@ module Hitch
       grant = Hitch::DeviceGrant.mint!(
         client_id: client_id,
         scopes: oauth[:scope],
-        resource_uri: resource
+        resource_uri: resource,
+        token_endpoint_auth_method: authentication.token_endpoint_auth_method
       )
       render_device_authorization(grant)
     end

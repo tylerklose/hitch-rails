@@ -57,7 +57,8 @@ class ConcurrentDeviceGrantTest < ActiveSupport::TestCase
       Hitch::DeviceGrant.exchange_device_code!(
         raw_device_code: grant.raw_device_code,
         client_id: "concurrent-device",
-        resource_uri: RESOURCE
+        resource_uri: RESOURCE,
+        token_endpoint_auth_method: "none"
       )
     end
 

@@ -158,6 +158,7 @@ class ConfidentialClientTest < ActionDispatch::IntegrationTest
     assert_equal client.client_secret_issued_at.to_i, body.fetch("client_secret_issued_at")
     assert_equal 0, body.fetch("client_secret_expires_at")
     assert client.authenticates_secret?(secret)
+    refute client.operator_registered?
     refute_includes client.attributes.values, secret
     refute_includes client.attributes.to_json, secret
   end

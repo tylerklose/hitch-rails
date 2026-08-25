@@ -49,7 +49,7 @@ that path; it boots a real application in a real subprocess.
 | `bin/rails test` | The suite, one lane, synthetic stores. |
 | `bin/ci` | Both release lanes, eager loading, migrations, the built gem installed into a disposable app, and the Redis fallback lane below. |
 | `bin/ci-rate-limit` | The rate-limit store resolving to a real Redis, including the production boot fallback. Needs Docker. |
-| `bin/package-smoke` | The built artifact — not the checkout — driving generators, doctor, and the OAuth + MCP flow. |
+| `bin/package-smoke` | The built artifact — not the checkout — driving generators, doctor, authorization-code and device OAuth, and MCP. |
 | `bin/conformance-auth` | The official authorization profiles. Runs in CI outside `bin/ci`. |
 | `bin/ci-appraisal rails_main_sqlite` | The suite against Rails main — the 8.2.0.alpha production dogfoods, which no release lane can pin because no 8.2 prerelease gem exists. CI runs it non-blocking; `bin/ci` never does. |
 

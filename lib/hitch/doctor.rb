@@ -26,6 +26,10 @@ module Hitch
     REMEDIES = {
       "unsupported" => "Match Hitch's supported window, or upgrade Hitch.",
       "invalid" => "Run the failing setting's validation directly: Hitch.configuration.validate!",
+      "dynamic_client_registration_rate_store_invalid" =>
+        "Configure config.dynamic_client_registration_rate_store with a shared cache store whose two increments return 1 then 2.",
+      "device_authorization_rate_store_invalid" =>
+        "Configure config.device_authorization_rate_store with a shared cache store whose two increments return 1 then 2.",
       "unresolvable" => "Boot the app to see which tool failed; " \
         "Hitch.configuration.validate! does not build the registry and will report success.",
       "mismatch" => "resource_uri must equal the URI clients send as `resource`, byte for byte.",
@@ -43,6 +47,15 @@ module Hitch
         "or set mcp.rate_limit_store explicitly.",
       "probe_error" => "The check itself could not run; HITCH_DOCTOR_FORMAT=json names the error class."
     }.freeze
+    ConfigurationStoreError = Class.new(StandardError) do
+      attr_reader :setting, :store_class
+
+      def initialize(setting:, store:)
+        @setting = setting.to_s.freeze
+        @store_class = store.class.name.to_s.freeze
+        super("#{@setting} is unusable in production")
+      end
+    end
     Check = Data.define(:id, :status, :code, :summary, :details) do
       def initialize(id:, status:, code:, summary:, details: {})
         super(
@@ -135,20 +148,24 @@ module Hitch
       def check_production_rate_store!(store, setting)
         Hitch::RateLimitStore.assert_shared!(store, setting: setting)
         probe_rate_store!(store, setting)
+      rescue NotImplementedError, StandardError => error
+        raise ConfigurationStoreError.new(setting:, store:), cause: error
       end
 
       # A dedicated-but-unreachable store passes the class check while every
       # production request it guards 503s; drive it like the admission probe
-      # does. Both limiters refuse on an uncountable store, so this mirrors
-      # the request path rather than adding a stricter one.
+      # does. Two increments on the same key must return the values the
+      # limiter's comparison depends on, not merely some Integer.
       def probe_rate_store!(store, setting)
         key = "hitch:doctor:v1:#{SecureRandom.hex(16)}"
-        count = begin
-          store.increment(key, 1, expires_in: 5)
-        rescue NotImplementedError
-          nil
+        counts = 2.times.map do
+          begin
+            store.increment(key, 1, expires_in: 5)
+          rescue NotImplementedError
+            nil
+          end
         end
-        return true if count.is_a?(Integer)
+        return true if counts == [ 1, 2 ]
 
         raise Hitch::RateLimitStore::Unavailable, "#{setting} cannot count attempts"
       ensure
@@ -493,6 +510,21 @@ module Hitch
       code = runtime ? "valid_full_runtime" : "valid_auth_only"
       summary = runtime ? "OAuth and MCP runtime configuration is valid" : "OAuth configuration is valid; MCP runtime is disabled"
       pass("configuration", code, summary, "environment" => system.environment_name, "runtime_enabled" => runtime)
+    rescue ConfigurationStoreError => error
+      code, summary = case error.setting
+      when "config.dynamic_client_registration_rate_store"
+        [ "dynamic_client_registration_rate_store_invalid", "Dynamic client registration rate store is unusable in production" ]
+      when "config.device_authorization_rate_store"
+        [ "device_authorization_rate_store_invalid", "Device authorization rate store is unusable in production" ]
+      end
+      fail_check(
+        "configuration",
+        code,
+        summary,
+        "environment" => system.environment_name,
+        "setting" => error.setting,
+        "store_class" => error.store_class
+      )
     rescue StandardError => error
       environment = begin
         system.environment_name

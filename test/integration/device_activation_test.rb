@@ -35,11 +35,24 @@ class DeviceActivationTest < ActionDispatch::IntegrationTest
     JSON.parse(response.body).fetch("client_id")
   end
 
+  def register_confidential_dcr
+    post "/oauth/register",
+      params: {
+        client_name: "Attacker-chosen Brand",
+        redirect_uris: [ "https://attacker.example/callback" ],
+        token_endpoint_auth_method: "client_secret_basic"
+      }.to_json,
+      headers: { "Content-Type" => "application/json" }
+    assert_response :created
+    JSON.parse(response.body).fetch("client_id")
+  end
+
   def operator_client(client_name: "Nightly Reporter", redirect_uris: [ "https://agent.example/callback" ])
     Hitch::Client.register_confidential!(
       client_id: "operator-#{SecureRandom.hex(4)}",
       client_name: client_name,
-      redirect_uris: redirect_uris
+      redirect_uris: redirect_uris,
+      operator_registered: true
     ).client
   end
 
@@ -142,6 +155,108 @@ class DeviceActivationTest < ActionDispatch::IntegrationTest
     refute_match(/registered itself/, response.body)
   end
 
+  test "a confidential client cannot approve a grant minted with public authentication posture" do
+    client = operator_client
+    grant = Hitch::DeviceGrant.mint!(
+      client_id: client.client_id,
+      scopes: "mcp",
+      resource_uri: RESOURCE,
+      token_endpoint_auth_method: "none"
+    )
+    sign_in
+
+    post "/activate", params: { user_code: grant.raw_user_code }
+
+    assert_response :success
+    assert_match(/could not be verified/, response.body)
+    refute_match(/value="approve"/, response.body)
+
+    post "/activate", params: { user_code: grant.raw_user_code, decision: "approve" }
+
+    assert_response :success
+    assert Hitch::DeviceGrant.find_pending_by_user_code(grant.raw_user_code)
+  end
+
+  test "a metadata client cannot approve a grant minted with confidential authentication posture" do
+    Hitch.configuration.client_id_metadata_enabled = true
+    client_id = "https://agent.example/oauth-client"
+    grant = Hitch::DeviceGrant.mint!(
+      client_id: client_id,
+      scopes: "mcp",
+      resource_uri: RESOURCE,
+      token_endpoint_auth_method: "client_secret_basic"
+    )
+    document = Hitch::ClientIdMetadata::Document.new(
+      client_id: client_id,
+      client_name: "Agent",
+      redirect_uris: [ "https://agent.example/cb" ]
+    )
+    sign_in
+
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(*, **) { document }) do
+      post "/activate", params: { user_code: grant.raw_user_code }
+      assert_response :success
+      assert_match(/could not be verified/, response.body)
+      refute_match(/value="approve"/, response.body)
+
+      post "/activate", params: { user_code: grant.raw_user_code, decision: "approve" }
+    end
+
+    assert_response :success
+    assert Hitch::DeviceGrant.find_pending_by_user_code(grant.raw_user_code)
+  end
+
+  test "a self-registered client cannot approve a grant minted with confidential authentication posture" do
+    grant = Hitch::DeviceGrant.mint!(
+      client_id: register_client,
+      scopes: "mcp",
+      resource_uri: RESOURCE,
+      token_endpoint_auth_method: "client_secret_basic"
+    )
+    sign_in
+
+    post "/activate", params: { user_code: grant.raw_user_code }
+
+    assert_response :success
+    assert_match(/could not be verified/, response.body)
+    refute_match(/value="approve"/, response.body)
+
+    post "/activate", params: { user_code: grant.raw_user_code, decision: "approve" }
+
+    assert_response :success
+    assert Hitch::DeviceGrant.find_pending_by_user_code(grant.raw_user_code)
+  end
+
+  test "a confidential DCR client is not displayed or approvable as operator-registered" do
+    grant = Hitch::DeviceGrant.mint!(
+      client_id: register_confidential_dcr,
+      scopes: "mcp",
+      resource_uri: RESOURCE,
+      token_endpoint_auth_method: "client_secret_basic"
+    )
+    sign_in
+
+    post "/activate", params: { user_code: grant.raw_user_code }
+
+    assert_response :success
+    assert_match(/could not be verified/, response.body)
+    refute_match(/Attacker-chosen Brand/, response.body)
+    refute_match(/registered by this server&#39;s operator/, response.body)
+    refute_match(/value="approve"/, response.body)
+
+    post "/activate", params: { user_code: grant.raw_user_code, decision: "approve" }
+
+    assert_response :success
+    assert Hitch::DeviceGrant.find_pending_by_user_code(grant.raw_user_code)
+  end
+
+  test "an unknown stored authentication posture fails closed" do
+    grant = Struct.new(:token_endpoint_auth_method).new("unknown")
+    activation = Hitch::DeviceActivation.new(grant, principal: @user)
+
+    assert_equal true, activation.unverified?
+  end
+
   test "a wrong code gets one vague answer, not a liveness oracle" do
     sign_in
 
@@ -229,7 +344,8 @@ class DeviceActivationTest < ActionDispatch::IntegrationTest
     client = Hitch::Client.register_confidential!(
       client_id: "https://internal.example/app",
       client_name: "Internal App",
-      redirect_uris: [ "https://exa mple.com/cb" ]
+      redirect_uris: [ "https://exa mple.com/cb" ],
+      operator_registered: true
     ).client
     grant = mint(client_id: client.client_id)
     fetch_forbidden = ->(*, **) { raise "an operator client must never trigger a metadata fetch" }

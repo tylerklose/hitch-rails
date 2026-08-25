@@ -31,9 +31,10 @@ these IDs in this order:
 1. `versions` — loaded Hitch, Ruby, Rails, and MCP versions are inside the
    packaged support window.
 2. `configuration` — the current OAuth configuration is valid and any enabled
-   MCP runtime has all required settings. Production DCR also requires its
-   resolved rate store (default: `config.cache_store`) to count across
-   processes.
+   MCP runtime has all required settings. Production DCR and device
+   authorization each require their resolved rate store (default:
+   `config.cache_store`) to count across processes and to return `1` then `2`
+   from two real increments on the same isolated key.
 3. `resource_discovery` — internal requests to both discovery documents agree
    with the canonical resource URI and issuer. No external network request is
    made.
@@ -72,10 +73,13 @@ or application data. Its internal discovery requests are GETs against the
 loaded Rack application. The store probes are the only writes: the
 `rate_limit_store` check increments a random `hitch:doctor:v1:*` key twice on
 the configured cache store with a five-second expiry, asserts the counts come
-back `1` then `2`, and deletes the key; when production DCR is enabled, the
-`configuration` check increments one such key on the registration store,
-requires an integer count, and deletes it. That namespace is distinct from
-Hitch's HMAC rate-limit keys.
+back `1` then `2`, and deletes the key. In production, the `configuration`
+check also increments one isolated key twice and deletes it on each enabled
+feature's resolved store: `config.dynamic_client_registration_rate_store`
+and `config.device_authorization_rate_store`. That namespace is distinct from
+Hitch's HMAC rate-limit keys. A failure names the exact setting and prescribes
+a shared cache store whose two increments return `1` then `2`; ordinary
+`Hitch.configuration.validate!` does not execute these live probes.
 
 Fix the named host artifact and rerun the command. Do not parse the human prose
 for automation; parse `hitch.doctor.v1` JSON by check `id`, `status`, and

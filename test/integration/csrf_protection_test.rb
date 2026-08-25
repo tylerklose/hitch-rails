@@ -219,7 +219,8 @@ class CsrfProtectionTest < ActionDispatch::IntegrationTest
     client = Hitch::Client.register_confidential!(
       client_id: "csrf-device",
       client_name: "CSRF Device",
-      redirect_uris: [ "https://agent.example/cb" ]
+      redirect_uris: [ "https://agent.example/cb" ],
+      operator_registered: true
     ).client
     grant = Hitch::DeviceGrant.mint!(
       client_id: client.client_id, scopes: "mcp", resource_uri: "https://dummy.test/mcp"

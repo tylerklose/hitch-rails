@@ -106,11 +106,12 @@ module Hitch
       resource = require_canonical_resource(oauth[:resource])
       return unless resource
 
-      client_id = resolved_client_id(oauth)
+      authentication = resolved_client_authentication(oauth)
       result = Hitch::DeviceGrant.exchange_device_code!(
         raw_device_code: oauth[:device_code],
-        client_id: client_id,
-        resource_uri: resource
+        client_id: authentication.client_id,
+        resource_uri: resource,
+        token_endpoint_auth_method: authentication.token_endpoint_auth_method
       )
 
       return oauth_error("invalid_grant", "Invalid or expired device code") if result.nil?

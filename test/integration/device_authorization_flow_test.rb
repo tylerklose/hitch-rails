@@ -28,16 +28,19 @@ class DeviceAuthorizationFlowTest < ActionDispatch::IntegrationTest
 
   # The operator badged this agent once at a console; its secret is the
   # client credential every machine leg presents.
-  def operator_credentials
+  def operator_credentials(client_id: "nightly-reporter")
     Hitch::Client.register_confidential!(
-      client_id: "nightly-reporter",
+      client_id: client_id,
       client_name: "Nightly Reporter",
-      redirect_uris: [ "https://agent.example/callback" ]
+      redirect_uris: [ "https://agent.example/callback" ],
+      operator_registered: true
     )
   end
 
   def basic_auth(credentials)
-    encoded = Base64.strict_encode64("#{credentials.client.client_id}:#{credentials.client_secret}")
+    client_id = URI.encode_www_form_component(credentials.client.client_id)
+    secret = URI.encode_www_form_component(credentials.client_secret)
+    encoded = Base64.strict_encode64("#{client_id}:#{secret}")
     { "Authorization" => "Basic #{encoded}" }
   end
 
@@ -101,5 +104,60 @@ class DeviceAuthorizationFlowTest < ActionDispatch::IntegrationTest
     body = poll(credentials, codes.fetch("device_code"))
     assert_response :bad_request
     assert_equal "access_denied", body.fetch("error")
+  end
+
+  test "deleting a confidential client cannot downgrade its approved grant to public" do
+    credentials = operator_credentials(client_id: "https://operator.example/device-client")
+    codes = mint_and_approve_device_grant(credentials)
+    client_id = credentials.client.client_id
+
+    credentials.client.destroy!
+
+    assert_public_poll_is_rejected(codes, client_id: client_id)
+  end
+
+  test "reclassifying a confidential client cannot downgrade its approved grant to public" do
+    credentials = operator_credentials(client_id: "https://operator.example/reclassified-device-client")
+    codes = mint_and_approve_device_grant(credentials)
+    credentials.client.update!(
+      token_endpoint_auth_method: "none",
+      operator_registered: false,
+      client_secret_digest: nil,
+      client_secret_issued_at: nil,
+      client_secret_rotated_at: nil
+    )
+
+    assert_public_poll_is_rejected(codes, client_id: credentials.client.client_id)
+  end
+
+  private
+
+  def mint_and_approve_device_grant(credentials)
+    post "/oauth/device_authorization",
+      params: { resource: RESOURCE }, headers: basic_auth(credentials)
+    assert_response :success
+    codes = JSON.parse(response.body)
+
+    post "/sign_in", params: { user_id: @user.id }
+    post "/activate", params: { user_code: codes.fetch("user_code"), decision: "approve" }
+    assert_response :success
+    codes
+  end
+
+  def assert_public_poll_is_rejected(codes, client_id:)
+    assert_no_difference -> { Hitch::AccessToken.count } do
+      post "/oauth/token", params: {
+        grant_type: Hitch::GrantTypes::DEVICE_CODE,
+        device_code: codes.fetch("device_code"),
+        client_id: client_id,
+        resource: RESOURCE
+      }
+    end
+
+    assert_response :unauthorized
+    body = JSON.parse(response.body)
+    assert_equal "invalid_client", body.fetch("error")
+    assert_equal "Client authentication failed", body.fetch("error_description")
+    assert_equal %(Basic realm="oauth/token"), response.headers.fetch("WWW-Authenticate")
   end
 end

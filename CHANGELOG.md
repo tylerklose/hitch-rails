@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0] - Unreleased
 
-Upgrading from 0.3.0 requires running one new migration. See
+Upgrading from 0.3.0 requires running three new migrations. See
 [`docs/upgrading/0.3-to-0.4.md`](docs/upgrading/0.3-to-0.4.md). The feature
 it carries is **off by default**, so nothing changes until you enable it.
 
@@ -26,9 +26,17 @@ it carries is **off by default**, so nothing changes until you enable it.
   audience-bound, digest-at-rest, refresh token included while that feature
   is on.
 
+  The grant records the token-endpoint authentication method established at
+  mint and requires the mint endpoint, activation screen, and polling client
+  to agree on it, so a registration race cannot lend the grant another
+  voucher and deleting a confidential client cannot downgrade it to public.
+  Device-code expiry ends pending and approved sessions alike. Database check
+  constraints enforce exclusive decisions, an owner for every approval, and
+  approval before consumption.
+
   The security posture — a vouched client required to mint (CIMD, or an
-  operator-registered confidential client; self-registered public clients
-  are refused), code entropy and fail-closed counting, the §5.4 phishing
+  operator-registered confidential client; self-registered DCR clients are
+  refused even when confidential), code entropy and fail-closed counting, the §5.4 phishing
   copy, voucher-only branding, no metadata fetches from the unauthenticated
   mint endpoint — is documented in the README's "Device authorization"
   section and the reasoning in

@@ -55,14 +55,21 @@ module Hitch
           client_id: metadata.fetch(:client_id),
           client_name: metadata.fetch(:client_name),
           application_type: normalize_application_type(application_type),
-          token_endpoint_auth_method: "none"
+          token_endpoint_auth_method: "none",
+          operator_registered: false
         )
         client.replace_redirect_uris!(metadata.fetch(:redirect_uris))
         client
       end
     end
 
-    def self.register_confidential!(client_id:, client_name:, redirect_uris:, application_type: nil)
+    def self.register_confidential!(
+      client_id:,
+      client_name:,
+      redirect_uris:,
+      application_type: nil,
+      operator_registered: false
+    )
       metadata = normalize_registration_metadata!(
         client_id: client_id,
         client_name: client_name,
@@ -78,7 +85,8 @@ module Hitch
           application_type: normalize_application_type(application_type),
           token_endpoint_auth_method: "client_secret_basic",
           client_secret_digest: digest_secret(raw_secret),
-          client_secret_issued_at: Time.current
+          client_secret_issued_at: Time.current,
+          operator_registered: operator_registered
         )
         record.replace_redirect_uris!(metadata.fetch(:redirect_uris))
         record
@@ -160,6 +168,10 @@ module Hitch
       token_endpoint_auth_method == "client_secret_basic"
     end
 
+    def operator_registered_confidential_client?
+      confidential_client? && operator_registered?
+    end
+
     def authenticates_secret?(candidate)
       return false unless confidential_client? && client_secret_digest.present? && candidate.present?
 
@@ -222,6 +234,10 @@ module Hitch
         errors.add(:client_secret_rotated_at, "must be absent for a public client") if client_secret_rotated_at.present?
       elsif client_secret_digest.blank? || client_secret_issued_at.blank?
         errors.add(:client_secret_digest, "and issued_at are required for a confidential client")
+      end
+
+      if operator_registered? && !confidential_client?
+        errors.add(:operator_registered, "requires a confidential client")
       end
     end
 

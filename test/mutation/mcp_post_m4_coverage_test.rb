@@ -31,4 +31,16 @@ if Minitest::Test.respond_to?(:cover)
   class Hitch::MCP::RegistryTest
     cover "Hitch::MCP::Internal::JsonValues::Copier"
   end
+
+  class Hitch::DeviceGrantTest
+    cover "Hitch::DeviceGrant.exchange_device_code!"
+  end
+
+  class DeviceAuthorizationFlowTest
+    cover "Hitch::DeviceGrant.exchange_device_code!"
+  end
+
+  class DeviceActivationTest
+    cover "Hitch::DeviceActivation#unverified?"
+  end
 end

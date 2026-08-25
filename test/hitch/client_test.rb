@@ -98,6 +98,8 @@ class Hitch::ClientTest < ActiveSupport::TestCase
       client_name: "Deploy Bot",
       redirect_uris: [ "https://client.test/callback" ]
     )
+
+    refute credentials.client.operator_registered?
     client = credentials.client
 
     assert client.confidential_client?

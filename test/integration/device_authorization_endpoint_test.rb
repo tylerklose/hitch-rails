@@ -31,11 +31,24 @@ class DeviceAuthorizationEndpointTest < ActionDispatch::IntegrationTest
     JSON.parse(response.body).fetch("client_id")
   end
 
+  def register_confidential_dcr(client_name: "Attacker-chosen Brand")
+    post "/oauth/register",
+      params: {
+        client_name: client_name,
+        redirect_uris: [ "https://attacker.example/callback" ],
+        token_endpoint_auth_method: "client_secret_basic"
+      }.to_json,
+      headers: { "Content-Type" => "application/json" }
+    assert_response :created
+    JSON.parse(response.body)
+  end
+
   def operator_credentials
     Hitch::Client.register_confidential!(
       client_id: "operator-#{SecureRandom.hex(4)}",
       client_name: "Nightly Reporter",
-      redirect_uris: [ "https://agent.example/callback" ]
+      redirect_uris: [ "https://agent.example/callback" ],
+      operator_registered: true
     )
   end
 
@@ -116,6 +129,21 @@ class DeviceAuthorizationEndpointTest < ActionDispatch::IntegrationTest
     assert_equal 0, Hitch::DeviceGrant.count
   end
 
+  test "a self-registered confidential client cannot buy an operator voucher with its secret" do
+    registration = register_confidential_dcr
+    client = Hitch::Client.find_by!(client_id: registration.fetch("client_id"))
+    credentials = Hitch::Client::Credentials.new(
+      client: client,
+      client_secret: registration.fetch("client_secret")
+    )
+
+    request_device_authorization(credentials: credentials)
+
+    assert_response :unauthorized
+    assert_equal "invalid_client", JSON.parse(response.body).fetch("error")
+    assert_equal 0, Hitch::DeviceGrant.count
+  end
+
   test "a registered public client cannot mint even behind a metadata-shaped id" do
     # The registered row decides first, exactly as /activate classifies —
     # otherwise this grant would mint and then sit unapprovable.
@@ -143,6 +171,47 @@ class DeviceAuthorizationEndpointTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert_equal "https://agent.example/oauth-client", Hitch::DeviceGrant.sole.client_id
+  end
+
+  test "a client that becomes confidential during authentication cannot mint with public posture" do
+    credentials = operator_credentials
+    stale_authentication = Hitch::ClientAuthentication::Resolution.new(
+      client_id: credentials.client.client_id,
+      token_endpoint_auth_method: "none",
+      registered_client: false,
+      operator_registered: false
+    )
+
+    # Reproduces the only state a real race needs: authentication classified
+    # the id as public, then an operator registration became visible before
+    # the endpoint selected the voucher recorded on the grant.
+    stub_class_method(Hitch::ClientAuthentication, :resolve, ->(**) { stale_authentication }) do
+      request_device_authorization(client_id: credentials.client.client_id)
+    end
+
+    assert_response :unauthorized
+    assert_equal "invalid_client", JSON.parse(response.body).fetch("error")
+    assert_equal 0, Hitch::DeviceGrant.count
+  end
+
+  test "a confidential DCR client that becomes operator-vouched after authentication cannot mint" do
+    registration = register_confidential_dcr
+    client = Hitch::Client.find_by!(client_id: registration.fetch("client_id"))
+    stale_authentication = Hitch::ClientAuthentication::Resolution.new(
+      client_id: client.client_id,
+      token_endpoint_auth_method: "client_secret_basic",
+      registered_client: true,
+      operator_registered: false
+    )
+    client.update!(client_name: "Reviewed Name", operator_registered: true)
+
+    stub_class_method(Hitch::ClientAuthentication, :resolve, ->(**) { stale_authentication }) do
+      request_device_authorization(client_id: client.client_id)
+    end
+
+    assert_response :unauthorized
+    assert_equal "invalid_client", JSON.parse(response.body).fetch("error")
+    assert_equal 0, Hitch::DeviceGrant.count
   end
 
   test "the requested scope is clamped to what the host supports at mint" do

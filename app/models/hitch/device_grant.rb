@@ -23,6 +23,7 @@ module Hitch
     # brute-force bar with room to spare.
     USER_CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
     USER_CODE_LENGTH = 8
+    TOKEN_ENDPOINT_AUTH_METHODS = %w[none client_secret_basic].freeze
 
     # The token endpoint already rescues AccessToken::OAuthError; a second
     # error type would only mean a second rescue.
@@ -34,6 +35,7 @@ module Hitch
     attr_accessor :raw_device_code, :raw_user_code
 
     validates :device_code_digest, :user_code_digest, presence: true, on: :create
+    validates :token_endpoint_auth_method, inclusion: { in: TOKEN_ENDPOINT_AUTH_METHODS }
 
     scope :pending, -> {
       where(approved_at: nil, denied_at: nil, consumed_at: nil)
@@ -43,8 +45,9 @@ module Hitch
     # Scopes are clamped here, at mint — every caller's, not just the
     # endpoint's — so what a grant holds is always grantable and the
     # exchange can honor it verbatim.
-    def self.mint!(client_id:, scopes:, resource_uri:)
+    def self.mint!(client_id:, scopes:, resource_uri:, token_endpoint_auth_method: nil)
       granted = Hitch.configuration.clamp_scopes(scopes)
+      token_endpoint_auth_method ||= authentication_method_for(client_id)
       attempts = 0
       begin
         # Both codes regenerate on retry, so whichever unique constraint
@@ -62,6 +65,7 @@ module Hitch
             user_code_digest: Digest::SHA256.hexdigest(raw_user_code),
             scopes: granted,
             resource_uri: resource_uri,
+            token_endpoint_auth_method: token_endpoint_auth_method,
             expires_at: Hitch.configuration.device_code_lifetime_seconds.seconds.from_now
           )
         end
@@ -105,6 +109,8 @@ module Hitch
     # guessable code alive. Returns false when the code already met a
     # decision, expired, or never existed.
     def self.approve!(user_code:, principal:, client_name: nil)
+      raise ArgumentError, "principal must be persisted" unless principal&.persisted?
+
       decide!(
         user_code, :approved_at,
         principal_type: principal.class.polymorphic_name,
@@ -121,7 +127,7 @@ module Hitch
     # the token endpoint's existing rescue renders them; nil is the generic
     # invalid_grant, deliberately covering "never existed", "already
     # consumed", and "lost the race" alike.
-    def self.exchange_device_code!(raw_device_code:, client_id:, resource_uri:)
+    def self.exchange_device_code!(raw_device_code:, client_id:, resource_uri:, token_endpoint_auth_method:)
       unless Hitch.configuration.device_authorization_enabled
         raise OAuthError.new("unsupported_grant_type", "Device authorization is not enabled")
       end
@@ -131,6 +137,11 @@ module Hitch
 
       unless record.client_id == client_id
         raise OAuthError.new("invalid_grant", "Device code was not issued to this client")
+      end
+      unless record.token_endpoint_auth_method == token_endpoint_auth_method
+        raise ClientAuthentication::Invalid.new(
+          "invalid_client", "Client authentication failed", http_status: :unauthorized
+        )
       end
       unless record.resource_uri == resource_uri
         raise OAuthError.new("invalid_target", "resource does not match the authorized resource")
@@ -144,20 +155,16 @@ module Hitch
       end
 
       now = Time.current
-      # Before expiry, also deliberately: expires_at bounds how long the
-      # grant waits for a person, not the redemption of a yes already
-      # given. A device that backed off past the mark collects the token
-      # its human approved in time; cleanup's day floor bounds the rest.
+      if record.expires_at <= now
+        raise OAuthError.new("expired_token", "Device code expired")
+      end
+
       if record.approved_at
         # The approver may since have been deleted by the host. Consent does
         # not outlive its owner; the grant is dead, not the server.
         return nil if record.principal.nil?
 
         return consume!(record, now: now)
-      end
-
-      if record.expires_at <= now
-        raise OAuthError.new("expired_token", "Device code expired before it was approved")
       end
 
       # §3.5: one poll per interval claims the window; the rest hear
@@ -168,8 +175,8 @@ module Hitch
       # network jitter must not cost it the permanent +5s a slow_down
       # demands (§3.5) — the window bounds load, not guessing.
       interval = Hitch.configuration.device_authorization_interval_seconds
-      window_opens = now - interval.seconds + [ 0.5, interval / 10.0 ].min.seconds
-      claimed = where(id: record.id)
+      window_opens = now - interval + [ 0.5, interval / 10.0 ].min
+      claimed = where(id: record)
         .where("last_polled_at IS NULL OR last_polled_at <= ?", window_opens)
         .update_all(last_polled_at: now, updated_at: now)
       if claimed == 1
@@ -193,6 +200,12 @@ module Hitch
       SecureRandom.alphanumeric(USER_CODE_LENGTH, chars: USER_CODE_ALPHABET.chars)
     end
     private_class_method :generate_user_code
+
+    def self.authentication_method_for(client_id)
+      client = Hitch::Client.find_by(client_id: client_id)
+      client&.confidential_client? ? "client_secret_basic" : "none"
+    end
+    private_class_method :authentication_method_for
 
     def self.decide!(user_code, decision_column, attributes = {})
       digest = Digest::SHA256.hexdigest(normalize_user_code(user_code))

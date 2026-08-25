@@ -44,6 +44,7 @@ class HitchClientsTaskTest < ActiveSupport::TestCase
       assert_equal 1, File.read(output_path).scan(secret).length
       client = Hitch::Client.find_by!(client_id: "deploy-bot")
       assert client.authenticates_secret?(secret)
+      assert client.operator_registered?
       refute_includes client.attributes.values, secret
     end
   end
@@ -111,7 +112,8 @@ class HitchClientsTaskTest < ActiveSupport::TestCase
     original = Hitch::Client.register_confidential!(
       client_id: "rotating",
       client_name: "Rotating",
-      redirect_uris: [ "https://client.test/callback" ]
+      redirect_uris: [ "https://client.test/callback" ],
+      operator_registered: true
     )
 
     Dir.mktmpdir("hitch-credentials") do |directory|
@@ -127,6 +129,50 @@ class HitchClientsTaskTest < ActiveSupport::TestCase
       assert_equal 1, File.read(output_path).scan(replacement).length
       refute original.client.reload.authenticates_secret?(original.client_secret)
       assert original.client.authenticates_secret?(replacement)
+    end
+  end
+
+  test "rotate task requires an operator-chosen name before vouching for a dynamic client" do
+    original = Hitch::Client.register_confidential!(
+      client_id: "dynamic-client",
+      client_name: "Attacker-chosen Brand",
+      redirect_uris: [ "https://client.test/callback" ],
+      operator_registered: false
+    )
+
+    Dir.mktmpdir("hitch-credentials") do |directory|
+      ENV["CLIENT_ID"] = original.client.client_id
+      ENV["OUTPUT_FILE"] = File.join(directory, "rotated.credentials")
+
+      error = assert_raises(SystemExit) { capture_io { invoke(ROTATE_TASK) } }
+
+      assert_equal 1, error.status
+      refute original.client.reload.operator_registered?
+      assert original.client.authenticates_secret?(original.client_secret)
+      refute_path_exists ENV.fetch("OUTPUT_FILE")
+    end
+  end
+
+  test "rotate task vouches for a dynamic client with the name the operator restates" do
+    original = Hitch::Client.register_confidential!(
+      client_id: "adopted-client",
+      client_name: "Attacker-chosen Brand",
+      redirect_uris: [ "https://client.test/callback" ],
+      operator_registered: false
+    )
+
+    Dir.mktmpdir("hitch-credentials") do |directory|
+      ENV["CLIENT_ID"] = original.client.client_id
+      ENV["NAME"] = "Reviewed Deployment Bot"
+      ENV["OUTPUT_FILE"] = File.join(directory, "rotated.credentials")
+
+      invoke(ROTATE_TASK)
+
+      client = original.client.reload
+      assert client.operator_registered?
+      assert_equal "Reviewed Deployment Bot", client.client_name
+      refute client.authenticates_secret?(original.client_secret)
+      assert client.authenticates_secret?(disclosed_secret(ENV.fetch("OUTPUT_FILE")))
     end
   end
 
@@ -158,7 +204,8 @@ class HitchClientsTaskTest < ActiveSupport::TestCase
           credentials = Hitch::Client.register_confidential!(
             client_id: "write-failed",
             client_name: "Write Failed",
-            redirect_uris: [ "https://client.test/callback" ]
+            redirect_uris: [ "https://client.test/callback" ],
+            operator_registered: true
           )
           "client_id=#{credentials.client.client_id}\nclient_secret=#{credentials.client_secret}\n"
         end
@@ -172,7 +219,8 @@ class HitchClientsTaskTest < ActiveSupport::TestCase
     original = Hitch::Client.register_confidential!(
       client_id: "flush-failed",
       client_name: "Flush Failed",
-      redirect_uris: [ "https://client.test/callback" ]
+      redirect_uris: [ "https://client.test/callback" ],
+      operator_registered: true
     )
     client = original.client
     before = client.attributes.slice(

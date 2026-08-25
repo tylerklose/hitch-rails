@@ -40,6 +40,27 @@ separate trust boundary owned by the adopting Rails application.
   bearer authentication and production refuses uncountable stores at boot.
 - Observation leakage/interference: exact versioned payload keys, all SDK
   callbacks replaced, secret canaries, subscriber exceptions isolated/reported.
+- Device-flow code abuse (RFC 8628): user codes are 40-bit Crockford base32
+  digested at rest and erased in the statement that decides them; guessing is
+  counted per signed-in principal and minting per IP, both fail-closed
+  (production refuses an uncountable store at the request, the boot, and the
+  doctor); every grant transition is one conditional UPDATE, so no
+  approved-but-unowned or twice-consumed state exists; the §5.4 phishing
+  surface is answered structurally — a device grant needs a vouched client
+  (a CIMD document, or an operator-registered confidential client whose
+  provenance is stored and whose secret authenticates it), so an anonymous self-registered client
+  cannot mint one at all — and by display: the screen shows only the
+  voucher's word (document host, or operator-chosen name labeled as such),
+  never a self-declared name or a redirect host this flow delivers nothing
+  to, and a client whose voucher is gone (document unresolvable or scheme
+  disabled mid-grant, registration deleted mid-grant) cannot be approved; the unauthenticated mint endpoint
+  never triggers a client-metadata fetch — resolution happens at approval,
+  where the signed-in person is the rate-limit actor; a signed-out
+  visitor's login return-to stores the activate URL without its code, so
+  no live code outlives the visit in the host's session store; a disabled
+  feature is refused in admission before the body is read (404, the
+  registration posture — the shared preflight and host checks still
+  answer, as they do for disabled registration).
 
 ## Abuse and failure precedence
 

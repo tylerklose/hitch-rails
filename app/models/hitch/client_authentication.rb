@@ -5,6 +5,12 @@ module Hitch
     MAX_AUTHORIZATION_BYTES = 4_096
     MAX_SECRET_BYTES = 512
     CONTROL_CHARACTERS = /[\u0000-\u001F\u007F-\u009F]/
+    Resolution = Data.define(
+      :client_id,
+      :token_endpoint_auth_method,
+      :registered_client,
+      :operator_registered
+    )
 
     class Invalid < StandardError
       attr_reader :oauth_code, :http_status
@@ -28,7 +34,12 @@ module Hitch
       client = Hitch::Client.find_by(client_id: client_id)
       invalid_client! unless client&.authenticates_secret?(secret)
 
-      client_id
+      Resolution.new(
+        client_id:,
+        token_endpoint_auth_method: "client_secret_basic",
+        registered_client: true,
+        operator_registered: client.operator_registered?
+      )
     end
 
     def self.public_client_id(client_id, body_secret_present:)
@@ -39,7 +50,12 @@ module Hitch
       client = Hitch::Client.find_by(client_id: client_id)
       invalid_client! if client&.confidential_client?
 
-      client_id
+      Resolution.new(
+        client_id:,
+        token_endpoint_auth_method: "none",
+        registered_client: client.present?,
+        operator_registered: false
+      )
     end
     private_class_method :public_client_id
 

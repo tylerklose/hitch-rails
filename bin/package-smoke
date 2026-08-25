@@ -3,9 +3,10 @@
 
 # Builds the gem, verifies the packaged manifest, then installs the built
 # artifact into disposable Rails apps (SQLite and PostgreSQL), runs the
-# generators and doctor, and exercises the authenticated OAuth + MCP flow
-# end to end. With --automated-clients it also runs the official Python and
-# TypeScript client smokes against the packaged server.
+# generators and doctor, and exercises authorization-code and device OAuth
+# flows through the authenticated MCP endpoint. With --automated-clients it
+# also runs the official Python and TypeScript client smokes against the
+# packaged server.
 
 require "digest"
 require "fileutils"
@@ -144,6 +145,8 @@ def smoke_runner(profile_name, expected_adapter)
     end
     Hitch.configuration.mcp.request_limit = { to: 120, within: 60 }
     Hitch.configuration.mcp.max_request_bytes = 8_192
+    Hitch.configuration.device_authorization_enabled = true
+    Hitch.configuration.device_authorization_rate_store = ActiveSupport::Cache::MemoryStore.new
     Hitch.configuration.validate!
     Hitch.configuration.mcp.__send__(
       :prepare_registry!,
@@ -208,8 +211,46 @@ def smoke_runner(profile_name, expected_adapter)
     abort "issued token was not usable" unless
       token&.accessible? && token.valid_for_resource?(resource_uri) && token.scope?("mcp")
 
+    device_credentials = Hitch::Client.register_confidential!(
+      client_id: "package-smoke-device-client",
+      client_name: "Package smoke device",
+      redirect_uris: [ "https://device.example/callback" ],
+      operator_registered: true
+    )
+    encoded_client_id = URI.encode_www_form_component(device_credentials.client.client_id)
+    encoded_secret = URI.encode_www_form_component(device_credentials.client_secret)
+    device_headers = {
+      "Authorization" => "Basic \#{Base64.strict_encode64("\#{encoded_client_id}:\#{encoded_secret}")}"
+    }
+
+    session.post "/oauth/device_authorization",
+      params: { resource: resource_uri, scope: "mcp" },
+      headers: device_headers
+    abort "device authorization failed: \#{session.response.status} \#{session.response.body}" unless
+      session.response.status == 200
+    device_authorization = JSON.parse(session.response.body)
+
+    session.post "/activate", params: {
+      user_code: device_authorization.fetch("user_code"),
+      decision: "approve"
+    }
+    abort "device activation failed: \#{session.response.status} \#{session.response.body}" unless
+      session.response.status == 200 && session.response.body.include?("Device connected")
+
+    session.post "/oauth/token", params: {
+      grant_type: Hitch::GrantTypes::DEVICE_CODE,
+      device_code: device_authorization.fetch("device_code"),
+      resource: resource_uri
+    }, headers: device_headers
+    abort "device token exchange failed: \#{session.response.status} \#{session.response.body}" unless
+      session.response.status == 200
+    device_token_body = JSON.parse(session.response.body)
+    device_token = Hitch::AccessToken.find_by_token(device_token_body.fetch("access_token"))
+    abort "device token was not usable" unless
+      device_token&.accessible? && device_token.valid_for_resource?(resource_uri) && device_token.scope?("mcp")
+
     mcp_headers = {
-      "Authorization" => "Bearer \#{token_body.fetch('access_token')}",
+      "Authorization" => "Bearer \#{device_token_body.fetch('access_token')}",
       "Content-Type" => "application/json",
       "Accept" => "application/json, text/event-stream",
       "MCP-Protocol-Version" => "2026-07-28"
@@ -248,7 +289,8 @@ def smoke_runner(profile_name, expected_adapter)
       ruby: RUBY_VERSION,
       rails: Rails.version,
       adapter: actual_adapter,
-      artifact_version: loaded.version.to_s
+      artifact_version: loaded.version.to_s,
+      device_flow: "ok"
     )
   RUBY
 end

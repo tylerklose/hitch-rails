@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_08_23_000000) do
+ActiveRecord::Schema[8.0].define(version: 2026_08_24_000002) do
   create_table "agents", id: :string, force: :cascade do |t|
     t.string "name", null: false
     t.datetime "created_at", null: false
@@ -65,9 +65,37 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_23_000000) do
     t.datetime "client_secret_rotated_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "operator_registered", default: false, null: false
     t.index ["client_id"], name: "index_hitch_clients_on_client_id", unique: true
     t.check_constraint "(token_endpoint_auth_method = 'none' AND client_secret_digest IS NULL AND client_secret_issued_at IS NULL AND client_secret_rotated_at IS NULL) OR (token_endpoint_auth_method = 'client_secret_basic' AND client_secret_digest IS NOT NULL AND client_secret_issued_at IS NOT NULL)", name: "hitch_clients_secret_consistency_check"
+    t.check_constraint "operator_registered = FALSE OR token_endpoint_auth_method = 'client_secret_basic'", name: "hitch_clients_operator_registration_check"
     t.check_constraint "token_endpoint_auth_method IN ('none', 'client_secret_basic')", name: "hitch_clients_auth_method_check"
+  end
+
+  create_table "hitch_device_grants", force: :cascade do |t|
+    t.string "client_id", null: false
+    t.string "client_name"
+    t.string "device_code_digest"
+    t.string "user_code_digest"
+    t.string "principal_type"
+    t.string "principal_id"
+    t.string "scopes", default: "mcp", null: false
+    t.string "resource_uri", null: false
+    t.datetime "expires_at", null: false
+    t.datetime "approved_at"
+    t.datetime "denied_at"
+    t.datetime "consumed_at"
+    t.datetime "last_polled_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "token_endpoint_auth_method", null: false
+    t.index ["device_code_digest"], name: "index_hitch_device_grants_on_device_code_digest", unique: true, where: "device_code_digest IS NOT NULL"
+    t.index ["expires_at"], name: "index_hitch_device_grants_on_expires_at"
+    t.index ["user_code_digest"], name: "index_hitch_device_grants_on_user_code_digest", unique: true, where: "user_code_digest IS NOT NULL"
+    t.check_constraint "(approved_at IS NULL AND principal_type IS NULL AND principal_id IS NULL) OR (approved_at IS NOT NULL AND principal_type IS NOT NULL AND principal_id IS NOT NULL)", name: "hitch_device_grants_principal_check"
+    t.check_constraint "NOT (approved_at IS NOT NULL AND denied_at IS NOT NULL)", name: "hitch_device_grants_decision_check"
+    t.check_constraint "consumed_at IS NULL OR approved_at IS NOT NULL", name: "hitch_device_grants_consumption_check"
+    t.check_constraint "token_endpoint_auth_method IN ('none', 'client_secret_basic')", name: "hitch_device_grants_auth_method_check"
   end
 
   create_table "users", force: :cascade do |t|

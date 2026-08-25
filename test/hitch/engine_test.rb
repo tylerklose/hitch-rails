@@ -20,6 +20,8 @@ class Hitch::EngineTest < ActiveSupport::TestCase
       "access_token" => "raw_access_token",
       "authorization_code" => "raw_auth_code",
       "token" => "raw_token",
+      "device_code" => "raw_device_code",
+      "user_code" => "WDJB-MJHT",
       "client_name" => "Claude"  # control: not filtered
     )
     assert_equal "[FILTERED]", filtered["code"]
@@ -27,6 +29,8 @@ class Hitch::EngineTest < ActiveSupport::TestCase
     assert_equal "[FILTERED]", filtered["access_token"]
     assert_equal "[FILTERED]", filtered["authorization_code"]
     assert_equal "[FILTERED]", filtered["token"]
+    assert_equal "[FILTERED]", filtered["device_code"]
+    assert_equal "[FILTERED]", filtered["user_code"]
     assert_equal "Claude", filtered["client_name"]
   end
 
@@ -59,12 +63,20 @@ class Hitch::EngineTest < ActiveSupport::TestCase
       /oauth/token/
       /oauth//token
       /oauth/token//
+      /oauth/device_authorization.json
+      /oauth/device_authorization/
+      /activate.json
+      /activate/
     ].each do |path|
       guard.call(Rack::MockRequest.env_for(path, method: "POST", input: "code=secret"))
     end
     guard.call(Rack::MockRequest.env_for("/host/oauth/token", method: "POST", input: "ordinary=value"))
+    # A host's own member action named activate is not even a candidate:
+    # bare "activate" is too common a route name to probe as a suffix.
+    guard.call(Rack::MockRequest.env_for("/subscriptions/1/activate", method: "POST", input: "plan=pro"))
 
-    assert_equal Array.new(10) { {} }, captured.first(10)
+    assert_equal Array.new(14) { {} }, captured.first(14)
+    assert_nil captured[14]
     assert_nil captured.last
   end
 
@@ -274,6 +286,53 @@ class Hitch::EngineTest < ActiveSupport::TestCase
 
   private
 
+  test "production boot refuses enabled device authorization without a shared atomic store" do
+    Hitch.reset_configuration!
+    Hitch.configuration.device_authorization_enabled = true
+    production = ActiveSupport::EnvironmentInquirer.new("production")
+
+    stub_class_method(Rails, :env, -> { production }) do
+      assert_raises(ArgumentError) do
+        device_authorization_initializer.run(Rails.application)
+      end
+    end
+  ensure
+    Hitch.reset_configuration!
+  end
+
+  test "production boot accepts a shared device store, and the disabled flag skips the check" do
+    Hitch.reset_configuration!
+    Hitch.configuration.device_authorization_enabled = true
+    Hitch.configuration.device_authorization_rate_store = SharedRateStore.new
+    production = ActiveSupport::EnvironmentInquirer.new("production")
+
+    stub_class_method(Rails, :env, -> { production }) do
+      assert_nothing_raised { device_authorization_initializer.run(Rails.application) }
+    end
+
+    Hitch.reset_configuration!
+    stub_class_method(Rails, :env, -> { production }) do
+      assert_nothing_raised { device_authorization_initializer.run(Rails.application) }
+    end
+  ensure
+    Hitch.reset_configuration!
+  end
+
+  test "doctor alone may bypass the production device boot refusal so it can report it" do
+    Hitch.reset_configuration!
+    Hitch.configuration.device_authorization_enabled = true
+    production = ActiveSupport::EnvironmentInquirer.new("production")
+    original_arguments = ARGV.dup
+    ARGV.replace([ "hitch:doctor" ])
+
+    stub_class_method(Rails, :env, -> { production }) do
+      assert_nothing_raised { device_authorization_initializer.run(Rails.application) }
+    end
+  ensure
+    ARGV.replace(original_arguments) if original_arguments
+    Hitch.reset_configuration!
+  end
+
   def cimd_warning_initializer
     Hitch::Engine.initializers.find do |initializer|
       initializer.name == "hitch.warn_on_uncacheable_cimd"
@@ -283,6 +342,12 @@ class Hitch::EngineTest < ActiveSupport::TestCase
   def dynamic_registration_initializer
     Hitch::Engine.initializers.find do |initializer|
       initializer.name == "hitch.validate_dynamic_client_registration"
+    end
+  end
+
+  def device_authorization_initializer
+    Hitch::Engine.initializers.find do |initializer|
+      initializer.name == "hitch.validate_device_authorization"
     end
   end
 

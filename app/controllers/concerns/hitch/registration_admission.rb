@@ -33,8 +33,7 @@ module Hitch
     end
 
     def admit_registration_request!
-      response.headers["Cache-Control"] = "no-store"
-      response.headers["Pragma"] = "no-cache"
+      hitch_no_store!
 
       # Error rendering and host callbacks can consult `params`. Install an
       # empty body-parameter cache before either can accidentally invoke Rails'
@@ -89,15 +88,9 @@ module Hitch
     end
 
     def admit_registration_rate!
-      Hitch::DynamicRegistrationRateLimit.check!(remote_ip: request.remote_ip)
-      true
-    rescue Hitch::DynamicRegistrationRateLimit::Exceeded => error
-      response.headers["Retry-After"] = error.retry_after.to_s
-      oauth_error("temporarily_unavailable", "Registration rate limit exceeded", :too_many_requests)
-      false
-    rescue Hitch::DynamicRegistrationRateLimit::Unavailable
-      oauth_error("temporarily_unavailable", "Registration is temporarily unavailable", :service_unavailable)
-      false
+      hitch_admit_rate!("Registration") do
+        Hitch::DynamicRegistrationRateLimit.check!(remote_ip: request.remote_ip)
+      end
     end
 
     def bounded_registration_body

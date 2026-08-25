@@ -55,5 +55,35 @@ module Hitch
 
       nil
     end
+
+    private
+
+    def require_principal!
+      # Remember where the user was headed so the host's auth flow returns
+      # them here after login. Rails 8's built-in authentication reads
+      # session[:return_to_after_authenticating] in after_authentication_url;
+      # normally its own require_authentication callback sets this, but
+      # these controllers skip that callback (see above) and redirect to
+      # login_path themselves, so the return location is set here. Harmless
+      # for hosts that never read the key. Only meaningful on a GET render —
+      # a POST without a session isn't a real flow.
+      session[:return_to_after_authenticating] = return_to_after_authenticating_url if request.get?
+
+      path = Hitch.configuration.login_path
+      target = path.respond_to?(:call) ? path.call(request) : path
+
+      if target.present?
+        redirect_to target, allow_other_host: true
+      else
+        render plain: "Authentication required", status: :unauthorized
+      end
+    end
+
+    # What the host's login flow returns the visitor to. The activation
+    # screen overrides this to drop its query string: the prefill link
+    # carries a live user code, and the session store must not keep one.
+    def return_to_after_authenticating_url
+      request.url
+    end
   end
 end

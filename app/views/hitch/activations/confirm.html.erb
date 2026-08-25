@@ -1,0 +1,68 @@
+<%# Device activation: the decision (RFC 8628 §3.3 / §5.4). The code is
+   shown back so the person can confirm it matches what their device
+   displays, and the client is named only by what the server verified —
+   never by what the client called itself. %>
+
+<div class="hitch-rails-activate">
+  <h1>Approve this device?</h1>
+
+  <p class="hitch-rails-activate__code-echo">
+    Code: <code><%= @user_code %></code> — check that your device shows
+    this same code.
+  </p>
+
+  <% if @activation.unverified? %>
+    <p class="hitch-rails-activate__warning">
+      <strong>This application could not be verified right now.</strong>
+      Its identity document did not resolve, so there is nothing
+      trustworthy to show you about who is asking. Approving is disabled;
+      the code will expire on its own. If you started this device
+      yourself, ask it for a fresh code and try again later.
+    </p>
+  <% else %>
+    <p>
+      <strong><%= @activation.display_client_name %></strong>
+      <%= "— a client registered by this server's operator —" if @activation.operator_registered? %>
+      is asking for access to your <%= @brand_name %> account.
+      It will act as you.
+    </p>
+
+    <% if @activation.localhost_only_client? %>
+      <p class="hitch-rails-activate__warning">
+        <strong>This application runs on someone's own computer.</strong>
+        Approve it only if that computer is yours and you started this
+        yourself.
+      </p>
+    <% end %>
+
+    <% if @activation.scopes.present? %>
+      <div class="hitch-rails-activate__scopes">
+        <p>It will be granted the following access:</p>
+        <ul>
+          <% @activation.scopes.each do |scope| %>
+            <li><code><%= scope %></code></li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+
+    <p class="hitch-rails-activate__resource">
+      Resource: <code><%= @activation.grant.resource_uri %></code>
+    </p>
+  <% end %>
+
+  <%= form_with url: activate_path, method: :post, data: { turbo: false } do %>
+    <%= hidden_field_tag :user_code, @user_code %>
+
+    <% unless @activation.unverified? %>
+      <button type="submit" name="decision" value="approve"
+              class="hitch-rails-activate__approve">
+        Approve
+      </button>
+    <% end %>
+    <button type="submit" name="decision" value="deny"
+            class="hitch-rails-activate__deny">
+      Deny
+    </button>
+  <% end %>
+</div>

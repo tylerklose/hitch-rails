@@ -1,0 +1,36 @@
+<%# Device activation: code entry (RFC 8628 §3.3). Host apps override by
+   placing app/views/hitch/activations/new.html.erb in their own tree.
+   The host's layout wraps this template automatically.
+
+   The warning copy below is a security control, not decoration (§5.4):
+   the flow's known abuse is a stranger sending someone a code to enter.
+   Keep that meaning intact when overriding. %>
+
+<div class="hitch-rails-activate">
+  <h1>Connect a device</h1>
+
+  <% if @alert %>
+    <p class="hitch-rails-activate__alert"><%= @alert %></p>
+  <% end %>
+
+  <p>
+    A device or program you started — a coding agent, a script, a server —
+    showed you a short code and pointed you here. Enter the code to see
+    what it is asking for.
+  </p>
+
+  <p class="hitch-rails-activate__warning">
+    <strong>Only enter a code you asked a device for.</strong>
+    If someone sent you this code — in an email, a chat, a phone call —
+    stop. Entering it would give <em>their</em> device access to your
+    <%= @brand_name %> account.
+  </p>
+
+  <%= form_with url: activate_path, method: :post, data: { turbo: false } do |f| %>
+    <%= f.label :user_code, "Code" %>
+    <%= f.text_field :user_code, value: @user_code, autocomplete: "off",
+          autocapitalize: "characters", spellcheck: false,
+          class: "hitch-rails-activate__code" %>
+    <button type="submit" class="hitch-rails-activate__continue">Continue</button>
+  <% end %>
+</div>

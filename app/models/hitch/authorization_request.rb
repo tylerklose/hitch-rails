@@ -68,7 +68,11 @@ module Hitch
 
       @client =
         if ClientIdMetadata.reference?(client_id)
-          ClientIdMetadata.resolve(client_id, actor: rate_limit_actor)
+          # A principal that cannot be counted must not drive outbound
+          # fetches: the per-actor limit is the bound on amplification, so
+          # no actor means no fetch and the client reads as unknown.
+          actor = rate_limit_actor
+          actor && ClientIdMetadata.resolve(client_id, actor: actor)
         else
           Client.find_by(client_id: client_id)
         end
@@ -79,9 +83,7 @@ module Hitch
     # supports (RFC 6749 §3.3 — the AS MAY narrow). An empty intersection
     # falls back to the default scope so the token is never scopeless.
     def granted_scopes
-      supported = Array.wrap(Hitch.configuration.supported_scopes).map(&:to_s)
-      asked = params[:scope].to_s.split(/\s+/).reject(&:blank?)
-      (asked & supported).presence&.join(" ") || supported.first
+      Hitch.configuration.clamp_scopes(params[:scope])
     end
 
     # The redirect back to the validated redirect_uri, carrying `iss`
@@ -127,7 +129,7 @@ module Hitch
       declared = registered_redirect_uris
       return false if declared.blank?
 
-      declared.all? { |candidate| loopback_redirect_uri?(candidate) }
+      declared.all? { |candidate| loopback_http_uri?(candidate) }
     end
 
     private
@@ -211,34 +213,15 @@ module Hitch
       end
     end
 
-    def loopback_redirect_uri?(candidate)
-      parsed = URI.parse(candidate)
-      parsed.scheme == "http" && loopback_host?(parsed.host)
-    rescue URI::InvalidURIError
-      false
-    end
 
     # Identifies the principal driving a metadata fetch, for per-actor rate
     # limiting — the bound on amplification no DNS or URL trick changes.
-    # Class name included so two principal models cannot collide on an
-    # integer id; nil when the principal has no id, which keeps the limiter
-    # honest rather than silently unlimited.
     def rate_limit_actor
-      return nil unless principal.respond_to?(:id)
-
-      "#{principal.class.name}:#{principal.id}"
+      Hitch::RateLimitStore.actor_for(principal)
     end
 
-    # First matching entry in the configured table, with case/when
-    # semantics: String keys compare exactly, Regexp keys match.
     def friendly_client_name
-      host = redirect_host
-      return nil if host.blank?
-
-      Hitch.configuration.client_names.each do |matcher, label|
-        return label if matcher === host
-      end
-      nil
+      Hitch.configuration.client_label(redirect_host)
     end
 
     def invalid_request(description)

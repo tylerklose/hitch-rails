@@ -38,6 +38,7 @@ module Hitch
         require_allowed_hitch_host!
         return false
       end
+      return false unless admit_oauth_endpoint!
 
       raw_body = bounded_oauth_form_body
       return false if performed?
@@ -75,6 +76,15 @@ module Hitch
 
     def preserve_oauth_authenticity_token?
       false
+    end
+
+    # Hook for endpoints that exist only behind a feature flag. Refusing
+    # here answers before the body is read, so no endpoint-specific
+    # body-cap error names a disabled feature. (The shared preflight and
+    # host checks still answer for a disabled endpoint the way they do for
+    # disabled registration — full indistinguishability is not claimed.)
+    def admit_oauth_endpoint!
+      true
     end
 
     def prepare_oauth_form_response!

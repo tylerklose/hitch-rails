@@ -126,7 +126,8 @@ namespace :hitch do
         credentials = Hitch::Client.register_confidential!(
           client_id: client_id,
           client_name: ENV["NAME"],
-          redirect_uris: [ redirect_uri ]
+          redirect_uris: [ redirect_uri ],
+          operator_registered: true
         )
         "client_id=#{credentials.client.client_id}\nclient_secret=#{credentials.client_secret}\n"
       end
@@ -139,6 +140,12 @@ namespace :hitch do
       Hitch::ClientCredentialTask.disclose do
         client = Hitch::Client.find_by(client_id: client_id)
         abort "Confidential client not found" unless client&.confidential_client?
+
+        unless client.operator_registered?
+          client_name = ENV["NAME"].presence ||
+            abort("NAME is required when vouching for a client for device authorization")
+          client.update!(client_name: client_name, operator_registered: true)
+        end
 
         credentials = client.rotate_secret!
         "client_id=#{credentials.client.client_id}\nclient_secret=#{credentials.client_secret}\n"

@@ -184,6 +184,7 @@ config.mcp.max_request_bytes = 1.megabyte
 config.mcp.max_result_bytes = 1.megabyte
 config.principal_method = :current_user  # method on controllers
 config.login_path = "/session/new"       # where to redirect when unauth'd
+config.device_authorization_enabled = false  # RFC 8628; see Device authorization
 ```
 
 The generated route and controller:
@@ -303,6 +304,9 @@ The OAuth flow needs a browser: a human signs in and presses Approve. An agent
 running from cron or `claude -p` has neither, so issue it a token from the
 console instead. The operator there is both the resource owner and the client,
 so there is no third party for a consent screen to protect anyone from.
+(When nobody has SSH open, the device flow — see Device authorization,
+below — gets the same agent a token with a tap on a phone instead of a
+console command.)
 
 ```sh
 bin/rails hitch:tokens:issue PRINCIPAL=User:1 OUTPUT_FILE=agent.token
@@ -475,6 +479,96 @@ is a narrow race for an attacker who must also already hold the token. Set it
 to `0` for strict one-time-use, and note that Ory Hydra — whose graceful
 rotation this follows — defaults the equivalent window off rather than on.
 
+## Device authorization
+
+The flow your TV uses, for agents with no browser (RFC 8628). **Off by
+default**:
+
+```ruby
+config.device_authorization_enabled = true
+```
+
+Who may ask is deliberately narrow: a device grant needs a client somebody
+real vouches for. Either the internet vouches — a CIMD client like Claude,
+whose `client_id` URL serves its own metadata document — or you do, with a
+client badged once at your console:
+
+```sh
+bin/rails hitch:clients:create_confidential CLIENT_ID=nightly-reporter \
+  NAME="Nightly Reporter" REDIRECT_URI=https://agent.example/callback
+```
+
+A client that only ever vouched for itself through open registration is
+refused at the endpoint, even if DCR issued it a secret: client authentication
+proves continuity, not operator endorsement. That anonymous registration is
+exactly the shape the §5.4 phishing scam mints from.
+
+The grant remembers how the client authenticated when it was minted. An
+operator-registered client must present `client_secret_basic` again when it
+polls, and `/activate` trusts only the matching voucher. Deleting,
+reclassifying, or concurrently registering that client cannot turn the grant
+into a different kind of client.
+
+The agent asks for access and relays what it gets back to its human:
+
+```sh
+curl -s https://your-app.example.com/oauth/device_authorization \
+  -u "$CLIENT_ID:$CLIENT_SECRET" \
+  -d resource=https://your-app.example.com/mcp
+# => { "user_code": "WDJB-MJHT",
+#      "verification_uri": "https://your-app.example.com/activate", ... }
+```
+
+The human opens `/activate` on any device — the link in
+`verification_uri_complete` arrives with the code pre-filled — signs in the
+way your app always signs them in, sees who is asking, and taps Approve.
+The agent, polling `POST /oauth/token` with
+`grant_type=urn:ietf:params:oauth:grant-type:device_code` at the returned
+`interval`, receives an ordinary token: revocable, audience-bound, refresh
+token included while that feature is on. Until then it hears
+`authorization_pending`, or `slow_down` when it polls too eagerly; a deny is
+a hard `access_denied`. Once `expires_in` has elapsed, approved and pending
+device codes both answer `expired_token` and cannot mint a token.
+
+No SSH, no secret pasted into a chat, no browser on the machine that needs
+the token. The human is still the root of trust — they just tap instead of
+running a rake task.
+
+What makes short codes safe to type is stated plainly, because two of these
+are yours to operate:
+
+- **Entropy plus counting.** Codes are 8 characters of Crockford base32
+  (~40 bits, no I/L/O/U; typing `o` for `0` still works), live ten minutes,
+  and every verification attempt is counted per signed-in principal —
+  behind your app's own sign-in. Minting is counted per IP. Both quotas
+  **fail closed**: in production an uncountable store refuses the request,
+  and the boot refuses a store that cannot count across processes
+  (`config.device_authorization_rate_store`, defaulting to your cache
+  store — same rule as everything else here).
+- **The words on the page.** The flow's known abuse (RFC 8628 §5.4) is a
+  stranger sending someone a code to approve — every technical control
+  passes, because the grant is genuine. What stands between that email and
+  a token: the vouching rule above means an anonymous attacker cannot mint
+  an approvable grant at all, the `/activate` page says *only enter a code
+  you asked a device for*, and the screen displays only the voucher's word
+  — a metadata client is branded by its own document host, an operator
+  client by the name you chose at the console (labeled as yours). A
+  self-declared name, or a redirect host nothing is ever delivered to in
+  this flow, never displays. If you override these views, keep these
+  meanings intact.
+
+One caveat on the path: the engine is mounted at your root, and a host
+route named `/activate` declared before the mount silently wins. If your
+app already has one, rename one of them before enabling this.
+
+Tunables, with their defaults: `device_code_lifetime_seconds` (600),
+`device_authorization_interval_seconds` (5), `device_authorization_limit`
+(20 mints per IP per minute), `device_code_verification_limit` (10 attempts
+per principal per minute). Design decisions — the alphabet, the fixed
+server-side interval, the deliberate absence of client-metadata fetches at
+the mint endpoint — are recorded in
+[ADR 0006](docs/adr/0006-device-authorization-grant.md).
+
 ## Operator diagnosis
 
 ```sh
@@ -553,9 +647,16 @@ the provided method with whatever job framework you use:
 class CleanupMCPTokensJob < ApplicationJob
   def perform
     Hitch::AccessToken.cleanup_expired!(revoked_retention_days: 30)
+    Hitch::DeviceGrant.cleanup_expired!
   end
 end
 ```
+
+Device grants are simpler: the tokens they issue carry the audit trail, so
+rows go a day past expiry. The day is deliberate — it keeps the answer a
+slow-polling device hears (`expired_token`, or `access_denied` after a
+deny) honest regardless of when this job runs — so expect roughly a day's
+worth of mint volume in `hitch_device_grants`, not ten minutes' worth.
 
 Idempotent; active tokens are never touched. Two things also survive the
 retention window: a row still holding a usable refresh token, however long
@@ -585,6 +686,11 @@ to labels, checked in order. The default table labels the common MCP
 clients; extend it with
 `config.client_names = Hitch::Configuration::DEFAULT_CLIENT_NAMES.merge("tool.example" => "My Tool")`.
 
+The device-flow screens override the same way:
+`app/views/hitch/activations/{new,confirm,done}.html.erb`. Their warning
+copy is part of the RFC 8628 §5.4 phishing boundary — reword it in your
+product's voice, but keep its meaning (see Device authorization, above).
+
 ## Adopter security requirements
 
 This gem is an OAuth **authorization server** — configure the host correctly
@@ -610,8 +716,8 @@ or undermine its guarantees:
 ## Status
 
 0.2.0 is the first public release. The public API may change before v1.0.0.
-The exact public surface is documented in
-[`docs/public_api/0.2.0.md`](docs/public_api/0.2.0.md); removal is covered in
+The exact 0.2 public surface is documented in
+[`docs/public_api/0.2.0.md`](https://github.com/tylerklose/hitch-rails/blob/v0.2.0/docs/public_api/0.2.0.md); removal is covered in
 [`docs/removing.md`](docs/removing.md).
 
 ## Contributing

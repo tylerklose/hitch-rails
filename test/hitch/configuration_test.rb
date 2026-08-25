@@ -230,4 +230,28 @@ class Hitch::ConfigurationTest < ActiveSupport::TestCase
       Hitch.configuration.dynamic_client_registration_limit = { to: 5, within: 1.5 }
     end
   end
+
+  test "device authorization defaults off with validated knobs" do
+    configuration = Hitch.configuration
+
+    refute configuration.device_authorization_enabled
+    assert_equal 600, configuration.device_code_lifetime_seconds
+    assert_equal 5, configuration.device_authorization_interval_seconds
+    assert_equal({ to: 20, within: 60 }, configuration.device_authorization_limit)
+    assert_equal({ to: 10, within: 60 }, configuration.device_code_verification_limit)
+
+    assert_raises(ArgumentError) { configuration.device_authorization_enabled = "yes" }
+    assert_raises(ArgumentError) { configuration.device_code_lifetime_seconds = 0 }
+    assert_raises(ArgumentError) { configuration.device_authorization_interval_seconds = 0 }
+    assert_raises(ArgumentError) { configuration.device_authorization_limit = { to: 0, within: 60 } }
+    assert_raises(ArgumentError) { configuration.device_code_verification_limit = { to: 5 } }
+    assert_raises(ArgumentError) { configuration.device_authorization_rate_store = Object.new }
+  end
+
+  test "the device grant type is supported only while enabled" do
+    refute_includes Hitch::GrantTypes.supported, Hitch::GrantTypes::DEVICE_CODE
+
+    Hitch.configuration.device_authorization_enabled = true
+    assert_includes Hitch::GrantTypes.supported, Hitch::GrantTypes::DEVICE_CODE
+  end
 end

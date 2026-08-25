@@ -346,8 +346,13 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     production = ActiveSupport::EnvironmentInquirer.new("production")
 
     stub_class_method(Rails, :env, -> { production }) do
-      error = assert_raises(ArgumentError) { system.validate_configuration! }
-      assert_includes error.message, "cannot count one caller's"
+      report = Doctor.call(system:)
+      check = report.checks.find { |candidate| candidate.id == "configuration" }
+
+      assert_equal [ "fail", "dynamic_client_registration_rate_store_invalid" ], [ check.status, check.code ]
+      assert_equal "config.dynamic_client_registration_rate_store", check.details.fetch("setting")
+      assert_includes Doctor.render(report, format: "human"),
+        Doctor::REMEDIES.fetch("dynamic_client_registration_rate_store_invalid")
     end
   ensure
     Hitch.reset_configuration!
@@ -368,10 +373,37 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     production = ActiveSupport::EnvironmentInquirer.new("production")
 
     stub_class_method(Rails, :env, -> { production }) do
-      error = assert_raises(Hitch::DynamicRegistrationRateLimit::Unavailable) do
+      error = assert_raises(Doctor::ConfigurationStoreError) do
         system.validate_configuration!
       end
-      assert_includes error.message, "cannot count registration attempts"
+      assert_equal "config.dynamic_client_registration_rate_store", error.setting
+      assert_instance_of Hitch::DynamicRegistrationRateLimit::Unavailable, error.cause
+      assert_includes error.cause.message, "dynamic_client_registration_rate_store cannot count"
+    end
+  ensure
+    Hitch.reset_configuration!
+  end
+
+  test "a production feature store must advance the same key from one to two" do
+    system = Doctor.const_get(:System, false).new
+    Hitch.reset_configuration!
+    constant_store = Class.new(ActiveSupport::Cache::Store) do
+      def increment(_name, _amount = 1, **) = 1
+      def delete(_name, _options = nil) = true
+    end.new
+    Hitch.configure do |configuration|
+      configuration.resource_uri = "https://doctor.example/mcp"
+      configuration.dynamic_client_registration_enabled = true
+      configuration.dynamic_client_registration_rate_store = constant_store
+    end
+    production = ActiveSupport::EnvironmentInquirer.new("production")
+
+    stub_class_method(Rails, :env, -> { production }) do
+      error = assert_raises(Doctor::ConfigurationStoreError) do
+        system.validate_configuration!
+      end
+      assert_equal "config.dynamic_client_registration_rate_store", error.setting
+      assert_instance_of Hitch::RateLimitStore::Unavailable, error.cause
     end
   ensure
     Hitch.reset_configuration!
@@ -390,10 +422,45 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     production = ActiveSupport::EnvironmentInquirer.new("production")
 
     stub_class_method(Rails, :env, -> { production }) do
-      error = assert_raises(Hitch::DynamicRegistrationRateLimit::Unavailable) do
+      error = assert_raises(Doctor::ConfigurationStoreError) do
         system.validate_configuration!
       end
-      assert_includes error.message, "cannot count registration attempts"
+      assert_equal "config.dynamic_client_registration_rate_store", error.setting
+      assert_instance_of Hitch::DynamicRegistrationRateLimit::Unavailable, error.cause
+      assert_includes error.cause.message, "dynamic_client_registration_rate_store cannot count"
+    end
+  ensure
+    Hitch.reset_configuration!
+  end
+
+  test "real configuration probe drives an explicit production device store, not just its class" do
+    system = Doctor.const_get(:System, false).new
+    Hitch.reset_configuration!
+    outage_store = Class.new(ActiveSupport::Cache::Store) do
+      def increment(_name, _amount = 1, **) = nil
+      def delete(_name, _options = nil) = true
+    end.new
+    Hitch.configure do |configuration|
+      configuration.resource_uri = "https://doctor.example/mcp"
+      # Isolated, so a failure names the device store rather than whichever
+      # check ran first.
+      configuration.dynamic_client_registration_enabled = false
+      configuration.device_authorization_enabled = true
+      configuration.device_authorization_rate_store = outage_store
+    end
+    production = ActiveSupport::EnvironmentInquirer.new("production")
+
+    stub_class_method(Rails, :env, -> { production }) do
+      assert Hitch.configuration.validate!
+
+      report = Doctor.call(system:)
+      check = report.checks.find { |candidate| candidate.id == "configuration" }
+      human = Doctor.render(report, format: "human")
+
+      assert_equal [ "fail", "device_authorization_rate_store_invalid" ], [ check.status, check.code ]
+      assert_equal "config.device_authorization_rate_store", check.details.fetch("setting")
+      assert_includes human, Doctor::REMEDIES.fetch("device_authorization_rate_store_invalid")
+      refute_includes human, "Hitch.configuration.validate!"
     end
   ensure
     Hitch.reset_configuration!

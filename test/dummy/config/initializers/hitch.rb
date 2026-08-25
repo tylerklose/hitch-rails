@@ -35,6 +35,31 @@ Hitch.configure do |config|
   config.mcp.max_result_bytes = 1_024
 end
 
+# A real production hitch:doctor subprocess drives each feature-specific
+# store. This one looks shared to the class-level posture check but lies about
+# the second increment, proving Doctor exercises the counting contract itself.
+if (doctor_probe = ENV["HITCH_DOCTOR_STORE_PROBE"])
+  Hitch.const_set(:DoctorProbeStore, Class.new(ActiveSupport::Cache::Store) do
+    def initialize(secret)
+      super()
+      @secret = secret
+    end
+
+    def increment(_name, _amount = 1, **) = 1
+    def delete(_name, _options = nil) = true
+    def inspect = @secret
+  end)
+  doctor_store = Hitch::DoctorProbeStore.new(ENV.fetch("HITCH_DOCTOR_STORE_SECRET"))
+
+  Hitch.configure do |config|
+    config.mcp.enabled = false
+    config.dynamic_client_registration_enabled = doctor_probe == "dcr"
+    config.device_authorization_enabled = doctor_probe == "device"
+    config.dynamic_client_registration_rate_store = doctor_store if doctor_probe == "dcr"
+    config.device_authorization_rate_store = doctor_store if doctor_probe == "device"
+  end
+end
+
 # Boot probe for the production-only rate-limit-store checks. Every other test
 # in this suite configures mcp.rate_limit_store explicitly, above — so the fall
 # back to the application's own cache store, which is what every adopter gets

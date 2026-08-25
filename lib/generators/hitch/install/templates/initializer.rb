@@ -49,4 +49,12 @@ Hitch.configure do |config|
   # wrong; set it if you want a stolen refresh token whose real client never
   # returns to expire on a clock rather than waiting for a revocation.
   # config.refresh_token_family_lifetime_seconds = 90 * 86_400
+
+  # The device flow (RFC 8628): a headless agent shows its human a short
+  # code, the human signs in at /activate and approves, and the polling
+  # agent receives its token. Off by default, like registration. Before
+  # enabling in production, confirm your cache store counts across
+  # processes — the short codes are only safe because guesses are counted,
+  # so both device quotas fail closed.
+  # config.device_authorization_enabled = true
 end

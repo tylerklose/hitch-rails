@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "pathname"
 
 # Gem-self-diagnosis, relocated here from the operator-facing doctor: whether
 # the packaged file set is complete and leak-free is this repository's CI
@@ -13,6 +14,7 @@ class Hitch::PackageIntegrityTest < ActiveSupport::TestCase
     app/models/hitch/mcp/registry.rb
     app/models/hitch/mcp/rate_limit_key.rb
     app/models/hitch/mcp/tool.rb
+    docs/adr/0006-device-authorization-grant.md
     docs/operator/doctor.md
     docs/operator/rate_limiting.md
     docs/removing.md
@@ -55,5 +57,21 @@ class Hitch::PackageIntegrityTest < ActiveSupport::TestCase
 
   test "every packaged file exists on disk" do
     assert_empty SPECIFICATION.files.reject { |path| File.file?(ROOT.join(path)) }
+  end
+
+  test "relative links in packaged Markdown resolve inside the package" do
+    broken = SPECIFICATION.files.grep(/\.md\z/).flat_map do |source|
+      File.read(ROOT.join(source)).scan(/\]\(([^)]+)\)/).flatten.filter_map do |target|
+        target = target.split(/\s+/, 2).first.to_s.delete_prefix("<").delete_suffix(">")
+        next if target.empty? || target.start_with?("#") || target.match?(/\A[a-z][a-z0-9+.-]*:/i)
+
+        path = target.split("#", 2).first
+        resolved = Pathname.new(File.expand_path(path, ROOT.join(source).dirname))
+          .relative_path_from(ROOT).to_s
+        "#{source} -> #{resolved}" unless SPECIFICATION.files.include?(resolved)
+      end
+    end
+
+    assert_empty broken
   end
 end

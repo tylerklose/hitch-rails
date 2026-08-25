@@ -8,11 +8,20 @@ Hitch::Engine.routes.draw do
   post "oauth/register",  to: "registrations#create", as: :oauth_register
   post "oauth/revoke",    to: "revocations#create",   as: :oauth_revoke
 
+  # Device authorization (RFC 8628): the machine leg mints a code pair, the
+  # person leg approves it. /activate is deliberately short — a human types
+  # it from a screen (§3.3.1). A host route declared before the engine's
+  # mount shadows it; the README says so where /activate is documented.
+  post "oauth/device_authorization", to: "device_authorizations#create", as: :oauth_device_authorization
+  get  "activate", to: "activations#new",    as: :activate
+  post "activate", to: "activations#create"
+
   # Route only real engine endpoints to the dedicated preflight validator.
   match "oauth/authorize", to: "preflights#show", via: :options, defaults: { target_methods: "GET,POST" }
   match "oauth/token",     to: "preflights#show", via: :options, defaults: { target_methods: "POST" }
   match "oauth/register",  to: "preflights#show", via: :options, defaults: { target_methods: "POST" }
   match "oauth/revoke",    to: "preflights#show", via: :options, defaults: { target_methods: "POST" }
+  match "oauth/device_authorization", to: "preflights#show", via: :options, defaults: { target_methods: "POST" }
 
   # Discovery (RFC 8414 + RFC 9728)
   get ".well-known/oauth-authorization-server", to: "metadata#show",     as: :oauth_authorization_server_metadata

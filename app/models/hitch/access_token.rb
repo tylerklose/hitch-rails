@@ -122,19 +122,9 @@ module Hitch
     # agent or a cron job that cannot complete a consent redirect. The
     # operator at a console with database access is both the resource owner
     # and the client, so there is no third party for a consent screen to
-    # protect anyone from.
-    #
-    # Runs the real authorization-code exchange rather than writing a row
-    # directly: the PKCE pair is generated and spent here, so the row that
-    # lands is indistinguishable from a browser-issued one and the same code
-    # path is proven by every other test in the suite. The token is returned
-    # once and only its digest is stored, exactly as in the OAuth flow.
+    # protect anyone from. The token is returned once and only its digest is
+    # stored, exactly as in the OAuth flow.
     def self.issue!(principal:, client_id:, client_name: nil, scopes: nil, expires_in: nil)
-      unless client_id.is_a?(String) && !client_id.empty?
-        # The endpoint refuses a token with a blank client_id, so issuing one
-        # would hand back a credential that can never work.
-        raise ArgumentError, "client_id must be a nonempty String"
-      end
       # uniq like the browser flow's `asked & supported`, which cannot repeat
       # a scope past the persisted scope-set boundary.
       granted = Array(scopes).map(&:to_s).uniq.presence || [ Hitch.configuration.supported_scopes.first ]
@@ -153,20 +143,52 @@ module Hitch
           "expires_in must be a positive number of seconds, at most #{MAX_LIFETIME_SECONDS}"
       end
 
-      resource_uri = Hitch.configuration.resource_uri
-      verifier = SecureRandom.urlsafe_base64(64)
       # requires_new, not a plain transaction: a bare `transaction` JOINS a
       # caller's open one, so a host calling issue! inside its own
       # transaction and rescuing kept the very row this exists to roll back.
       transaction(requires_new: true) do
-        record = create_authorization!(
+        record, result = mint_through_exchange!(
           principal: principal,
           client_id: client_id,
           client_name: client_name.presence || client_id,
+          resource_uri: Hitch.configuration.resource_uri,
+          scopes: granted.join(" ")
+        )
+        # The exchange dates every token by the configured lifetime, which is
+        # sized for a browser session. A headless agent asks for its own.
+        record.reload.update!(expires_at: seconds.seconds.from_now) if seconds
+
+        result.fetch(:raw_token)
+      end
+    end
+
+    # The one non-browser token-mint path, shared by issue! and the device
+    # grant's consumption: generate and spend a synthetic PKCE pair through
+    # the real authorization-code exchange, so the row that lands is
+    # indistinguishable from a browser-issued one and the same code path is
+    # proven by every other test in the suite. Atomic on its own — a
+    # savepoint under any caller's transaction — so no half-minted row can
+    # outlive a failed exchange whoever calls it.
+    #
+    # Public so DeviceGrant can call its real seam, not part of the public
+    # API (docs/public_api is the contract) — hosts mint through issue!.
+    def self.mint_through_exchange!(principal:, client_id:, client_name:, resource_uri:, scopes:)
+      unless client_id.is_a?(String) && !client_id.empty?
+        # The endpoint refuses a token with a blank client_id, so issuing one
+        # would hand back a credential that can never work.
+        raise ArgumentError, "client_id must be a nonempty String"
+      end
+
+      verifier = SecureRandom.urlsafe_base64(64)
+      transaction(requires_new: true) do
+        record = create_authorization!(
+          principal: principal,
+          client_id: client_id,
+          client_name: client_name,
           code_challenge: Base64.urlsafe_encode64(Digest::SHA256.digest(verifier), padding: false),
           code_challenge_method: "S256",
           resource_uri: resource_uri,
-          scopes: granted.join(" ")
+          scopes: scopes
         )
         result = exchange_authorization_code!(
           raw_code: record.raw_authorization_code,
@@ -176,11 +198,7 @@ module Hitch
         )
         raise "Hitch could not issue an access token" if result.nil?
 
-        # The exchange dates every token by the configured lifetime, which is
-        # sized for a browser session. A headless agent asks for its own.
-        record.reload.update!(expires_at: seconds.seconds.from_now) if seconds
-
-        result.fetch(:raw_token)
+        [ record, result ]
       end
     end
 

@@ -7,9 +7,13 @@ require "uri"
 
 ROOT = File.expand_path("..", __dir__)
 APPRAISAL = File.join(ROOT, "bin/ci-appraisal")
+PROBE = File.join(ROOT, "test/support/device_grant_migration_probe.rb")
 TEST_FILES = %w[
   test/hitch/client_redirect_uri_test.rb
+  test/hitch/client_test.rb
+  test/hitch/device_grant_test.rb
   test/integration/concurrent_code_exchange_test.rb
+  test/integration/concurrent_device_grant_test.rb
 ].freeze
 
 missing_tests = TEST_FILES.reject { |path| File.file?(File.join(ROOT, path)) }
@@ -26,18 +30,56 @@ def run!(environment, *command)
   raise "command failed: #{command.join(' ')}"
 end
 
-def appraisal!(profile, database_url, schema_path, *command)
+def appraisal!(profile, database_url, schema_path, *command, environment: {})
   run!(
     {
       "DATABASE_URL" => database_url,
       "RAILS_ENV" => "test",
-      "SCHEMA" => schema_path
-    },
+      "SCHEMA" => schema_path,
+      # The migration lane owns this disposable database. Tests must run on
+      # the upgraded and round-tripped database, not ci-appraisal's usual
+      # fresh test database.
+      "HITCH_APPRAISAL_REUSE_DATABASE" => "1"
+    }.merge(environment),
     APPRAISAL,
     profile,
     "--",
     *command
   )
+end
+
+def verify_migrations!(profile, database_url, schema_path)
+  rails = File.join(ROOT, "bin/rails")
+  appraisal!(profile, database_url, schema_path, rails, "db:create")
+  appraisal!(profile, database_url, schema_path, rails, "db:migrate", "VERSION=20260824000000")
+  appraisal!(
+    profile,
+    database_url,
+    schema_path,
+    rails,
+    "runner",
+    PROBE,
+    environment: { "HITCH_MIGRATION_PROBE" => "seed" }
+  )
+  appraisal!(profile, database_url, schema_path, rails, "db:migrate")
+  appraisal!(
+    profile,
+    database_url,
+    schema_path,
+    rails,
+    "runner",
+    PROBE,
+    environment: { "HITCH_MIGRATION_PROBE" => "verify" }
+  )
+
+  appraisal!(profile, database_url, schema_path, rails, "db:schema:dump")
+  first_schema = File.binread(schema_path)
+  appraisal!(profile, database_url, schema_path, rails, "db:rollback", "STEP=2")
+  appraisal!(profile, database_url, schema_path, rails, "db:migrate")
+  appraisal!(profile, database_url, schema_path, rails, "db:schema:dump")
+  raise "migration round trip changed #{profile} schema" unless File.binread(schema_path) == first_schema
+
+  appraisal!(profile, database_url, schema_path, rails, "test", *TEST_FILES)
 end
 
 def postgresql_database_url(database_name)
@@ -56,20 +98,7 @@ Dir.mktmpdir("hitch-ci-migrations-") do |directory|
   sqlite_url = "sqlite3:#{sqlite_path}"
   sqlite_schema_path = File.join(directory, "sqlite_schema.rb")
 
-  appraisal!("rails_8_0_sqlite", sqlite_url, sqlite_schema_path, File.join(ROOT, "bin/rails"), "db:create")
-  appraisal!("rails_8_0_sqlite", sqlite_url, sqlite_schema_path, File.join(ROOT, "bin/rails"), "db:migrate")
-  # Drive the down path and prove the round trip: the single migration must
-  # reverse cleanly and reapply to an identical schema.
-  appraisal!("rails_8_0_sqlite", sqlite_url, sqlite_schema_path, File.join(ROOT, "bin/rails"), "db:rollback", "STEP=1")
-  appraisal!("rails_8_0_sqlite", sqlite_url, sqlite_schema_path, File.join(ROOT, "bin/rails"), "db:migrate")
-  appraisal!(
-    "rails_8_0_sqlite",
-    sqlite_url,
-    sqlite_schema_path,
-    File.join(ROOT, "bin/rails"),
-    "test",
-    *TEST_FILES
-  )
+  verify_migrations!("rails_8_0_sqlite", sqlite_url, sqlite_schema_path)
 
   postgresql_name = "hitch_migrations_#{Process.pid}_#{SecureRandom.hex(6)}_test"
   postgresql_url = postgresql_database_url(postgresql_name)
@@ -77,44 +106,10 @@ Dir.mktmpdir("hitch-ci-migrations-") do |directory|
   postgresql_created = false
 
   begin
-    appraisal!(
-      "rails_8_1_postgresql",
-      postgresql_url,
-      postgresql_schema_path,
-      File.join(ROOT, "bin/rails"),
-      "db:create"
-    )
+    # Mark cleanup necessary before creation: even a later migration failure
+    # must not strand the disposable PostgreSQL database.
     postgresql_created = true
-    appraisal!(
-      "rails_8_1_postgresql",
-      postgresql_url,
-      postgresql_schema_path,
-      File.join(ROOT, "bin/rails"),
-      "db:migrate"
-    )
-    appraisal!(
-      "rails_8_1_postgresql",
-      postgresql_url,
-      postgresql_schema_path,
-      File.join(ROOT, "bin/rails"),
-      "db:rollback",
-      "STEP=1"
-    )
-    appraisal!(
-      "rails_8_1_postgresql",
-      postgresql_url,
-      postgresql_schema_path,
-      File.join(ROOT, "bin/rails"),
-      "db:migrate"
-    )
-    appraisal!(
-      "rails_8_1_postgresql",
-      postgresql_url,
-      postgresql_schema_path,
-      File.join(ROOT, "bin/rails"),
-      "test",
-      *TEST_FILES
-    )
+    verify_migrations!("rails_8_1_postgresql", postgresql_url, postgresql_schema_path)
   ensure
     if postgresql_created
       primary_failure = $!

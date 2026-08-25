@@ -5,6 +5,8 @@ required_domains:
   - tool_redaction
   - observation_correlation
   - json_copy
+  - device_grant
+  - device_activation
 subjects:
   - domain: endpoint_gate
     expression: Hitch::MCP::Endpoint#hitch_mcp_gate!
@@ -16,3 +18,7 @@ subjects:
     expression: Hitch::MCP::Internal::Observation.correlation_id
   - domain: json_copy
     expression: Hitch::MCP::Internal::JsonValues::Copier
+  - domain: device_grant
+    expression: Hitch::DeviceGrant.exchange_device_code!
+  - domain: device_activation
+    expression: Hitch::DeviceActivation#unverified?

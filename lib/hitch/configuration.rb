@@ -242,6 +242,60 @@ module Hitch
       )
     end
 
+    # Accept RFC 8628 device authorization: POST /oauth/device_authorization
+    # mints user codes, /activate lets a signed-in person approve them, and
+    # the token endpoint accepts grant_type
+    # urn:ietf:params:oauth:grant-type:device_code. Default false — the
+    # deny-default stance; refresh tokens remain this file's one exception.
+    # @return [Boolean]
+    attr_reader :device_authorization_enabled
+
+    # How long a minted device grant waits for its human, in seconds.
+    # Default 600 (10 minutes). Returned as expires_in (RFC 8628 §3.2).
+    # @return [Integer]
+    attr_reader :device_code_lifetime_seconds
+
+    # Minimum seconds between polls of one device grant. Default 5 — the
+    # value RFC 8628 §3.2 has clients assume when a response omits
+    # interval. Polling faster answers slow_down (§3.5).
+    # @return [Integer]
+    attr_reader :device_authorization_interval_seconds
+
+    # Fixed-window quota for device-code mints, per IP. Minting is an
+    # unauthenticated database write, so this follows the registration
+    # quota's shape and posture.
+    # @return [Hash{Symbol => Integer}]
+    attr_reader :device_authorization_limit
+
+    # Fixed-window quota for user-code verification attempts, per
+    # signed-in principal. The user code is short enough to type, so this
+    # ceiling is a term in the brute-force math (RFC 8628 §5.1), not
+    # politeness — an uncountable store refuses attempts in production.
+    # @return [Hash{Symbol => Integer}]
+    attr_reader :device_code_verification_limit
+
+    # Any ActiveSupport::Cache store responding to increment, counting both
+    # device quotas. Nil counts through
+    # config.action_controller.cache_store, like every other Rails rate
+    # limit.
+    # @return [ActiveSupport::Cache::Store, nil]
+    def device_authorization_rate_store
+      Hitch::RateLimitStore.resolve(@device_authorization_rate_store)
+    end
+
+    def validate_device_authorization_rate_store!
+      Hitch::RateLimitStore.assert_shared_at_boot!(
+        @device_authorization_rate_store,
+        setting: Hitch::DeviceAuthorizationRateLimit::SETTING
+      )
+    end
+
+    def device_authorization_rate_store=(value)
+      @device_authorization_rate_store = Hitch::RateLimitStore.validate!(
+        value, setting: "config.device_authorization_rate_store"
+      )
+    end
+
     # MCP transport and tool configuration. This remains a separate value so
     # the OAuth surface and MCP runtime can validate their own settings without
     # introducing a second top-level configuration authority.
@@ -271,6 +325,12 @@ module Hitch
       @dynamic_client_registration_enabled_configured = false
       @dynamic_client_registration_limit = { to: 20, within: 60 }.freeze
       @dynamic_client_registration_rate_store = nil
+      @device_authorization_enabled = false
+      @device_code_lifetime_seconds = 600
+      @device_authorization_interval_seconds = 5
+      @device_authorization_limit = { to: 20, within: 60 }.freeze
+      @device_code_verification_limit = { to: 10, within: 60 }.freeze
+      @device_authorization_rate_store = nil
       @mcp = Hitch::MCP::Configuration.new
     end
 
@@ -338,6 +398,29 @@ module Hitch
       @supported_scopes = scopes.freeze
     end
 
+    # First matching label for a VERIFIED host, or nil, with case/when
+    # semantics: String keys compare exactly, Regexp keys match. Both
+    # consent surfaces display clients through this table rather than
+    # their self-declared names.
+    def client_label(host)
+      return nil if host.blank?
+
+      client_names.each do |matcher, label|
+        return label if matcher === host
+      end
+      nil
+    end
+
+    # RFC 6749 §3.3: grant the intersection of what was asked and what
+    # this host supports; asking for nothing grants the base scope. Every
+    # consent surface clamps through here once, at issuance — what lands
+    # on a grant is honored verbatim ever after.
+    def clamp_scopes(requested)
+      supported = Array.wrap(supported_scopes).map(&:to_s)
+      asked = requested.to_s.split(/\s+/).reject(&:blank?)
+      (asked & supported).presence&.join(" ") || supported.first
+    end
+
     def dynamic_client_registration_enabled=(value)
       unless value == true || value == false
         raise ArgumentError, "dynamic_client_registration_enabled must be true or false"
@@ -394,21 +477,36 @@ module Hitch
     end
 
     def dynamic_client_registration_limit=(value)
-      unless value.respond_to?(:to_h)
-        raise ArgumentError, "dynamic_client_registration_limit must contain :to and :within"
+      @dynamic_client_registration_limit =
+        fixed_window_limit_setting(value, "dynamic_client_registration_limit")
+    end
+
+    def device_authorization_enabled=(value)
+      unless value == true || value == false
+        raise ArgumentError, "device_authorization_enabled must be true or false"
       end
 
-      limit = value.to_h.transform_keys(&:to_sym)
-      unless limit.keys.sort == %i[to within]
-        raise ArgumentError, "dynamic_client_registration_limit must contain only :to and :within"
-      end
+      @device_authorization_enabled = value
+    end
 
-      to = integer_setting(limit[:to], "dynamic_client_registration_limit[:to]")
-      within = integer_setting(limit[:within], "dynamic_client_registration_limit[:within]")
-      raise ArgumentError, "dynamic_client_registration_limit[:to] must be positive" unless to.positive?
-      raise ArgumentError, "dynamic_client_registration_limit[:within] must be positive" unless within.positive?
+    def device_code_lifetime_seconds=(value)
+      @device_code_lifetime_seconds =
+        positive_lifetime_setting(value, "device_code_lifetime_seconds")
+    end
 
-      @dynamic_client_registration_limit = { to: to, within: within }.freeze
+    def device_authorization_interval_seconds=(value)
+      @device_authorization_interval_seconds =
+        positive_integer_setting(value, "device_authorization_interval_seconds")
+    end
+
+    def device_authorization_limit=(value)
+      @device_authorization_limit =
+        fixed_window_limit_setting(value, "device_authorization_limit")
+    end
+
+    def device_code_verification_limit=(value)
+      @device_code_verification_limit =
+        fixed_window_limit_setting(value, "device_code_verification_limit")
     end
 
     private
@@ -469,6 +567,29 @@ module Hitch
       origin == Hitch::ResourceUri.origin(canonical)
     rescue URI::InvalidURIError
       false
+    end
+
+    def fixed_window_limit_setting(value, name)
+      unless value.respond_to?(:to_h)
+        raise ArgumentError, "#{name} must contain :to and :within"
+      end
+
+      limit = value.to_h.transform_keys(&:to_sym)
+      unless limit.keys.sort == %i[to within]
+        raise ArgumentError, "#{name} must contain only :to and :within"
+      end
+
+      {
+        to: positive_integer_setting(limit[:to], "#{name}[:to]"),
+        within: positive_integer_setting(limit[:within], "#{name}[:within]")
+      }.freeze
+    end
+
+    def positive_integer_setting(value, name)
+      integer = integer_setting(value, name)
+      raise ArgumentError, "#{name} must be positive" unless integer.positive?
+
+      integer
     end
 
     # A lifetime past AccessToken::MAX_LIFETIME_SECONDS overflows a Postgres

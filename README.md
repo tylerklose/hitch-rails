@@ -595,8 +595,10 @@ the library default stays `false` so an upgrade never flips it silently.
 
 Enabling CIMD means `/oauth/authorize` makes outbound HTTPS requests to
 caller-chosen URLs, so each fetch is tightly constrained (https on 443 only,
-no redirects, DNS pinned after a non-public-range check, wall-clock budget,
-streamed size cap) and the volume is bounded by two caps:
+no trailing-dot hosts, no `.`/`..` path segments, no redirects, DNS pinned
+after a non-public-range check, wall-clock budget, streamed size cap, and a
+200 must be `application/json` or `application/*+json`) and the volume is
+bounded by two caps:
 
 ```ruby
 config.client_id_metadata_enabled = true

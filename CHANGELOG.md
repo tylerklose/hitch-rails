@@ -26,6 +26,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a native CIMD document host — never to an attacker-chosen custom-scheme
   URI host. PKCE S256 stays mandatory.
 
+### Security
+
+- **CIMD trailing-dot hosts are refused without a fetch.** A `client_id` whose host ends in `.` is not a metadata-document reference. Previously the host was stripped for the per-host failure cache, so `https://example.com./…` (TLS/SNI failure) poisoned `example.com` for 60 seconds.
+- **CIMD per-host failure cache is DNS/blocklist only.** TLS failure, timeout after connect, RST, and HTTP errors write a per-URL negative only. draft-02 §5.2 says do not cache errors; the per-URL negative and `fetches_per_minute` remain the amplification guard.
+- **CIMD URLs with `.` or `..` path segments are refused** (draft-ietf-oauth-client-id-metadata-document-02 §3).
+- **CIMD documents must be `application/json` or `application/*+json`.** `text/html` is refused. The `client_id` identity check stays exact.
+- **CIMD `redirect_uris` honour DCR's 255-byte per-URI cap.**
+- **Authorization-code `invalid_grant` uses one public `error_description`.** Wrong client, wrong `redirect_uri`, PKCE failure, expired, and unknown all return the same string (RFC 6819). The code is not consumed on a failed binding check.
+- **Device `/activate` sends `Cache-Control: no-store` and `Referrer-Policy: no-referrer`** on the code-entry, confirm, and done pages.
+
 ## [0.4.0] - 2026-08-25
 
 Upgrading from 0.3.0 requires running three new migrations. See

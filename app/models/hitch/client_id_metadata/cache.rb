@@ -26,9 +26,9 @@ module Hitch
         "hitch/cimd/v1/failed-host/#{Digest::SHA256.hexdigest(normalized_host(host))}"
       end
 
-      # "evil.example" and "evil.example." are the same DNS name and the
-      # same destination; without stripping the root label they would be
-      # two cache keys, which is one more outbound fetch than intended.
+      # "evil.example" and "EVIL.example" are the same DNS name. Trailing-dot
+      # hosts are refused at shape time and never reach this key; chomp
+      # remains so a host that still arrives cannot split the key.
       def normalized_host(host)
         host.to_s.downcase.chomp(".")
       end

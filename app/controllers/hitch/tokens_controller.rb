@@ -48,7 +48,7 @@ module Hitch
       return oauth_error("invalid_request", "code is required") if oauth[:code].blank?
       return oauth_error("invalid_request", "code_verifier is required") if oauth[:code_verifier].blank?
       unless Hitch::Pkce.valid_verifier?(oauth[:code_verifier])
-        return oauth_error("invalid_grant", "Invalid or expired authorization code")
+        return invalid_authorization_code
       end
       if oauth[:redirect_uri].present? && !valid_redirect_uri?(oauth[:redirect_uri])
         return oauth_error("invalid_request", "redirect_uri is malformed")
@@ -66,9 +66,16 @@ module Hitch
         redirect_uri: oauth[:redirect_uri]
       )
 
-      return oauth_error("invalid_grant", "Invalid or expired authorization code") if result.nil?
+      return invalid_authorization_code if result.nil?
 
       render_token(result)
+    rescue Hitch::AccessToken::OAuthError => e
+      # RFC 6819: distinct invalid_grant descriptions (wrong client,
+      # wrong redirect_uri, PKCE) let an attacker probe a stolen code.
+      # One public string; the oauth error code stays invalid_grant.
+      return invalid_authorization_code if e.oauth_code == "invalid_grant"
+
+      oauth_error(e.oauth_code, e.description)
     end
 
     def refresh_token_grant(oauth)
@@ -149,6 +156,10 @@ module Hitch
         "token request body exceeds #{MAX_REQUEST_BODY_BYTES} bytes",
         :content_too_large
       )
+    end
+
+    def invalid_authorization_code
+      oauth_error("invalid_grant", "Invalid or expired authorization code")
     end
   end
 end

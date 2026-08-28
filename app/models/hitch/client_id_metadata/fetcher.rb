@@ -56,23 +56,24 @@ module Hitch
       MAX_BYTES = 64 * 1024
       MAX_REDIRECT_URIS = 20
 
-      # Nothing at that host answered — may block the host's other
-      # documents. Distinct from a document-level failure (plain nil),
-      # which must not, or one bogus URL would take an entire CIMD-hosting
+      # DNS returned nothing, or every address was blocked. May block the
+      # host's other documents. Distinct from a document-level failure
+      # (plain nil) — TLS, timeout after connect, RST, HTTP error — which
+      # must not, or one TLS-failing URL would take an entire CIMD-hosting
       # domain down for everyone on it.
       HOST_FAILURE = :host_failure
 
       class << self
         # [document, ttl] on success (TTL derived from the document's own
-        # cache headers, clamped by config), nil for an unusable document,
-        # HOST_FAILURE when nothing at the host answered.
+        # cache headers, clamped by config), nil for an unusable document
+        # or a URL-level fetch failure, HOST_FAILURE when DNS returned
+        # nothing or every address was blocked.
         def call(client_id, uri)
           Timeout.timeout(TOTAL_BUDGET) do
             address = safe_address(uri.host)
             return HOST_FAILURE if address.nil?
 
             fetched = fetch(uri, address)
-            return HOST_FAILURE if fetched == HOST_FAILURE
             return nil if fetched.nil?
 
             body, ttl = fetched
@@ -81,7 +82,7 @@ module Hitch
           end
         rescue Timeout::Error => e
           log_rejection(client_id, "#{e.class}: #{e.message}")
-          HOST_FAILURE
+          nil
         rescue JSON::ParserError => e
           log_rejection(client_id, "#{e.class}: #{e.message}")
           nil
@@ -122,10 +123,11 @@ module Hitch
         def fetch(uri, address)
           build_connection(uri, address).start { |http| read_document(http, uri) }
         rescue StandardError => e
-          # Connect refused, TLS failure, socket reset: the host did not
-          # answer, which says nothing about any individual document on it.
+          # TLS failure, RST, connect reset after a vetted address: this
+          # URL failed. That says nothing about a sibling document on the
+          # same host, so it is a per-URL negative, not HOST_FAILURE.
           log_rejection(uri.to_s, "#{e.class}: #{e.message}")
-          HOST_FAILURE
+          nil
         end
 
         def build_connection(uri, address)
@@ -166,9 +168,15 @@ module Hitch
               return log_rejection(uri.to_s, "responded #{response.code}, not 200")
             end
 
+            unless json_media_type?(response)
+              return log_rejection(uri.to_s, "Content-Type #{response.content_type.inspect} is not JSON")
+            end
+
             # An advisory check only — Content-Length is written by the same
             # party as the body, and can simply be omitted under chunked
-            # framing. read_capped is what actually enforces the limit.
+            # framing. read_capped is what actually enforces the limit. This
+            # return must stay inside the block form of #request: without
+            # the block, Net::HTTP buffers the entire body first.
             if response["Content-Length"].to_i > MAX_BYTES
               return log_rejection(uri.to_s, "declared Content-Length above the #{MAX_BYTES}-byte cap")
             end
@@ -178,6 +186,16 @@ module Hitch
 
             return [ body, cache_ttl_for(response) ]
           end
+        end
+
+        # Media type only — parameters such as charset are ignored.
+        # "application/json" or "application/<AS-defined>+json" —
+        # draft-ietf-oauth-client-id-metadata-document-02 §4. text/html
+        # is refused. The client_id identity check stays exact.
+        def json_media_type?(response)
+          media_type = response.content_type.to_s.downcase
+          media_type == "application/json" ||
+            (media_type.start_with?("application/") && media_type.end_with?("+json"))
         end
 
         # "SHOULD cache metadata respecting HTTP cache headers" — MCP
@@ -243,6 +261,9 @@ module Hitch
           redirect_uris = declared.select { |u| u.is_a?(String) }
           return log_rejection(client_id, "document declares no redirect_uris") if redirect_uris.empty?
           return log_rejection(client_id, "document declares too many redirect_uris") if redirect_uris.size > MAX_REDIRECT_URIS
+          if redirect_uris.any? { |u| u.bytesize > Hitch::Client::MAX_REDIRECT_URI_BYTES }
+            return log_rejection(client_id, "a redirect_uri exceeds the #{Hitch::Client::MAX_REDIRECT_URI_BYTES}-byte cap")
+          end
 
           # "The metadata document MUST include at least the following
           # properties: client_id, client_name, redirect_uris" — MCP

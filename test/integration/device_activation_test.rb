@@ -89,6 +89,24 @@ class DeviceActivationTest < ActionDispatch::IntegrationTest
     assert_match(/give <em>their<\/em> device access/, response.body)
   end
 
+  test "activate new, confirm, and done send no-store and no-referrer" do
+    grant = mint
+    sign_in
+
+    get "/activate"
+    assert_response :success
+    assert_activation_headers
+
+    post "/activate", params: { user_code: grant.raw_user_code }
+    assert_response :success
+    assert_activation_headers
+
+    post "/activate", params: { user_code: grant.raw_user_code, decision: "approve" }
+    assert_response :success
+    assert_match(/Device connected/, response.body)
+    assert_activation_headers
+  end
+
   test "a prefilled code fills the field and still requires the user to submit" do
     grant = mint
     sign_in
@@ -529,5 +547,11 @@ class DeviceActivationTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert grant.reload.approved_at.present?
+  end
+
+  def assert_activation_headers
+    assert_equal "no-store", response.headers["Cache-Control"]
+    assert_equal "no-cache", response.headers["Pragma"]
+    assert_equal "no-referrer", response.headers["Referrer-Policy"]
   end
 end

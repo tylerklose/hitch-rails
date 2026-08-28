@@ -89,7 +89,7 @@ class OauthRequestValidationTest < ActionDispatch::IntegrationTest
     code = mint_code
 
     post "/oauth/token", params: token_params(code: code, client_id: @other_client.client_id)
-    assert_oauth_error "invalid_grant", /issued to this client/
+    assert_oauth_error "invalid_grant", /\AInvalid or expired authorization code\z/
     assert_pending code
 
     post "/oauth/token", params: token_params(code: code)
@@ -111,11 +111,19 @@ class OauthRequestValidationTest < ActionDispatch::IntegrationTest
     code = mint_code
 
     post "/oauth/token", params: token_params(code: code, code_verifier: "w" * 43)
-    assert_oauth_error "invalid_grant", /PKCE/
+    assert_oauth_error "invalid_grant", /\AInvalid or expired authorization code\z/
     assert_pending code
 
     post "/oauth/token", params: token_params(code: code)
     assert_response :success
+  end
+
+  test "redirect_uri mismatch is the same public invalid_grant as a wrong client" do
+    code = mint_code
+
+    post "/oauth/token", params: token_params(code: code, redirect_uri: "https://other.test/callback")
+    assert_oauth_error "invalid_grant", /\AInvalid or expired authorization code\z/
+    assert_pending code
   end
 
   test "canonical-equivalent resource and omitted legacy redirect_uri succeed" do

@@ -715,9 +715,9 @@ or undermine its guarantees:
 
 ## Status
 
-0.2.0 is the first public release. The public API may change before v1.0.0.
-The exact 0.2 public surface is documented in
-[`docs/public_api/0.2.0.md`](https://github.com/tylerklose/hitch-rails/blob/v0.2.0/docs/public_api/0.2.0.md); removal is covered in
+0.4.0 is the current release. The public API may change before v1.0.0.
+The exact 0.4 public surface is documented in
+[`docs/public_api/0.4.0.md`](https://github.com/tylerklose/hitch-rails/blob/v0.4.0/docs/public_api/0.4.0.md); removal is covered in
 [`docs/removing.md`](docs/removing.md).
 
 ## Contributing

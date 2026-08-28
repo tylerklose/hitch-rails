@@ -618,7 +618,11 @@ bin/rails 'hitch:cimd:check[https://some-client.example/client.json]'
 `POST /oauth/register` is disabled by the generated initializer and discovery
 omits `registration_endpoint`. If you enable it, registration is
 unauthenticated, so it is rate-limited per `request.remote_ip` through your
-cache store and rejects malformed or oversized documents before persistence:
+cache store and rejects malformed or oversized documents before persistence.
+Redirect URIs must be `https`, RFC 8252 loopback `http` (`localhost`,
+`127.0.0.1`, `::1`), or a native private-use scheme such as
+`grokbot://mcp/oauth/callback`. `javascript:`, `data:`, and remote `http`
+are refused.
 
 ```ruby
 config.dynamic_client_registration_enabled = true

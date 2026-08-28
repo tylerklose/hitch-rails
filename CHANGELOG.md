@@ -5,6 +5,20 @@ All notable changes to hitch-rails will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Private-use redirect URIs for native MCP clients.** DCR and authorize
+  accepted only `https` and loopback `http`, which is why Grok Bot's
+  `grokbot://mcp/oauth/callback` failed registration while desktop Cursor
+  (`http://localhost:8787/callback`) worked. RFC 7591 §2 already carves
+  out RFC 8252 §7.1 private-use schemes for native apps; Hitch now admits
+  hierarchical custom schemes (`grokbot://…`, `cursor://…`) without
+  relaxing HTTPS for web clients or loopback-only HTTP. Browser-executable
+  schemes (`javascript:`, `data:`) and junk remain refused. PKCE stays
+  mandatory — that is the RFC 8252 answer to custom-scheme hijacking.
+
 ## [0.4.0] - 2026-08-25
 
 Upgrading from 0.3.0 requires running three new migrations. See

@@ -161,22 +161,36 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "DCR rejects javascript: redirect_uri" do
-    post "/oauth/register", params: { client_name: "Bad", redirect_uris: [ "javascript:alert(1)" ] }, as: :json
-    assert_response :bad_request
-    body = JSON.parse(response.body)
-    assert_equal "invalid_redirect_uri", body["error"]
+  test "DCR allows https, loopback http, and native private-use redirect URIs" do
+    [
+      "https://client.test/callback",
+      "http://localhost:8080/cb",
+      "http://127.0.0.1:8080/cb",
+      "http://[::1]:8080/cb",
+      "grokbot://mcp/oauth/callback",
+      "cursor://anysphere.cursor-mcp/oauth/callback"
+    ].each do |uri|
+      post "/oauth/register", params: { client_name: "Client", redirect_uris: [ uri ] }, as: :json
+      assert_response :created, "#{uri} should be admitted: #{response.body}"
+      assert_equal [ uri ], JSON.parse(response.body).fetch("redirect_uris")
+    end
   end
 
-  test "DCR rejects non-loopback http redirect_uri" do
-    post "/oauth/register", params: { client_name: "Bad", redirect_uris: [ "http://attacker.test/cb" ] }, as: :json
-    assert_response :bad_request
-    assert_equal "invalid_redirect_uri", JSON.parse(response.body)["error"]
-  end
-
-  test "DCR allows http loopback redirect_uri" do
-    post "/oauth/register", params: { client_name: "Local", redirect_uris: [ "http://localhost:8080/cb" ] }, as: :json
-    assert_response :created
+  test "DCR rejects javascript, data, junk, and non-loopback http redirect URIs" do
+    [
+      "javascript:alert(1)",
+      "javascript://mcp/oauth/callback",
+      "data:text/html,hello",
+      "data://mcp/oauth/callback",
+      "not a uri",
+      "://missing-scheme",
+      "ftp://example.com/x",
+      "http://attacker.test/cb"
+    ].each do |uri|
+      post "/oauth/register", params: { client_name: "Bad", redirect_uris: [ uri ] }, as: :json
+      assert_response :bad_request, "#{uri} should be refused: #{response.body}"
+      assert_equal "invalid_redirect_uri", JSON.parse(response.body).fetch("error"), uri
+    end
   end
 
   test "DCR rejects when one of multiple redirect_uris is bad" do
@@ -473,7 +487,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
   end
 
   # A metadata document never passes through /oauth/register, so the
-  # https-or-loopback policy DCR clients face has to be applied here
+  # redirect URI policy DCR clients face has to be applied here
   # instead — otherwise CIMD is a way to register a redirect_uri that
   # DCR would have rejected outright.
   test "document redirect_uris must still satisfy the gem's URI policy" do
@@ -978,6 +992,35 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
       resource: RESOURCE_A
     }
     assert_response :redirect
+  end
+
+  test "authorize and token exchange accept a grokbot private-use redirect_uri" do
+    native = "grokbot://mcp/oauth/callback"
+    client = register_client(name: "Grok Bot", redirect_uris: [ native ])
+    sign_in @user
+
+    post "/oauth/authorize", params: {
+      response_type: "code",
+      client_id: client["client_id"],
+      redirect_uri: native,
+      code_challenge: @challenge,
+      code_challenge_method: "S256",
+      resource: RESOURCE_A
+    }
+    assert_response :redirect
+    assert response.location.start_with?("#{native}?")
+
+    code = URI.decode_www_form(URI.parse(response.location).query).to_h.fetch("code")
+    post "/oauth/token", params: {
+      grant_type: "authorization_code",
+      code: code,
+      client_id: client["client_id"],
+      code_verifier: @verifier,
+      resource: RESOURCE_A,
+      redirect_uri: native
+    }
+    assert_response :success
+    assert JSON.parse(response.body)["access_token"].present?
   end
 
   test "authorize rejects a request with no client_id (OAuth 2.1 requires it)" do

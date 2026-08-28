@@ -195,10 +195,11 @@ module Hitch
 
     # The client's declared redirect_uris. nil means "no such client"; an
     # empty array means "a client, but nothing usable to redirect to". The
-    # gem's https-or-loopback policy (RFC 8252) applies to CIMD documents
-    # here — DCR enforces it at registration time, and a metadata document
-    # never passes through registration, so without this filter CIMD would
-    # bypass a check DCR clients face.
+    # gem's redirect URI policy (https, RFC 8252 loopback http, or native
+    # private-use schemes) applies to CIMD documents here — DCR enforces
+    # it at registration time, and a metadata document never passes through
+    # registration, so without this filter CIMD would bypass a check DCR
+    # clients face.
     def registered_redirect_uris
       return client&.redirect_uris unless ClientIdMetadata.reference?(client_id)
 

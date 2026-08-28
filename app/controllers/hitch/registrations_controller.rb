@@ -28,7 +28,7 @@ module Hitch
       if invalid.any?
         return oauth_error(
           "invalid_redirect_uri",
-          "redirect_uris must contain only https URIs or RFC 8252 loopback http URIs"
+          "redirect_uris must contain only https URIs, RFC 8252 loopback http URIs, or native private-use URI schemes"
         )
       end
 

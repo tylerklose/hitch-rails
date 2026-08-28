@@ -12,13 +12,24 @@ module Hitch
   module UriValidation
     extend ActiveSupport::Concern
 
+    # Browser-executable, local-resource, and network-protocol schemes.
+    # RFC 8252 §7.1 private-use schemes (grokbot, cursor) are not on this list.
+    DISALLOWED_REDIRECT_SCHEMES = %w[
+      javascript data vbscript blob about view-source
+      file ftp ftps sftp ssh git ws wss mailto tel sms
+    ].freeze
+
     private
 
-    # Authorization redirect URI: https everywhere except loopback
-    # http (which RFC 8252 permits for native apps).
+    # RFC 7591 §2 requires HTTPS except native loopback (RFC 8252 §7.3)
+    # and native private-use URI schemes (RFC 8252 §7.1). Web clients
+    # stay on https. MCP native apps that cannot bind a loopback listener
+    # — Grok Bot sends grokbot://mcp/oauth/callback; Cursor sends
+    # cursor://anysphere.cursor-mcp/oauth/callback — register those
+    # schemes at DCR. PKCE (already mandatory) is the RFC 8252 answer
+    # to custom-scheme hijacking.
     def valid_redirect_uri?(uri)
       parsed = URI.parse(uri)
-      return false if parsed.hostname.blank?
       return false unless parsed.userinfo.nil? && !userinfo_component_present?(uri)
       # RFC 6749 §3.1.2: the redirection endpoint URI MUST NOT include a
       # fragment component. Enforced because redirect_uri_matches? does
@@ -28,13 +39,25 @@ module Hitch
       # fragment response modes) would read whatever was smuggled there.
       return false unless parsed.fragment.nil?
 
-      case parsed.scheme
-      when "https" then true
-      when "http"  then loopback_host?(parsed.hostname)
-      else false
+      scheme = parsed.scheme.to_s.downcase
+      case scheme
+      when "https" then parsed.hostname.present?
+      when "http"  then parsed.hostname.present? && loopback_host?(parsed.hostname)
+      else private_use_redirect_uri?(parsed, scheme)
       end
     rescue URI::InvalidURIError
       false
+    end
+
+    # Hierarchical custom scheme with a host, and not a scheme that
+    # already means something in a browser or as a network protocol.
+    # Requiring a host rejects javascript:alert(1) and data:text/html
+    # even without the denylist; the denylist catches javascript://host/path.
+    def private_use_redirect_uri?(parsed, scheme)
+      return false unless scheme.match?(/\A[a-z][a-z0-9+.-]*\z/)
+      return false if DISALLOWED_REDIRECT_SCHEMES.include?(scheme)
+      return false unless parsed.opaque.nil?
+      parsed.hostname.present?
     end
 
     def loopback_host?(host)

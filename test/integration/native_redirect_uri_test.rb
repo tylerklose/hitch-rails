@@ -127,15 +127,35 @@ class NativeRedirectUriTest < ActionDispatch::IntegrationTest
       client_name: "Sneaky Flag",
       redirect_uris: [ GROKBOT ]
     )
+    # Bypass AR. The row check also refuses a public operator flag, so
+    # ignore it for this stuffed write — authorize must still refuse.
+    connection = Hitch::Client.connection
+    sqlite = connection.adapter_name.match?(/SQLite/i)
+    connection.execute("PRAGMA ignore_check_constraints = ON") if sqlite
+    unless sqlite
+      connection.remove_check_constraint(:hitch_clients, name: "hitch_clients_operator_registration_check")
+    end
     client.update_column(:operator_registered, true)
-    assert client.reload.operator_registered?
-    refute client.operator_registered_confidential_client?
+    connection.execute("PRAGMA ignore_check_constraints = OFF") if sqlite
+    stuffed = Hitch::Client.find_by!(client_id: client.client_id)
+    assert stuffed.operator_registered?
+    refute stuffed.operator_registered_confidential_client?
 
     sign_in @user
     post "/oauth/authorize", params: authorize_params(client.client_id, GROKBOT)
     assert_response :bad_request
     assert_equal "client has no usable redirect_uris",
       JSON.parse(response.body)["error_description"]
+  ensure
+    client&.delete
+    names = Hitch::Client.connection.check_constraints(:hitch_clients).map(&:name)
+    unless names.include?("hitch_clients_operator_registration_check")
+      Hitch::Client.connection.add_check_constraint(
+        :hitch_clients,
+        "operator_registered = FALSE OR token_endpoint_auth_method = 'client_secret_basic'",
+        name: "hitch_clients_operator_registration_check"
+      )
+    end
   end
 
   test "evil://claude.ai is refused and never branded as Claude" do

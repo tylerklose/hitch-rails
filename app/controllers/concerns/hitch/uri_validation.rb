@@ -12,22 +12,14 @@ module Hitch
   module UriValidation
     extend ActiveSupport::Concern
 
-    # Browser-executable, local-resource, and network-protocol schemes.
-    # RFC 8252 §7.1 private-use schemes (grokbot, cursor) are not on this list.
-    DISALLOWED_REDIRECT_SCHEMES = %w[
-      javascript data vbscript blob about view-source
-      file ftp ftps sftp ssh git ws wss mailto tel sms
-    ].freeze
-
     private
 
     # RFC 7591 §2 requires HTTPS except native loopback (RFC 8252 §7.3)
     # and native private-use URI schemes (RFC 8252 §7.1). Web clients
-    # stay on https. MCP native apps that cannot bind a loopback listener
-    # — Grok Bot sends grokbot://mcp/oauth/callback; Cursor sends
-    # cursor://anysphere.cursor-mcp/oauth/callback — register those
-    # schemes at DCR. PKCE (already mandatory) is the RFC 8252 answer
-    # to custom-scheme hijacking.
+    # stay on https. Native schemes are an allowlist (grokbot, cursor,
+    # plus host-added); who may use one is a separate voucher check.
+    # PKCE (already mandatory) is the RFC 8252 answer to custom-scheme
+    # hijacking.
     def valid_redirect_uri?(uri)
       parsed = URI.parse(uri)
       return false unless parsed.userinfo.nil? && !userinfo_component_present?(uri)
@@ -43,20 +35,31 @@ module Hitch
       case scheme
       when "https" then parsed.hostname.present?
       when "http"  then parsed.hostname.present? && loopback_host?(parsed.hostname)
-      else private_use_redirect_uri?(parsed, scheme)
+      else native_redirect_uri?(parsed, scheme)
       end
     rescue URI::InvalidURIError
       false
     end
 
-    # Hierarchical custom scheme with a host, and not a scheme that
-    # already means something in a browser or as a network protocol.
-    # Requiring a host rejects javascript:alert(1) and data:text/html
-    # even without the denylist; the denylist catches javascript://host/path.
-    def private_use_redirect_uri?(parsed, scheme)
+    # DCR is anonymous self-registration. A native scheme 302 is only
+    # honest when a CIMD document host or an operator vouches for it,
+    # so open registration stays https and loopback http.
+    def self_registered_redirect_uri?(uri)
+      return false unless valid_redirect_uri?(uri)
+
+      %w[https http].include?(URI.parse(uri).scheme.to_s.downcase)
+    rescue URI::InvalidURIError
+      false
+    end
+
+    # Allowlisted hierarchical custom scheme with a host. Requiring a
+    # host rejects javascript:alert(1); the refused-scheme list catches
+    # javascript://host/path even if a host stuffed it into config.
+    def native_redirect_uri?(parsed, scheme)
       return false unless scheme.match?(/\A[a-z][a-z0-9+.-]*\z/)
-      return false if DISALLOWED_REDIRECT_SCHEMES.include?(scheme)
+      return false unless Hitch.configuration.native_redirect_scheme?(scheme)
       return false unless parsed.opaque.nil?
+
       parsed.hostname.present?
     end
 

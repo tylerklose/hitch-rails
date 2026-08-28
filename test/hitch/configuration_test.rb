@@ -254,4 +254,35 @@ class Hitch::ConfigurationTest < ActiveSupport::TestCase
     Hitch.configuration.device_authorization_enabled = true
     assert_includes Hitch::GrantTypes.supported, Hitch::GrantTypes::DEVICE_CODE
   end
+
+  test "native redirect schemes are an allowlist and privileged schemes stay refused" do
+    configuration = Hitch.configuration
+
+    assert_equal %w[grokbot cursor], configuration.native_redirect_schemes
+    assert configuration.native_redirect_scheme?("grokbot")
+    assert configuration.vouches_for_native_redirect?("grokbot", "grok.com")
+    assert configuration.vouches_for_native_redirect?("cursor", "www.cursor.com")
+    refute configuration.vouches_for_native_redirect?("grokbot", "attacker.example")
+
+    configuration.native_redirect_schemes = %w[myapp grokbot]
+    assert_equal %w[grokbot cursor myapp], configuration.native_redirect_schemes
+    assert configuration.native_redirect_scheme?("myapp")
+    refute configuration.vouches_for_native_redirect?("myapp", "myapp.example")
+
+    configuration.native_redirect_vouchers = { "myapp" => "myapp.example" }
+    assert configuration.vouches_for_native_redirect?("myapp", "myapp.example")
+    refute configuration.vouches_for_native_redirect?("myapp", "other.example")
+    assert configuration.vouches_for_native_redirect?("grokbot", "grok.com")
+
+    %w[javascript intent chrome-extension web+mcp file ftp].each do |scheme|
+      assert_raises(ArgumentError, scheme) { configuration.native_redirect_schemes = [ scheme ] }
+    end
+    assert_raises(ArgumentError) do
+      configuration.native_redirect_vouchers = { "grokbot" => "evil.example" }
+    end
+
+    configuration.instance_variable_set(:@native_redirect_schemes, %w[javascript grokbot])
+    refute configuration.native_redirect_scheme?("javascript")
+    assert configuration.native_redirect_scheme?("grokbot")
+  end
 end

@@ -161,14 +161,12 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "DCR allows https, loopback http, and native private-use redirect URIs" do
+  test "DCR allows https and loopback http redirect URIs" do
     [
       "https://client.test/callback",
       "http://localhost:8080/cb",
       "http://127.0.0.1:8080/cb",
-      "http://[::1]:8080/cb",
-      "grokbot://mcp/oauth/callback",
-      "cursor://anysphere.cursor-mcp/oauth/callback"
+      "http://[::1]:8080/cb"
     ].each do |uri|
       post "/oauth/register", params: { client_name: "Client", redirect_uris: [ uri ] }, as: :json
       assert_response :created, "#{uri} should be admitted: #{response.body}"
@@ -176,7 +174,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "DCR rejects javascript, data, junk, and non-loopback http redirect URIs" do
+  test "DCR rejects javascript, data, junk, native schemes, and non-loopback http" do
     [
       "javascript:alert(1)",
       "javascript://mcp/oauth/callback",
@@ -185,7 +183,15 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
       "not a uri",
       "://missing-scheme",
       "ftp://example.com/x",
-      "http://attacker.test/cb"
+      "http://attacker.test/cb",
+      "grokbot://mcp/oauth/callback",
+      "cursor://anysphere.cursor-mcp/oauth/callback",
+      "evil://claude.ai/callback",
+      "intent://scan/#Intent;end",
+      "chrome-extension://id/callback",
+      "web+mcp://host/callback",
+      "smb://server/share",
+      "file://localhost/etc/passwd"
     ].each do |uri|
       post "/oauth/register", params: { client_name: "Bad", redirect_uris: [ uri ] }, as: :json
       assert_response :bad_request, "#{uri} should be refused: #{response.body}"
@@ -992,35 +998,6 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
       resource: RESOURCE_A
     }
     assert_response :redirect
-  end
-
-  test "authorize and token exchange accept a grokbot private-use redirect_uri" do
-    native = "grokbot://mcp/oauth/callback"
-    client = register_client(name: "Grok Bot", redirect_uris: [ native ])
-    sign_in @user
-
-    post "/oauth/authorize", params: {
-      response_type: "code",
-      client_id: client["client_id"],
-      redirect_uri: native,
-      code_challenge: @challenge,
-      code_challenge_method: "S256",
-      resource: RESOURCE_A
-    }
-    assert_response :redirect
-    assert response.location.start_with?("#{native}?")
-
-    code = URI.decode_www_form(URI.parse(response.location).query).to_h.fetch("code")
-    post "/oauth/token", params: {
-      grant_type: "authorization_code",
-      code: code,
-      client_id: client["client_id"],
-      code_verifier: @verifier,
-      resource: RESOURCE_A,
-      redirect_uri: native
-    }
-    assert_response :success
-    assert JSON.parse(response.body)["access_token"].present?
   end
 
   test "authorize rejects a request with no client_id (OAuth 2.1 requires it)" do

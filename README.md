@@ -619,10 +619,15 @@ bin/rails 'hitch:cimd:check[https://some-client.example/client.json]'
 omits `registration_endpoint`. If you enable it, registration is
 unauthenticated, so it is rate-limited per `request.remote_ip` through your
 cache store and rejects malformed or oversized documents before persistence.
-Redirect URIs must be `https`, RFC 8252 loopback `http` (`localhost`,
-`127.0.0.1`, `::1`), or a native private-use scheme such as
-`grokbot://mcp/oauth/callback`. `javascript:`, `data:`, and remote `http`
-are refused.
+Redirect URIs at DCR must be `https` or RFC 8252 loopback `http`
+(`localhost`, `127.0.0.1`, `::1`). Native private-use schemes are not
+self-registered: Hitch 302s to `grokbot` and `cursor` only when a CIMD
+document host vouches for them (`grok.com` / `x.ai`, `cursor.com` /
+`cursor.sh`) or the client is operator-registered. Hosts may add schemes
+with `config.native_redirect_schemes`; those are operator-only unless
+`config.native_redirect_vouchers` also names a CIMD document host.
+Privileged schemes (`javascript`, `intent`, `chrome-extension`,
+`web+*`, `file`, …) are never addable. Remote `http` is refused.
 
 ```ruby
 config.dynamic_client_registration_enabled = true
@@ -684,10 +689,13 @@ instance variables: `@client_name`, `@redirect_host`, `@brand_name`,
 `@oauth_params`, `@resource`, and `@scopes` (already clamped to
 `supported_scopes` — show them so consent is informed).
 
-`@client_name` is derived from the verified redirect host through
+`@client_name` is derived from a verified identity through
 `config.client_names`, a Hash of host matchers (exact `String` or `Regexp`)
-to labels, checked in order. The default table labels the common MCP
-clients; extend it with
+to labels, checked in order. For `https` (and loopback `http`) that identity
+is the redirect host; for a native scheme it is the CIMD document host, or
+the scheme itself when the client is operator-registered — never the
+redirect URI's own host (`mcp` in `grokbot://mcp/…`). The default table
+labels the common MCP clients; extend it with
 `config.client_names = Hitch::Configuration::DEFAULT_CLIENT_NAMES.merge("tool.example" => "My Tool")`.
 
 The device-flow screens override the same way:

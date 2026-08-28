@@ -9,15 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Private-use redirect URIs for native MCP clients.** DCR and authorize
-  accepted only `https` and loopback `http`, which is why Grok Bot's
-  `grokbot://mcp/oauth/callback` failed registration while desktop Cursor
-  (`http://localhost:8787/callback`) worked. RFC 7591 §2 already carves
-  out RFC 8252 §7.1 private-use schemes for native apps; Hitch now admits
-  hierarchical custom schemes (`grokbot://…`, `cursor://…`) without
-  relaxing HTTPS for web clients or loopback-only HTTP. Browser-executable
-  schemes (`javascript:`, `data:`) and junk remain refused. PKCE stays
-  mandatory — that is the RFC 8252 answer to custom-scheme hijacking.
+- **Native redirect URIs are an allowlist, vouched — not a denylist.**
+  Grok Bot's `grokbot://mcp/oauth/callback` and Cursor's
+  `cursor://anysphere.cursor-mcp/oauth/callback` need RFC 8252 §7.1
+  private-use schemes (RFC 7591 §2 already carves those out of the
+  HTTPS requirement). Admitting any hierarchical custom scheme let
+  anyone DCR-register `evil://claude.ai/callback`, which consent then
+  branded as Claude. Hitch now 302s only to `https`, RFC 8252 loopback
+  `http`, and a shipped allowlist (`grokbot`, `cursor`; hosts may add
+  schemes). `grokbot` requires a CIMD document on `grok.com` / `x.ai`
+  or an operator-registered client; `cursor` requires `cursor.com` /
+  `cursor.sh` or an operator. Open DCR cannot mint those schemes.
+  Privileged schemes (`javascript`, `intent`, `chrome-extension`,
+  `web+*`, `file`, …) stay refused even if listed in config. Consent
+  applies `client_label` to https (and loopback http) hosts, and to
+  a native CIMD document host — never to an attacker-chosen custom-scheme
+  URI host. PKCE S256 stays mandatory.
 
 ## [0.4.0] - 2026-08-25
 

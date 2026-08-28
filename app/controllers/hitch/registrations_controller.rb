@@ -24,11 +24,11 @@ module Hitch
       return if performed?
 
       candidate_uris = normalized.fetch(:redirect_uris)
-      invalid = candidate_uris.reject { |uri| valid_redirect_uri?(uri) }
+      invalid = candidate_uris.reject { |uri| self_registered_redirect_uri?(uri) }
       if invalid.any?
         return oauth_error(
           "invalid_redirect_uri",
-          "redirect_uris must contain only https URIs, RFC 8252 loopback http URIs, or native private-use URI schemes"
+          "redirect_uris must contain only https URIs or RFC 8252 loopback http URIs"
         )
       end
 

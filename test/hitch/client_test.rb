@@ -129,4 +129,22 @@ class Hitch::ClientTest < ActiveSupport::TestCase
 
     assert_raises(ArgumentError) { client.rotate_secret! }
   end
+
+  test "operator_registered requires a confidential client" do
+    client = Hitch::Client.register!(
+      client_id: "public-operator",
+      client_name: "Public",
+      redirect_uris: [ "https://app.test/callback" ]
+    )
+    client.operator_registered = true
+    refute_predicate client, :valid?
+    assert_includes client.errors[:operator_registered], "requires a confidential client"
+
+    error = assert_raises(ActiveRecord::StatementInvalid) do
+      Hitch::Client.transaction(requires_new: true) do
+        client.update_column(:operator_registered, true)
+      end
+    end
+    assert_match(/hitch_clients_operator_registration_check/, error.message)
+  end
 end

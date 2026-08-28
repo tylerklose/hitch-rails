@@ -263,6 +263,9 @@ class Hitch::ConfigurationTest < ActiveSupport::TestCase
     assert configuration.vouches_for_native_redirect?("grokbot", "grok.com")
     assert configuration.vouches_for_native_redirect?("cursor", "www.cursor.com")
     refute configuration.vouches_for_native_redirect?("grokbot", "attacker.example")
+    %w[evil.grok.com grok.com.evil.com www.grok.com].each do |host|
+      refute configuration.vouches_for_native_redirect?("grokbot", host), host
+    end
 
     configuration.native_redirect_schemes = %w[myapp grokbot]
     assert_equal %w[grokbot cursor myapp], configuration.native_redirect_schemes

@@ -121,6 +121,23 @@ class NativeRedirectUriTest < ActionDispatch::IntegrationTest
       JSON.parse(response.body)["error_description"]
   end
 
+  test "a stuffed operator_registered flag on a DCR client cannot spend grokbot at authorize" do
+    client = Hitch::Client.register!(
+      client_id: SecureRandom.uuid,
+      client_name: "Sneaky Flag",
+      redirect_uris: [ GROKBOT ]
+    )
+    client.update_column(:operator_registered, true)
+    assert client.reload.operator_registered?
+    refute client.operator_registered_confidential_client?
+
+    sign_in @user
+    post "/oauth/authorize", params: authorize_params(client.client_id, GROKBOT)
+    assert_response :bad_request
+    assert_equal "client has no usable redirect_uris",
+      JSON.parse(response.body)["error_description"]
+  end
+
   test "evil://claude.ai is refused and never branded as Claude" do
     sign_in @user
     post "/oauth/authorize", params: authorize_params("anyone", "evil://claude.ai/callback")

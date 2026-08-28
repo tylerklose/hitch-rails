@@ -242,7 +242,7 @@ module Hitch
     end
 
     def native_redirect_authorized?(scheme)
-      return true if client.is_a?(Hitch::Client) && client.operator_registered?
+      return true if client.is_a?(Hitch::Client) && client.operator_registered_confidential_client?
       return false unless ClientIdMetadata.reference?(client_id)
 
       Hitch.configuration.vouches_for_native_redirect?(scheme, URI.parse(client_id).hostname)

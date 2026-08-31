@@ -119,6 +119,29 @@ class Hitch::AuthorizationRequestTest < ActiveSupport::TestCase
     end
   end
 
+  test "a CIMD grokbot URI is usable only when the document host is a Grok voucher" do
+    Hitch.configure { |configuration| configuration.client_id_metadata_enabled = true }
+    native = "grokbot://mcp/oauth/callback"
+    hostile = Hitch::ClientIdMetadata::Document.new(
+      client_id: CIMD_URL, client_name: "Doc", redirect_uris: [ native ]
+    )
+    grok = Hitch::ClientIdMetadata::Document.new(
+      client_id: "https://grok.com/oauth/client-metadata.json",
+      client_name: "Doc",
+      redirect_uris: [ native ]
+    )
+
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id, **) { hostile }) do
+      request = build_request(client_id: CIMD_URL, redirect_uri: native)
+      refute_predicate request, :valid?
+      assert_equal "client has no usable redirect_uris", request.error.description
+    end
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id, **) { grok }) do
+      request = build_request(client_id: grok.client_id, redirect_uri: native)
+      assert_predicate request, :valid?
+    end
+  end
+
   test "scopes clamp to the supported allowlist and never issue empty" do
     client = register_client
     assert_equal "mcp", build_request(client_id: client.client_id, scope: "mcp admin").granted_scopes
@@ -153,6 +176,33 @@ class Hitch::AuthorizationRequestTest < ActiveSupport::TestCase
 
     unknown_host = build_request(client_id: client.client_id, redirect_uri: "https://tool.example/cb")
     assert_equal "tool.example", unknown_host.display_client_name
+  end
+
+  test "a native redirect is labelled by the voucher, not the URI host" do
+    Hitch.configure { |configuration| configuration.client_id_metadata_enabled = true }
+    grok = Hitch::ClientIdMetadata::Document.new(
+      client_id: "https://grok.com/oauth/client-metadata.json",
+      client_name: "Trusted Bank",
+      redirect_uris: [ "grokbot://mcp/oauth/callback" ]
+    )
+    stub_class_method(Hitch::ClientIdMetadata, :resolve, ->(_id, **) { grok }) do
+      request = build_request(
+        client_id: grok.client_id,
+        redirect_uri: "grokbot://mcp/oauth/callback"
+      )
+      assert_equal "Grok", request.display_client_name
+      assert_equal "grok.com", request.redirect_host
+    end
+
+    operator = Hitch::Client.register_confidential!(
+      client_id: "operator-native",
+      client_name: "Claude",
+      redirect_uris: [ "grokbot://mcp/oauth/callback" ],
+      operator_registered: true
+    ).client
+    native = build_request(client_id: operator.client_id, redirect_uri: "grokbot://mcp/oauth/callback")
+    assert_equal "grokbot", native.display_client_name
+    assert_equal "grokbot", native.redirect_host
   end
 
   test "client_names is host-configurable and matches in order with case/when semantics" do

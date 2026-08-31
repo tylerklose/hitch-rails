@@ -24,7 +24,7 @@ module Hitch
       return if performed?
 
       candidate_uris = normalized.fetch(:redirect_uris)
-      invalid = candidate_uris.reject { |uri| valid_redirect_uri?(uri) }
+      invalid = candidate_uris.reject { |uri| self_registered_redirect_uri?(uri) }
       if invalid.any?
         return oauth_error(
           "invalid_redirect_uri",

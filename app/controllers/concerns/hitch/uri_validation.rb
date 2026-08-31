@@ -14,11 +14,14 @@ module Hitch
 
     private
 
-    # Authorization redirect URI: https everywhere except loopback
-    # http (which RFC 8252 permits for native apps).
+    # RFC 7591 §2 requires HTTPS except native loopback (RFC 8252 §7.3)
+    # and native private-use URI schemes (RFC 8252 §7.1). Web clients
+    # stay on https. Native schemes are an allowlist (grokbot, cursor,
+    # plus host-added); who may use one is a separate voucher check.
+    # PKCE (already mandatory) is the RFC 8252 answer to custom-scheme
+    # hijacking.
     def valid_redirect_uri?(uri)
       parsed = URI.parse(uri)
-      return false if parsed.hostname.blank?
       return false unless parsed.userinfo.nil? && !userinfo_component_present?(uri)
       # RFC 6749 §3.1.2: the redirection endpoint URI MUST NOT include a
       # fragment component. Enforced because redirect_uri_matches? does
@@ -28,13 +31,36 @@ module Hitch
       # fragment response modes) would read whatever was smuggled there.
       return false unless parsed.fragment.nil?
 
-      case parsed.scheme
-      when "https" then true
-      when "http"  then loopback_host?(parsed.hostname)
-      else false
+      scheme = parsed.scheme.to_s.downcase
+      case scheme
+      when "https" then parsed.hostname.present?
+      when "http"  then parsed.hostname.present? && loopback_host?(parsed.hostname)
+      else native_redirect_uri?(parsed, scheme)
       end
     rescue URI::InvalidURIError
       false
+    end
+
+    # DCR is anonymous self-registration. A native scheme 302 is only
+    # honest when a CIMD document host or an operator vouches for it,
+    # so open registration stays https and loopback http.
+    def self_registered_redirect_uri?(uri)
+      return false unless valid_redirect_uri?(uri)
+
+      %w[https http].include?(URI.parse(uri).scheme.to_s.downcase)
+    rescue URI::InvalidURIError
+      false
+    end
+
+    # Allowlisted hierarchical custom scheme with a host. Requiring a
+    # host rejects javascript:alert(1); the refused-scheme list catches
+    # javascript://host/path even if a host stuffed it into config.
+    def native_redirect_uri?(parsed, scheme)
+      return false unless scheme.match?(/\A[a-z][a-z0-9+.-]*\z/)
+      return false unless Hitch.configuration.native_redirect_scheme?(scheme)
+      return false unless parsed.opaque.nil?
+
+      parsed.hostname.present?
     end
 
     def loopback_host?(host)

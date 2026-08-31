@@ -161,22 +161,42 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "DCR rejects javascript: redirect_uri" do
-    post "/oauth/register", params: { client_name: "Bad", redirect_uris: [ "javascript:alert(1)" ] }, as: :json
-    assert_response :bad_request
-    body = JSON.parse(response.body)
-    assert_equal "invalid_redirect_uri", body["error"]
+  test "DCR allows https and loopback http redirect URIs" do
+    [
+      "https://client.test/callback",
+      "http://localhost:8080/cb",
+      "http://127.0.0.1:8080/cb",
+      "http://[::1]:8080/cb"
+    ].each do |uri|
+      post "/oauth/register", params: { client_name: "Client", redirect_uris: [ uri ] }, as: :json
+      assert_response :created, "#{uri} should be admitted: #{response.body}"
+      assert_equal [ uri ], JSON.parse(response.body).fetch("redirect_uris")
+    end
   end
 
-  test "DCR rejects non-loopback http redirect_uri" do
-    post "/oauth/register", params: { client_name: "Bad", redirect_uris: [ "http://attacker.test/cb" ] }, as: :json
-    assert_response :bad_request
-    assert_equal "invalid_redirect_uri", JSON.parse(response.body)["error"]
-  end
-
-  test "DCR allows http loopback redirect_uri" do
-    post "/oauth/register", params: { client_name: "Local", redirect_uris: [ "http://localhost:8080/cb" ] }, as: :json
-    assert_response :created
+  test "DCR rejects javascript, data, junk, native schemes, and non-loopback http" do
+    [
+      "javascript:alert(1)",
+      "javascript://mcp/oauth/callback",
+      "data:text/html,hello",
+      "data://mcp/oauth/callback",
+      "not a uri",
+      "://missing-scheme",
+      "ftp://example.com/x",
+      "http://attacker.test/cb",
+      "grokbot://mcp/oauth/callback",
+      "cursor://anysphere.cursor-mcp/oauth/callback",
+      "evil://claude.ai/callback",
+      "intent://scan/#Intent;end",
+      "chrome-extension://id/callback",
+      "web+mcp://host/callback",
+      "smb://server/share",
+      "file://localhost/etc/passwd"
+    ].each do |uri|
+      post "/oauth/register", params: { client_name: "Bad", redirect_uris: [ uri ] }, as: :json
+      assert_response :bad_request, "#{uri} should be refused: #{response.body}"
+      assert_equal "invalid_redirect_uri", JSON.parse(response.body).fetch("error"), uri
+    end
   end
 
   test "DCR rejects when one of multiple redirect_uris is bad" do
@@ -473,7 +493,7 @@ class OAuthFlowTest < ActionDispatch::IntegrationTest
   end
 
   # A metadata document never passes through /oauth/register, so the
-  # https-or-loopback policy DCR clients face has to be applied here
+  # redirect URI policy DCR clients face has to be applied here
   # instead — otherwise CIMD is a way to register a redirect_uri that
   # DCR would have rejected outright.
   test "document redirect_uris must still satisfy the gem's URI policy" do

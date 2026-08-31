@@ -101,14 +101,20 @@ module Hitch
     end
 
     def redirect_host
-      URI.parse(redirect_uri.to_s).host
+      parsed = URI.parse(redirect_uri.to_s)
+      scheme = parsed.scheme.to_s.downcase
+      return parsed.host if scheme == "https" || scheme == "http"
+
+      native_voucher_identity
     rescue URI::InvalidURIError
       nil
     end
 
     # The consent screen's display name. Never the client's declared name —
-    # that is attacker-controllable in both registration schemes — but a
-    # label derived from the verified redirect_uri host.
+    # that is attacker-controllable in both registration schemes. https
+    # (and loopback http) labels come from the verified redirect host;
+    # a native scheme labels the voucher (CIMD document host, or the
+    # scheme itself), never an attacker-chosen URI host like `mcp`.
     def display_client_name
       friendly_client_name || redirect_host || "An application"
     end
@@ -194,15 +200,18 @@ module Hitch
     end
 
     # The client's declared redirect_uris. nil means "no such client"; an
-    # empty array means "a client, but nothing usable to redirect to". The
-    # gem's https-or-loopback policy (RFC 8252) applies to CIMD documents
-    # here — DCR enforces it at registration time, and a metadata document
-    # never passes through registration, so without this filter CIMD would
-    # bypass a check DCR clients face.
+    # empty array means "a client, but nothing usable to redirect to".
+    # Shape (https, loopback http, allowlisted native) and who may use a
+    # native scheme (CIMD voucher or operator) apply here for every
+    # registration scheme — DCR enforces self-registration at mint time,
+    # but a metadata document never passes through registration, and a
+    # row already in the table must not keep a scheme the client is not
+    # vouched for.
     def registered_redirect_uris
-      return client&.redirect_uris unless ClientIdMetadata.reference?(client_id)
+      declared = client&.redirect_uris
+      return declared if declared.nil?
 
-      client&.redirect_uris&.select { |candidate| valid_redirect_uri?(candidate) }
+      declared.select { |candidate| usable_redirect_uri?(candidate) }
     end
 
     def unknown_client_message
@@ -218,6 +227,39 @@ module Hitch
     # limiting — the bound on amplification no DNS or URL trick changes.
     def rate_limit_actor
       Hitch::RateLimitStore.actor_for(principal)
+    end
+
+    def usable_redirect_uri?(uri)
+      return false unless valid_redirect_uri?(uri)
+
+      parsed = URI.parse(uri)
+      scheme = parsed.scheme.to_s.downcase
+      return true if scheme == "https" || scheme == "http"
+
+      native_redirect_authorized?(scheme)
+    rescue URI::InvalidURIError
+      false
+    end
+
+    def native_redirect_authorized?(scheme)
+      return true if client.is_a?(Hitch::Client) && client.operator_registered_confidential_client?
+      return false unless ClientIdMetadata.reference?(client_id)
+
+      Hitch.configuration.vouches_for_native_redirect?(scheme, URI.parse(client_id).hostname)
+    rescue URI::InvalidURIError
+      false
+    end
+
+    # CIMD: the document URL host. Operator / DCR: the scheme. Never the
+    # redirect_uri host of a custom scheme — that slot is attacker-chosen.
+    def native_voucher_identity
+      if ClientIdMetadata.reference?(client_id)
+        URI.parse(client_id).hostname
+      else
+        URI.parse(redirect_uri.to_s).scheme
+      end
+    rescue URI::InvalidURIError
+      nil
     end
 
     def friendly_client_name

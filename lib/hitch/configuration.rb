@@ -33,6 +33,30 @@ module Hitch
       "127.0.0.1" => "Local Development"
     }.freeze
 
+    # RFC 8252 §7.1 private-use schemes Hitch will 302 to. Fail closed:
+    # unknown hierarchical schemes are not admitted. Hosts may add
+    # schemes via native_redirect_schemes=; the shipped pair stays.
+    DEFAULT_NATIVE_REDIRECT_SCHEMES = %w[grokbot cursor].freeze
+
+    # CIMD document hosts that may use a shipped native scheme. Same
+    # matching spirit as DEFAULT_CLIENT_NAMES — the document URL is the
+    # voucher, not the redirect_uri host. Host-added schemes have no
+    # voucher unless the host also sets native_redirect_vouchers.
+    DEFAULT_NATIVE_REDIRECT_VOUCHERS = {
+      "grokbot" => [ "grok.com", /\A([\w-]+\.)?x\.ai\z/ ].freeze,
+      "cursor" => [ /\A([\w-]+\.)?cursor\.(com|sh)\z/ ].freeze
+    }.freeze
+
+    # Browser-interpreted, privileged, and network-protocol schemes.
+    # Never addable, never admitted, even if they appear in config.
+    REFUSED_REDIRECT_SCHEMES = %w[
+      javascript data vbscript blob about view-source
+      file intent android-app chrome chrome-extension moz-extension
+      ms-appx ms-appx-web
+      ftp ftps sftp ssh git ws wss mailto tel sms
+    ].freeze
+    REFUSED_REDIRECT_SCHEME_PREFIXES = %w[web+ ext+].freeze
+
     # @return [String] e.g. "https://example.com/mcp"
     attr_reader :resource_uri
 
@@ -51,15 +75,29 @@ module Hitch
     # @return [String]
     attr_accessor :brand_name
 
-    # Consent-screen labels for known client hosts, matched against the
-    # VERIFIED redirect_uri host — never the client's declared name, which
-    # is attacker-controllable in both registration schemes. Entries match
-    # in order with case/when semantics: a String key is an exact host, a
-    # Regexp key matches the host; first match wins, and an unmatched host
-    # is displayed as itself. Assign a whole Hash to customize (extend the
-    # default with `Hitch::Configuration::DEFAULT_CLIENT_NAMES.merge(...)`).
+    # Consent-screen labels for known client hosts. AuthorizationRequest
+    # passes a verified host: the redirect_uri host for https/loopback
+    # http, or the CIMD document host for a native scheme. Never the
+    # client's declared name, which is attacker-controllable in both
+    # registration schemes. Entries match in order with case/when
+    # semantics: a String key is an exact host, a Regexp key matches the
+    # host; first match wins, and an unmatched host is displayed as
+    # itself. Assign a whole Hash to customize (extend the default with
+    # `Hitch::Configuration::DEFAULT_CLIENT_NAMES.merge(...)`).
     # @return [Hash{String,Regexp => String}]
     attr_reader :client_names
+
+    # Native private-use schemes Hitch will 302 to, in addition to https
+    # and RFC 8252 loopback http. Default: grokbot, cursor. Assigning
+    # unions with the shipped pair; privileged schemes are refused.
+    # @return [Array<String>]
+    attr_reader :native_redirect_schemes
+
+    # CIMD document-host matchers that may use a native scheme. Shipped
+    # grokbot/cursor vouchers cannot be replaced. A host-added scheme
+    # with no entry here is operator-registered clients only.
+    # @return [Hash{String => Array<String,Regexp>}]
+    attr_reader :native_redirect_vouchers
 
     # OAuth scopes the host app supports. The first entry is the base/default
     # scope requested by the generic MCP bearer challenge; later entries are
@@ -308,6 +346,8 @@ module Hitch
       @allowed_origins = [].freeze
       @brand_name = "Rails MCP"
       @client_names = DEFAULT_CLIENT_NAMES
+      @native_redirect_schemes = DEFAULT_NATIVE_REDIRECT_SCHEMES
+      @native_redirect_vouchers = DEFAULT_NATIVE_REDIRECT_VOUCHERS
       @supported_scopes = [ "mcp".freeze ].freeze
       @access_token_lifetime_seconds = 3600
       @authorization_code_lifetime_seconds = 600
@@ -411,6 +451,59 @@ module Hitch
       nil
     end
 
+    def native_redirect_schemes=(values)
+      unless values.is_a?(Array)
+        raise ArgumentError, "native_redirect_schemes must be an array of URI schemes"
+      end
+
+      extra = values.map { |value| addable_native_scheme!(value) }
+      @native_redirect_schemes = (DEFAULT_NATIVE_REDIRECT_SCHEMES + extra).uniq.freeze
+    end
+
+    def native_redirect_vouchers=(value)
+      unless value.is_a?(Hash)
+        raise ArgumentError,
+          "native_redirect_vouchers must be a Hash of scheme names to host matchers"
+      end
+
+      extra = value.to_h do |scheme, matchers|
+        name = addable_native_scheme!(scheme)
+        if DEFAULT_NATIVE_REDIRECT_VOUCHERS.key?(name)
+          raise ArgumentError, "the #{name} voucher is shipped and cannot be replaced"
+        end
+
+        [ name, freeze_host_matchers!(matchers, name) ]
+      end
+
+      @native_redirect_vouchers = extra.merge(DEFAULT_NATIVE_REDIRECT_VOUCHERS).freeze
+    end
+
+    # True when this scheme is on the allowlist and is not a privileged
+    # scheme. The refused list is applied here, not only at assignment,
+    # so a value smuggled into config still cannot be 302'd to.
+    def native_redirect_scheme?(scheme)
+      name = scheme.to_s.downcase
+      return false if self.class.refused_redirect_scheme?(name)
+
+      native_redirect_schemes.include?(name)
+    end
+
+    # True when `host` (a CIMD document URL host) is a voucher for
+    # `scheme`. An allowlisted scheme with no matchers is operator-only.
+    def vouches_for_native_redirect?(scheme, host)
+      return false if host.blank?
+      return false unless native_redirect_scheme?(scheme)
+
+      Array(native_redirect_vouchers[scheme.to_s.downcase]).any? { |matcher| matcher === host }
+    end
+
+    def self.refused_redirect_scheme?(scheme)
+      name = scheme.to_s.downcase
+      return true if REFUSED_REDIRECT_SCHEMES.include?(name)
+
+      REFUSED_REDIRECT_SCHEME_PREFIXES.any? { |prefix| name.start_with?(prefix) }
+    end
+
     # RFC 6749 §3.3: grant the intersection of what was asked and what
     # this host supports; asking for nothing grants the base scope. Every
     # consent surface clamps through here once, at issuance — what lands
@@ -510,6 +603,28 @@ module Hitch
     end
 
     private
+
+    def addable_native_scheme!(value)
+      scheme = value.is_a?(String) ? value.strip.downcase : nil
+      unless scheme&.match?(/\A[a-z][a-z0-9+.-]*\z/)
+        raise ArgumentError, "native redirect schemes must be RFC 3986 scheme names"
+      end
+      if %w[http https].include?(scheme) || self.class.refused_redirect_scheme?(scheme)
+        raise ArgumentError, "#{scheme} is not a permitted native redirect scheme"
+      end
+
+      scheme.dup.freeze
+    end
+
+    def freeze_host_matchers!(matchers, scheme)
+      list = Array.wrap(matchers)
+      unless list.any? && list.all? { |matcher| matcher.is_a?(String) || matcher.is_a?(Regexp) }
+        raise ArgumentError,
+          "native_redirect_vouchers[#{scheme}] must be a String, Regexp, or array of those"
+      end
+
+      list.map { |matcher| matcher.is_a?(String) ? matcher.dup.freeze : matcher }.freeze
+    end
 
     def loopback_resource_uri_allowed?
       Rails.env.local?

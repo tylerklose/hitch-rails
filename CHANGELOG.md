@@ -5,6 +5,27 @@ All notable changes to hitch-rails will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Native redirect URIs are an allowlist, vouched — not a denylist.**
+  Grok Bot's `grokbot://mcp/oauth/callback` and Cursor's
+  `cursor://anysphere.cursor-mcp/oauth/callback` need RFC 8252 §7.1
+  private-use schemes (RFC 7591 §2 already carves those out of the
+  HTTPS requirement). Admitting any hierarchical custom scheme let
+  anyone DCR-register `evil://claude.ai/callback`, which consent then
+  branded as Claude. Hitch now 302s only to `https`, RFC 8252 loopback
+  `http`, and a shipped allowlist (`grokbot`, `cursor`; hosts may add
+  schemes). `grokbot` requires a CIMD document on `grok.com` / `x.ai`
+  or an operator-registered client; `cursor` requires `cursor.com` /
+  `cursor.sh` or an operator. Open DCR cannot mint those schemes.
+  Privileged schemes (`javascript`, `intent`, `chrome-extension`,
+  `web+*`, `file`, …) stay refused even if listed in config. Consent
+  applies `client_label` to https (and loopback http) hosts, and to
+  a native CIMD document host — never to an attacker-chosen custom-scheme
+  URI host. PKCE S256 stays mandatory.
+
 ## [0.4.0] - 2026-08-25
 
 Upgrading from 0.3.0 requires running three new migrations. See

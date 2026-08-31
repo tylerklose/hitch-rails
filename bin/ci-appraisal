@@ -38,7 +38,7 @@ APPRAISALS = RELEASE_APPRAISALS.merge(
     adapter: "sqlite3",
     database_url: "sqlite3::memory:",
     rails_requirement: ">= 8.2.0.alpha",
-    mcp_requirement: ">= 1.2, < 2",
+    mcp_requirement: ">= 1.4, < 2",
     ruby: "4.0"
   }
 ).freeze

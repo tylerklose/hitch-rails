@@ -83,6 +83,10 @@ module Hitch
         # request's principal out of another's. The
         # expensive part — schema compilation inside ::MCP::Tool.define — is
         # memoized per snapshot entry and only assembled here.
+        #
+        # Hitch never mounts StreamableHTTPTransport. listen is refused at
+        # Protocol::METHODS because the endpoint cannot hold SSE (mcp 1.4.0
+        # serve_subscriptions_listen is a transport keyword, not Server.new).
         def build_server
           # The endpoint boundary has already validated server_info against the
           # supported key set; the SDK constructor only needs symbol keywords.

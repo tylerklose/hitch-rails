@@ -127,7 +127,28 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
   test "the resolved SDK version is in the supported window" do
     resolved = Gem.loaded_specs.fetch("mcp").version
     assert_equal ::MCP::VERSION, resolved.to_s
-    assert Gem::Requirement.new(">= 1.2", "< 2").satisfied_by?(resolved)
+    assert Gem::Requirement.new(">= 1.4", "< 2").satisfied_by?(resolved)
+  end
+
+  test "subscriptions/listen and resources/subscribe stay JSON method-not-found" do
+    %w[subscriptions/listen resources/subscribe].each do |rpc_method|
+      McpController.reset_wire_metrics!
+      body = JSON.generate(base_body(rpc_method.tr("/", "-"), rpc_method))
+      post "/mcp", params: body, headers: base_headers(rpc_method)
+
+      assert_response :not_found
+      assert_equal "application/json", response.media_type
+      refute_match(%r{text/event-stream}, response.content_type.to_s)
+      assert_instance_of String, response.body
+      refute_kind_of Proc, response.body
+
+      parsed = JSON.parse(response.body)
+      assert_equal(-32601, parsed.dig("error", "code"))
+      assert_equal "Method not found", parsed.dig("error", "message")
+      assert_equal "wire-#{rpc_method.tr("/", "-")}", parsed.fetch("id")
+      assert_equal 0, McpController.wire_metrics.fetch(:sdk, 0)
+      assert_equal 0, McpController.wire_metrics.fetch(:registry, 0)
+    end
   end
 
   test "pre-controller guard prevents form parsing and ignores method override" do
@@ -615,6 +636,8 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
         "title" => "Hitch Wire"
       }, result.dig("_meta", "io.modelcontextprotocol/serverInfo"), vector_id)
       assert_equal "Use the authenticated private slice.", result.fetch("instructions"), vector_id
+      # Empty tools object: no listChanged, no subscribe (mcp 1.4.0 listen flags).
+      assert_equal({ "tools" => {} }, result.fetch("capabilities"), vector_id)
     end
 
     if expected.fetch("result") == "complete_private_zero_ttl_sorted"

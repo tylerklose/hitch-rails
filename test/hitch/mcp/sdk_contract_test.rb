@@ -152,6 +152,7 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
     result = response.fetch(:result)
 
     assert_equal [ PROTOCOL_VERSION ], result.fetch(:supportedVersions)
+    # Empty tools object: no listChanged, no subscribe (mcp 1.4.0 listen flags).
     assert_equal({ tools: {} }, result.fetch(:capabilities))
     assert_nil result[:serverInfo]
     assert_equal SERVER_INFO,
@@ -559,7 +560,7 @@ class Hitch::MCP::SDKContractTest < ActiveSupport::TestCase
   test "resolved SDK version is in the supported window" do
     resolved = Gem.loaded_specs.fetch("mcp").version
     assert_equal ::MCP::VERSION, resolved.to_s
-    assert Gem::Requirement.new(">= 1.2", "< 2").satisfied_by?(resolved)
+    assert Gem::Requirement.new(">= 1.4", "< 2").satisfied_by?(resolved)
   end
 
   test "verified request ids survive the SDK validation subset" do

@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   applies `client_label` to https (and loopback http) hosts, and to
   a native CIMD document host — never to an attacker-chosen custom-scheme
   URI host. PKCE S256 stays mandatory.
+- Raise the official Ruby MCP SDK floor from `mcp >= 1.2, < 2` to
+  `mcp >= 1.4, < 2`. Hitch still does not mount `StreamableHTTPTransport`.
+  `subscriptions/listen` (mcp 1.4.0's `serve_subscriptions_listen`) is
+  refused at `Protocol::METHODS` with JSON-RPC `-32601` and
+  `application/json`, because `Endpoint#hitch_mcp_render_protocol!` cannot
+  hold an SSE stream. `server/discover` continues to advertise
+  `{ tools: {} }` with no `listChanged` or `subscribe` flags.
 
 ### Security
 

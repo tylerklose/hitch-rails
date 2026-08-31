@@ -45,7 +45,7 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     end
 
     def versions
-      { "hitch" => "0.2.0.pre.4", "rails" => "8.1.3", "ruby" => "3.4.7", "mcp" => "1.2.0" }
+      { "hitch" => "0.2.0.pre.4", "rails" => "8.1.3", "ruby" => "3.4.7", "mcp" => "1.4.0" }
     end
 
     def environment_name

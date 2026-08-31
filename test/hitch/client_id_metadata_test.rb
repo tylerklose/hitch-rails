@@ -60,6 +60,29 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     assert CIMD.reference?("https://client.example/oauth/client-metadata.json")
   end
 
+  # A trailing-dot host is the same DNS name, but TLS/SNI is presented
+  # as "grok.com." and fails. Refusing the shape means no packet and no
+  # chance of writing failure_key("grok.com") under the chomped name.
+  test "a trailing-dot host is not a CIMD reference" do
+    dotted = "https://grok.com./oauth-client.json"
+    assert_not CIMD.document_url?(dotted)
+    assert_not CIMD.reference?(dotted)
+  end
+
+  # "MUST NOT contain single-dot or double-dot path components" —
+  # draft-ietf-oauth-client-id-metadata-document-02 §3.
+  test "a path with dot or dot-dot segments is not a CIMD reference" do
+    [
+      "https://client.example/../metadata.json",
+      "https://client.example/foo/../bar.json",
+      "https://client.example/./metadata.json",
+      "https://client.example/foo/./bar.json"
+    ].each do |value|
+      assert_not CIMD.document_url?(value), "#{value.inspect} has a '.' or '..' path segment"
+      assert_not CIMD.reference?(value)
+    end
+  end
+
   # --- SSRF address vetting -------------------------------------------
 
   test "non-public addresses are refused" do
@@ -174,6 +197,16 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   test "a document with an absurd number of redirect_uris is refused" do
     many = Array.new(Hitch::ClientIdMetadata::Fetcher::MAX_REDIRECT_URIS + 1) { |i| "https://client.example/cb#{i}" }
     assert_nil build({ client_id: DOC_URL, client_name: "N", redirect_uris: many }.to_json)
+  end
+
+  test "a document with a redirect_uri over the DCR byte cap is refused" do
+    long_uri = "https://client.example/" + ("x" * Hitch::Client::MAX_REDIRECT_URI_BYTES)
+    assert_nil build({ client_id: DOC_URL, client_name: "N", redirect_uris: [ long_uri ] }.to_json)
+
+    ok = "https://client.example/" + ("x" * (Hitch::Client::MAX_REDIRECT_URI_BYTES - "https://client.example/".bytesize))
+    assert_equal Hitch::Client::MAX_REDIRECT_URI_BYTES, ok.bytesize
+    doc = build({ client_id: DOC_URL, client_name: "N", redirect_uris: [ ok ] }.to_json)
+    assert_equal [ ok ], doc.redirect_uris
   end
 
   test "a document that is not a JSON object is refused" do
@@ -426,6 +459,8 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
       assert_nil CIMD.resolve("https://client.example:8443/a.json", actor: "User:1")
       assert_nil CIMD.resolve("https://user:pw@client.example/b.json", actor: "User:1")
       assert_nil CIMD.resolve("https://client.example/c.json#frag", actor: "User:1")
+      assert_nil CIMD.resolve("https://grok.com./d.json", actor: "User:1")
+      assert_nil CIMD.resolve("https://client.example/foo/../e.json", actor: "User:1")
       assert_equal 0, calls, "none of those should have attempted a fetch"
       assert_equal 0, CIMD.send(:fetches_charged_to, "User:1"),
         "nor should any of them have spent the budget"
@@ -447,6 +482,8 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
 
     assert_equal :not_a_reference, CIMD.diagnose("some-opaque-uuid").outcome
     assert_equal :not_a_reference, CIMD.diagnose("https://client.example").outcome
+    assert_equal :not_a_reference, CIMD.diagnose("https://grok.com./client.json").outcome
+    assert_equal :not_a_reference, CIMD.diagnose("https://client.example/foo/../bar.json").outcome
     assert_equal :rejected_shape, CIMD.diagnose("https://client.example:8443/d.json").outcome
 
     stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { CIMD::HOST_FAILURE }) do
@@ -530,7 +567,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
 
       logged.clear
       over = ->(socket) do
-        socket.write("HTTP/1.1 200 OK\r\nContent-Length: #{Hitch::ClientIdMetadata::Fetcher::MAX_BYTES + 1}\r\nConnection: close\r\n\r\n")
+        socket.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: #{Hitch::ClientIdMetadata::Fetcher::MAX_BYTES + 1}\r\nConnection: close\r\n\r\n")
         socket.write("x" * (Hitch::ClientIdMetadata::Fetcher::MAX_BYTES + 1))
       end
       serve(over) { |port| read_over_socket(port) }
@@ -543,7 +580,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
       logged.clear
       chunk = "x" * 64_000
       streamed = ->(socket) do
-        socket.write("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n")
+        socket.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n")
         50.times { socket.write("#{chunk.bytesize.to_s(16)}\r\n#{chunk}\r\n") }
         socket.write("0\r\n\r\n")
       end
@@ -673,7 +710,7 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
   # redirect_uri rotation takes effect promptly) but never for more (so
   # an attacker-supplied document can't pin itself in a shared cache).
   def ttl_for(headers)
-    handler = ->(socket) { socket.write("HTTP/1.1 200 OK\r\n#{headers}Content-Length: 2\r\nConnection: close\r\n\r\n{}") }
+    handler = ->(socket) { socket.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n#{headers}Content-Length: 2\r\nConnection: close\r\n\r\n{}") }
     serve(handler) { |port| read_over_socket(port)&.last }
   end
 
@@ -707,9 +744,46 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     end
   end
 
+  test "a non-JSON Content-Type is refused" do
+    body = { client_id: DOC_URL, client_name: "Example", redirect_uris: [ "https://client.example/cb" ] }.to_json
+    [
+      "text/html",
+      "text/html; charset=utf-8",
+      "text/plain",
+      "application/javascript",
+      nil
+    ].each do |content_type|
+      type_header = content_type ? "Content-Type: #{content_type}\r\n" : ""
+      handler = lambda do |socket|
+        socket.write("HTTP/1.1 200 OK\r\n#{type_header}Content-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n#{body}")
+      end
+      serve(handler) do |port|
+        assert_nil read_over_socket(port), "#{content_type.inspect} must not be treated as a metadata document"
+      end
+    end
+  end
+
+  test "application/json and application/+json Content-Types are accepted, charset ignored" do
+    body = { client_id: DOC_URL, client_name: "Example", redirect_uris: [ "https://client.example/cb" ] }.to_json
+    [
+      "application/json",
+      "application/json; charset=utf-8",
+      "application/ld+json"
+    ].each do |content_type|
+      handler = lambda do |socket|
+        socket.write("HTTP/1.1 200 OK\r\nContent-Type: #{content_type}\r\n" \
+                     "Content-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n#{body}")
+      end
+      serve(handler) do |port|
+        fetched = read_over_socket(port)
+        assert_equal body, fetched.first, "#{content_type} must be accepted as a JSON document"
+      end
+    end
+  end
+
   test "a declared Content-Length over the cap is refused before reading" do
     handler = lambda do |socket|
-      socket.write("HTTP/1.1 200 OK\r\nContent-Length: #{Hitch::ClientIdMetadata::Fetcher::MAX_BYTES + 1}\r\nConnection: close\r\n\r\n")
+      socket.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: #{Hitch::ClientIdMetadata::Fetcher::MAX_BYTES + 1}\r\nConnection: close\r\n\r\n")
       socket.write("x" * (Hitch::ClientIdMetadata::Fetcher::MAX_BYTES + 1))
     end
     serve(handler) { |port| assert_nil read_over_socket(port) }
@@ -791,14 +865,69 @@ class Hitch::ClientIdMetadataTest < ActiveSupport::TestCase
     assert_equal 1, calls, "nothing answered at that host — its other documents are not worth a second connection"
   end
 
-  test "a trailing dot is the same host for negative-caching purposes" do
-    calls = 0
-    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { calls += 1; CIMD::HOST_FAILURE }) do
-      assert_nil CIMD.resolve("https://dead.example/a.json")
-      assert_nil CIMD.resolve("https://dead.example./a.json")
-      assert_nil CIMD.resolve("https://DEAD.example/a.json")
+  # The Medium availability bug: client_id=https://grok.com./… failed TLS
+  # (SNI for "grok.com."), returned HOST_FAILURE, and Cache.failure_key
+  # chomped the trailing dot, so grok.com was poisoned for FAILURE_TTL.
+  # Shape-reject the trailing-dot URL: not a reference, no packet, no
+  # host-failure write.
+  test "a trailing-dot client_id does not write a host failure for the bare name" do
+    dotted = "https://grok.com./oauth-client.json"
+    bare = "https://grok.com/oauth-client.json"
+    calls = []
+
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(id, *) { calls << id; CIMD::HOST_FAILURE }) do
+      assert_not CIMD.reference?(dotted)
+      assert_nil CIMD.resolve(dotted)
+      assert_empty calls, "must not fetch a trailing-dot host — no packet"
+      assert_nil Rails.cache.read(CIMD::Cache.failure_key("grok.com")),
+        "https://grok.com./… must not poison grok.com"
+
+      assert_nil CIMD.resolve(bare)
+      assert_equal [ bare ], calls,
+        "grok.com must still be fetched — the dotted URL must not have poisoned it"
     end
-    assert_equal 1, calls, "evil.example and evil.example. are one DNS name and must share one key"
+  end
+
+  test "a TLS failure on one URL does not set the host failure key" do
+    url = "https://shared.example/a.json"
+    sibling = "https://shared.example/b.json"
+    failing = Object.new
+    def failing.start(*)
+      raise OpenSSL::SSL::SSLError, "hostname mismatch"
+    end
+
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :safe_address, ->(_host) { "93.184.216.34" }) do
+      stub_class_method(Hitch::ClientIdMetadata::Fetcher, :build_connection, ->(*) { failing }) do
+        assert_nil Hitch::ClientIdMetadata::Fetcher.call(url, URI.parse(url)),
+          "TLS failure is a URL-level negative, not HOST_FAILURE"
+        assert_nil CIMD.resolve(url)
+        assert_nil Rails.cache.read(CIMD::Cache.failure_key("shared.example")),
+          "a TLS fail must not poison the host"
+
+        calls = 0
+        stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { calls += 1; nil }) do
+          assert_nil CIMD.resolve(sibling)
+          assert_equal 1, calls, "a sibling on the same host must still be fetched"
+        end
+      end
+    end
+  end
+
+  test "an HTTP error on one URL does not set the host failure key" do
+    url = "https://shared.example/missing.json"
+    stub_class_method(Hitch::ClientIdMetadata::Fetcher, :call, ->(_id, *) { nil }) do
+      assert_nil CIMD.resolve(url)
+      assert_nil Rails.cache.read(CIMD::Cache.failure_key("shared.example")),
+        "a 404 must not poison the host"
+    end
+  end
+
+  test "DNS returning nothing still writes the host failure key" do
+    stub_class_method(Resolv, :getaddresses, ->(_host) { [] }) do
+      assert_nil CIMD.resolve("https://nxdomain.example/doc.json")
+      assert_equal false, Rails.cache.read(CIMD::Cache.failure_key("nxdomain.example")),
+        "an empty DNS answer is the one case that still blocks the host"
+    end
   end
 
   # A URL rejected on shape never touches the network, so caching the

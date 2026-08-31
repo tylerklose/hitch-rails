@@ -87,7 +87,8 @@ module Hitch
         return false if client_id.blank?
 
         uri = URI.parse(client_id.to_s)
-        uri.is_a?(URI::HTTPS) && uri.host.present? && uri.path.present? && uri.path != "/"
+        uri.is_a?(URI::HTTPS) && uri.host.present? && uri.path.present? && uri.path != "/" &&
+          !trailing_dot_host?(uri) && !dot_path_segments?(uri)
       rescue URI::InvalidURIError
         false
       end
@@ -131,10 +132,13 @@ module Hitch
         target = fetch_target(client_id)
         return nil if target.nil?
 
-        # A host that just failed to answer at all is not retried,
-        # whatever path or query is hung off it. Keyed by URL alone the
-        # negative cache is defeated by appending ?n=1, ?n=2 — each a
-        # distinct key and each a valid CIMD reference.
+        # DNS-empty or every address blocked: the host itself is not
+        # retried, whatever path or query is hung off it. Keyed by URL
+        # alone that negative is defeated by appending ?n=1. TLS failure,
+        # timeout after connect, RST, and HTTP errors are per-URL only —
+        # draft-ietf-oauth-client-id-metadata-document-02 §5.2 says do
+        # not cache errors; the per-URL negative and fetches_per_minute
+        # are the amplification guard.
         host = target.host
         return nil if Cache.read(Cache.failure_key(host)) == false
 
@@ -223,7 +227,7 @@ module Hitch
           Diagnosis.new(outcome: :no_capacity, detail: "every fetch slot is currently busy")
         when HOST_FAILURE
           Diagnosis.new(outcome: :unreachable,
-                        detail: "DNS, connect, TLS or timeout failed — check direct egress on port #{ALLOWED_PORT}; " \
+                        detail: "DNS returned no usable public address — check direct egress on port #{ALLOWED_PORT}; " \
                                 "an ambient http_proxy is deliberately ignored")
         else
           Diagnosis.new(outcome: :invalid_document,
@@ -304,12 +308,28 @@ module Hitch
         uri = URI.parse(client_id)
         return nil if uri.userinfo.present? || uri.fragment.present?
         return nil unless uri.port == ALLOWED_PORT
+        return nil if trailing_dot_host?(uri) || dot_path_segments?(uri)
 
         uri
       rescue URI::InvalidURIError
         # Unreachable in practice: both callers gate on document_url?,
         # which already parsed this exact string.
         nil
+      end
+
+      # A trailing-dot host is the same DNS name as the bare one, but
+      # TLS/SNI is presented as "grok.com." and fails. Do not strip the
+      # dot and fetch: that packet is wasted, and writing the per-host
+      # failure key under the chomped name would poison grok.com.
+      def trailing_dot_host?(uri)
+        uri.host.to_s.end_with?(".")
+      end
+
+      # "MUST NOT contain single-dot or double-dot path components" —
+      # draft-ietf-oauth-client-id-metadata-document-02 §3. Shape
+      # reject, no packet.
+      def dot_path_segments?(uri)
+        uri.path.to_s.split("/").any? { |segment| segment == "." || segment == ".." }
       end
     end
   end

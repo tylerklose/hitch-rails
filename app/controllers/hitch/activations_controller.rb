@@ -35,6 +35,7 @@ module Hitch
       # MissingTemplate 500.
       request.format = :html
       @brand_name = Hitch.configuration.brand_name
+      protect_activation_response
     end
 
     def new
@@ -152,6 +153,17 @@ module Hitch
 
     def preserve_oauth_authenticity_token?
       true
+    end
+
+    def prepare_oauth_form_response!
+      protect_activation_response
+    end
+
+    # RFC 8628: verification_uri_complete carries the user_code in the
+    # query string; the activation pages must not leak it via Referer.
+    def protect_activation_response
+      hitch_no_store!
+      response.headers["Referrer-Policy"] = "no-referrer"
     end
 
     def reject_oversized_oauth_form_body!

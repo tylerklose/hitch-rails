@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   attacker-influenced tool-result text (for example a worker bio) so a
   model can treat it as data, not instructions. Opt-in: Hitch never wraps
   unless the tool author calls it. Returns one frozen String for
-  `Result.text` / structured `text:`; it is not a Result.
+  `Result.text` / structured `text:`; it is not a Result. The README
+  points at the client half of the contract.
 
 ### Changed
 

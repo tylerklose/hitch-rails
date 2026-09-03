@@ -273,6 +273,12 @@ Hitch::MCP::Result.text(
 not a Result. Pass it to `Result.text` (or as structured `text:`) like any other
 string. What you wrap is a product decision; Hitch will not infer it.
 
+Wrapping is only the server half of the contract. The MCP client that talks to
+the model still has to treat fenced text as data, not as commands. Hitch cannot
+set that client's system prompt, and we are not prescribing prompt wording —
+Anthropic's [anatomy of effective commerce agents](https://claude.com/blog/the-anatomy-of-effective-commerce-agents)
+is the published version of that split.
+
 Request admission shares one fixed-window quota per principal/client across
 `server/discover`, `tools/list`, and `tools/call`, counted through your cache
 store with HMAC keys (no raw identifiers, no reset on token rotation).

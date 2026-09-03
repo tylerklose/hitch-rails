@@ -258,6 +258,21 @@ Results go through the closed `Hitch::MCP::Result` channel — `.text`,
 and are size-capped after serialization. Host exception messages are never
 exposed to clients.
 
+### Untrusted text
+
+Hitch does not wrap tool output for you. When a field is attacker-influenced —
+a worker bio, a customer note, scraped copy — the tool author opts in:
+
+```ruby
+Hitch::MCP::Result.text(
+  Hitch::MCP::UntrustedText.wrap(worker.bio, source: "worker.bio")
+)
+```
+
+`wrap` returns one frozen String (`<untrusted source="worker.bio">...</untrusted>`),
+not a Result. Pass it to `Result.text` (or as structured `text:`) like any other
+string. What you wrap is a product decision; Hitch will not infer it.
+
 Request admission shares one fixed-window quota per principal/client across
 `server/discover`, `tools/list`, and `tools/call`, counted through your cache
 store with HMAC keys (no raw identifiers, no reset on token rotation).

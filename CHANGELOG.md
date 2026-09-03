@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`Hitch::MCP::UntrustedText.wrap(text, source:)`** labels
+  attacker-influenced tool-result text (for example a worker bio) so a
+  model can treat it as data, not instructions. Opt-in: Hitch never wraps
+  unless the tool author calls it. Returns one frozen String for
+  `Result.text` / structured `text:`; it is not a Result.
+
 ### Changed
 
 - **Native redirect URIs are an allowlist, vouched — not a denylist.**

@@ -5,7 +5,7 @@ PATH
       json (>= 2.13, < 3)
       json_schemer (>= 2.4, < 3)
       mcp (>= 1.4, < 2)
-      rails (>= 8.0, < 9)
+      rails (>= 7.2, < 9)
 
 GEM
   remote: https://rubygems.org/
@@ -401,4 +401,4 @@ CHECKSUMS
   zeitwerk (2.8.3) sha256=2c85125a8467ce069e20123d1e709a08955c9d29c118c25b46b7b7fafdbb92e5
 
 BUNDLED WITH
-   4.0.0.beta1
+  4.0.0.beta1

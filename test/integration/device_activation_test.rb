@@ -453,7 +453,7 @@ class DeviceActivationTest < ActionDispatch::IntegrationTest
 
     post "/activate", params: { user_code: "A" * 20_000 }
 
-    assert_response :content_too_large
+    assert_response 413
     assert_match(/too large/, response.body)
     assert_match(/Only enter a code you asked a device for/, response.body)
   end

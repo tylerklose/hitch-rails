@@ -80,7 +80,7 @@ class PkceBoundaryTest < ActionDispatch::IntegrationTest
         headers: { "CONTENT_TYPE" => "application/x-www-form-urlencoded" }
     end
 
-    assert_response :content_too_large
+    assert_response 413
     assert authorization_code_pending?(raw_code)
   end
 
@@ -93,7 +93,7 @@ class PkceBoundaryTest < ActionDispatch::IntegrationTest
         headers: { "CONTENT_TYPE" => "application/x-www-form-urlencoded" }
     end
 
-    assert_response :content_too_large
+    assert_response 413
     assert_equal 0, Hitch::AccessToken.count
   end
 

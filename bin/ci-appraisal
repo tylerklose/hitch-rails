@@ -24,6 +24,7 @@ RELEASE_APPRAISALS = release_matrix.fetch("lanes").to_h do |lane|
       adapter: adapter,
       database_url: adapter == "sqlite3" ? "sqlite3::memory:" : "postgresql:///hitch_appraisal_test",
       rails_requirement: lane.fetch("rails"),
+      rack_requirement: lane["rack"],
       mcp_requirement: lane.fetch("mcp"),
       ruby: lane.fetch("ruby")
     }
@@ -95,6 +96,7 @@ environment = {
 }
 if appraisal[:rails_requirement]
   environment["HITCH_APPRAISAL_RAILS"] = appraisal.fetch(:rails_requirement)
+  environment["HITCH_APPRAISAL_RACK"] = appraisal[:rack_requirement] if appraisal[:rack_requirement]
   environment["HITCH_APPRAISAL_MCP"] = appraisal.fetch(:mcp_requirement)
   environment["HITCH_MATRIX_RUBY"] = appraisal.fetch(:ruby)
 end
@@ -118,10 +120,13 @@ if appraisal[:rails_requirement]
     require "bundler/setup"
 
     rails = Gem.loaded_specs.fetch("rails").version
+    rack = Gem.loaded_specs.fetch("rack").version
     mcp = Gem.loaded_specs.fetch("mcp").version
     rails_requirement = Gem::Requirement.new(*ENV.fetch("HITCH_APPRAISAL_RAILS").split(", "))
+    rack_requirement = Gem::Requirement.new(*ENV.fetch("HITCH_APPRAISAL_RACK").split(", ")) if ENV["HITCH_APPRAISAL_RACK"]
     mcp_requirement = Gem::Requirement.new(*ENV.fetch("HITCH_APPRAISAL_MCP").split(", "))
     abort "Resolved Rails #{rails} violates #{rails_requirement}" unless rails_requirement.satisfied_by?(rails)
+    abort "Resolved Rack #{rack} violates #{rack_requirement}" if rack_requirement && !rack_requirement.satisfied_by?(rack)
     abort "Resolved mcp #{mcp} violates #{mcp_requirement}" unless mcp_requirement.satisfied_by?(mcp)
 
     expected_ruby = ENV["HITCH_EXPECTED_RUBY"]
@@ -129,7 +134,7 @@ if appraisal[:rails_requirement]
       abort "Expected Ruby #{expected_ruby}.x, running #{RUBY_VERSION}"
     end
 
-    puts "matrix_runtime ruby=#{RUBY_VERSION} rails=#{rails} mcp=#{mcp} contract=ok"
+    puts "matrix_runtime ruby=#{RUBY_VERSION} rails=#{rails} rack=#{rack} mcp=#{mcp} contract=ok"
   RUBY
   unless system(environment, "bundle", "exec", "ruby", "-e", runtime_verifier, chdir: ROOT)
     warn "Resolved runtime violates the #{name} release-matrix contract."

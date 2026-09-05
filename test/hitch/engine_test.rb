@@ -48,7 +48,7 @@ class Hitch::EngineTest < ActiveSupport::TestCase
   test "OAuth form guard follows Rails route ownership for path variants" do
     captured = []
     downstream = lambda do |environment|
-      captured << environment[Rack::RACK_REQUEST_FORM_HASH]
+      captured << environment[Hitch::RackFormGuard::REQUEST_FORM_HASH]
       [ 200, {}, [] ]
     end
     guard = Hitch::RackFormGuard.new(downstream)
@@ -99,8 +99,10 @@ class Hitch::EngineTest < ActiveSupport::TestCase
 
     guard.call(environment)
 
-    assert_equal({}, captured.fetch(Rack::RACK_REQUEST_FORM_HASH))
-    assert_equal [], captured.fetch(Rack::RACK_REQUEST_FORM_PAIRS)
+    assert_equal({}, captured.fetch(Hitch::RackFormGuard::REQUEST_FORM_HASH))
+    assert_same captured.fetch(Rack::RACK_INPUT),
+      captured.fetch(Hitch::RackFormGuard::REQUEST_FORM_INPUT)
+    assert_equal [], captured.fetch(Hitch::RackFormGuard::REQUEST_FORM_PAIRS)
     refute captured.key?("HTTP_X_HTTP_METHOD_OVERRIDE")
   ensure
     Hitch.reset_configuration!

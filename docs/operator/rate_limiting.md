@@ -34,6 +34,11 @@ config.mcp.rate_limit_store = ActiveSupport::Cache::RedisCacheStore.new(
 
 Any `ActiveSupport::Cache` store responding to `increment` is accepted.
 
+On Rails 7.2, a pooled `RedisCacheStore` (`pool: { size: ... }`) crashes at
+boot with connection_pool 3.x — Rails 7.2 passes `ConnectionPool.new` an
+options hash that 3.x rejects. Not a Hitch defect; pin `connection_pool < 3`
+or upgrade Rails.
+
 ## What production requires
 
 Production boot fails closed when the resolved store cannot count one

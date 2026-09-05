@@ -87,7 +87,7 @@ have to be updated in lockstep and would silently pass when it was not.
 
 The append mechanism is documented in `lib/hitch/engine.rb`'s
 `:append_migrations` initializer, which also explains the `ENGINE_ROOT` guard
-against duplicate migration paths. `bin/ci` runs both release lanes, and the
+against duplicate migration paths. `bin/ci` runs all release lanes, and the
 sqlite lane applies every migration from scratch; `bin/package-smoke` builds
 the gem and adopts it into a disposable Rails app, so a migration that does not
 ship or does not apply fails there rather than in an adopter's terminal.

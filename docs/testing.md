@@ -47,7 +47,7 @@ that path; it boots a real application in a real subprocess.
 | Command | What only it proves |
 | --- | --- |
 | `bin/rails test` | The suite, one lane, synthetic stores. |
-| `bin/ci` | Both release lanes, eager loading, migrations, the built gem installed into a disposable app, and the Redis fallback lane below. |
+| `bin/ci` | All three release lanes, eager loading, migrations, the built gem installed into a disposable app, and the Redis fallback lane below. |
 | `bin/ci-rate-limit` | The rate-limit store resolving to a real Redis, including the production boot fallback. Needs Docker. |
 | `bin/package-smoke` | The built artifact — not the checkout — driving generators, doctor, authorization-code and device OAuth, and MCP. |
 | `bin/conformance-auth` | The official authorization profiles. Runs in CI outside `bin/ci`. |

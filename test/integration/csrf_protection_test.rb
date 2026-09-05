@@ -280,7 +280,7 @@ class CsrfProtectionTest < ActionDispatch::IntegrationTest
     post "/oauth/authorize", params: oversized,
       headers: { "CONTENT_TYPE" => "application/x-www-form-urlencoded" }
 
-    assert_response :content_too_large
+    assert_response 413
     assert_equal 0, Hitch::AccessToken.count
   end
 

@@ -12,12 +12,14 @@ release; only the latest release line is supported.
 
 | Version | Supported |
 | ------- | --------- |
-| latest 0.2.x release, and `main` | ✅ |
+| `main` | ✅ |
+| latest 0.4.x release | ✅ |
 
-The supported runtime matrix is Ruby `>= 3.3, < 4.1`, Rails `>= 8.0, < 9`,
-and SQLite or PostgreSQL. Reports that reproduce only on an unsupported
-runtime, adapter, or client version may still reveal a real bug, but the
-maintainer will first confirm them on that matrix.
+On `main`, the supported runtime matrix is Ruby `>= 3.3, < 4.1`, Rails
+`>= 7.2, < 9`, and SQLite or PostgreSQL. Rails 7.2 support is unreleased; the
+published 0.4.0 gem still requires Rails `>= 8.0, < 9`. Reports that reproduce
+only on an unsupported runtime, adapter, or client version may still reveal a
+real bug, but the maintainer will first confirm them on that matrix.
 
 ## Reporting a vulnerability
 

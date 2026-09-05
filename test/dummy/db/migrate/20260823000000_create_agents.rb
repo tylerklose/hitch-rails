@@ -4,7 +4,7 @@
 # integer. Hitch stores principal_id as a string so a host may key principals
 # on integer, UUID, or ULID; nothing exercised a non-integer key until this
 # table existed.
-class CreateAgents < ActiveRecord::Migration[8.0]
+class CreateAgents < ActiveRecord::Migration[7.2]
   def change
     create_table :agents, id: :string do |t|
       t.string :name, null: false

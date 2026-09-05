@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unless the tool author calls it. Returns one frozen String for
   `Result.text` / structured `text:`; it is not a Result. The README
   points at the client half of the contract.
+- Rails 7.2 is supported again, with a Ruby 3.3/Rack 2.2/PostgreSQL release
+  lane that exercises the full suite, eager loading, and the real Redis
+  fallback gate.
 
 ### Fixed
 

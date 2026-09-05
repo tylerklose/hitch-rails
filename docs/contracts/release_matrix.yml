@@ -1,7 +1,14 @@
 schema_version: 1
-release: "0.2.0"
 sqlite_busy_timeout_ms: 5000
 lanes:
+  - name: rails_7_2_postgresql
+    ruby: "3.3"
+    rails: "~> 7.2.0"
+    rack: ">= 2.2.10, < 3"
+    mcp: ">= 1.4, < 2"
+    adapter: postgresql
+    adapter_requirement: ">= 1.5, < 2"
+    gemfile: gemfiles/rails_7_2_postgresql.gemfile
   - name: rails_8_0_sqlite
     ruby: "3.3"
     rails: "~> 8.0.0"

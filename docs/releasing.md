@@ -1,7 +1,7 @@
 # Releasing
 
 `rake release` refuses to run with any uncommitted tracked change, and
-`bin/ci` rewrites the two release-lane lockfiles as soon as the version
+`bin/ci` rewrites the three release-lane lockfiles as soon as the version
 changes.
 So the commit comes after the gate, not before.
 
@@ -10,12 +10,13 @@ So the commit comes after the gate, not before.
    README's `gem "hitch-rails"` will not resolve. Release versions carry no
    suffix.
 2. Date the version's `CHANGELOG.md` heading.
-3. Run `bin/ci`. It rewrites the two release-lane lockfiles, which are
+3. Run `bin/ci`. It rewrites the three release-lane lockfiles, which are
    tracked. (`gemfiles/rails_main_sqlite.gemfile` has no tracked lockfile —
    the edge lane resolves Rails main fresh each run.)
 4. Run `bin/mutation-mcp` if any mutation subject changed since the last
    release (see the subject list in `test/contracts/`).
-5. Commit all four files — `lib/hitch/version.rb`, `CHANGELOG.md`,
+5. Commit all five files — `lib/hitch/version.rb`, `CHANGELOG.md`,
+   `gemfiles/rails_7_2_postgresql.gemfile.lock`,
    `gemfiles/rails_8_0_sqlite.gemfile.lock`, and
    `gemfiles/rails_8_1_postgresql.gemfile.lock` — and push `main`.
 6. `bundle exec rake release` — builds the gem, creates the annotated

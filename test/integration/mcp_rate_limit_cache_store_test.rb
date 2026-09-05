@@ -176,6 +176,19 @@ class MCPRateLimitCacheStoreTest < ActionDispatch::IntegrationTest
       "packaged runtime code must not load the redis client"
   end
 
+  test "the rate-limit checkpoint loads redis through bundler" do
+    source = REPOSITORY_ROOT.join("bin/ci-rate-limit").read
+    setup = source.index(%r{require ["']bundler/setup["']})
+    redis = source.index("disposable_redis")
+    unbundled = source.index("with_unbundled_env")
+
+    assert setup, "bin/ci-rate-limit must require bundler/setup"
+    assert redis
+    assert unbundled, "lane subprocesses must not inherit the parent bundle"
+    assert_operator setup, :<, redis
+    assert_operator redis, :<, unbundled
+  end
+
   private
 
   def configure_runtime(to:, within:, store: nil)

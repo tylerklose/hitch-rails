@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "timeout"
 
 module HitchMcpReloadFixtures
 end
@@ -16,7 +17,7 @@ class Hitch::MCP::RegistryReloadTest < ActiveSupport::TestCase
     clear_reload_constants
   end
 
-  test "invalid reload serves no stale snapshot and recovery resolves the new class" do
+  test "invalid replacement serves no stale snapshot and recovery resolves the new class" do
     old_tool = define_reload_pair(description: "old descriptor")
     old_snapshot = prepare_registry
     assert_equal "old descriptor", old_snapshot.entries.fetch(0).description
@@ -52,22 +53,23 @@ class Hitch::MCP::RegistryReloadTest < ActiveSupport::TestCase
     rescue StandardError => error
       prepare_result << [ :error, error ]
     end
-    entered.pop
+    wait_for(entered)
 
     reader_started = Queue.new
     reader_result = Queue.new
     reader_thread = Thread.new do
       reader_started << true
-      reader_result << [ :ok, registry_snapshot ]
+      snapshot = @configuration.ensure_registry_prepared!(supported_scopes: [ "mcp" ])
+      reader_result << [ :ok, snapshot ]
     rescue StandardError => error
       reader_result << [ :error, error ]
     end
-    reader_started.pop
-    assert_nil reader_thread.join(0.05), "reader must wait while prepare owns the atomic snapshot lock"
+    wait_for(reader_started)
+    assert_nil reader_thread.join(0.05), "reader must wait while prepare owns the snapshot lock"
 
     release << true
-    prepare_thread.join
-    reader_thread.join
+    assert prepare_thread.join(5), "registry preparation did not finish"
+    assert reader_thread.join(5), "registry reader did not finish"
     prepare_status, prepared = prepare_result.pop
     reader_status, read = reader_result.pop
     assert_equal :ok, prepare_status
@@ -76,11 +78,11 @@ class Hitch::MCP::RegistryReloadTest < ActiveSupport::TestCase
     assert_equal [ "new descriptor" ], read.entries.map(&:description)
   ensure
     release << true if defined?(release) && release.empty?
-    prepare_thread&.join
-    reader_thread&.join
+    prepare_thread&.join(1)
+    reader_thread&.join(1)
   end
 
-  test "concurrent readers receive unavailable after a failed replacement" do
+  test "concurrent readers reject a failed replacement after retrying validation" do
     define_reload_pair(description: "old descriptor")
     prepare_registry
 
@@ -96,102 +98,105 @@ class Hitch::MCP::RegistryReloadTest < ActiveSupport::TestCase
     rescue StandardError => error
       prepare_result << error
     end
-    entered.pop
+    wait_for(entered)
 
+    reader_started = Queue.new
     reader_result = Queue.new
     reader_thread = Thread.new do
-      registry_snapshot
+      reader_started << true
+      @configuration.ensure_registry_prepared!(supported_scopes: [ "mcp" ])
       reader_result << :unexpected_success
     rescue StandardError => error
       reader_result << error
     end
-    assert_nil reader_thread.join(0.05), "reader must not observe the stale snapshot during failed prepare"
+    wait_for(reader_started)
+    assert_nil reader_thread.join(0.05), "reader must not observe stale state during failed prepare"
 
-    release << true
-    prepare_thread.join
-    reader_thread.join
-    assert_instance_of ArgumentError, prepare_result.pop
-    assert_instance_of ArgumentError, reader_result.pop
+    release.close
+    assert prepare_thread.join(5), "failed registry preparation did not finish"
+    assert reader_thread.join(5), "registry reader did not finish"
+    prepare_error = prepare_result.pop
+    reader_error = reader_result.pop
+    assert_instance_of ArgumentError, prepare_error
+    assert_instance_of ArgumentError, reader_error
+    assert_includes reader_error.message, "description must be a nonblank String"
+    assert_equal prepare_error.message, reader_error.message
     assert_raises(ArgumentError) { registry_snapshot }
   ensure
-    release << true if defined?(release) && release.empty?
-    prepare_thread&.join
-    reader_thread&.join
+    release&.close
+    prepare_thread&.join(1)
+    reader_thread&.join(1)
   end
 
-  test "Rails eager load and to_prepare publish the configured dummy registry" do
-    original_configuration = Hitch.configuration
-    fresh_configuration = Hitch::Configuration.new
-    Hitch.instance_variable_set(:@configuration, fresh_configuration)
-    Hitch.configure do |configuration|
-      configuration.resource_uri = "https://dummy.test/mcp"
-      configuration.supported_scopes = [ "mcp" ]
-      configuration.mcp.enabled = true
-      configuration.mcp.registry = "McpToolRegistry"
-      configuration.mcp.server_info = { name: "dummy", version: "1" }
-      configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
-      configuration.mcp.request_limit = { to: 120, within: 60 }
-    end
-
-    Rails.application.eager_load!
-    Rails.application.reloader.prepare!
-    snapshot = fresh_configuration.mcp.registry_snapshot!
-
-    assert_equal "McpToolRegistry", snapshot.registry_name
-    assert_equal [ "dummy.echo" ], snapshot.entries.map(&:name)
-    assert_equal [ "McpTools::Echo" ], snapshot.entries.map(&:class_name)
-    refute_contains_class snapshot
-  ensure
-    Hitch.instance_variable_set(:@configuration, original_configuration) if defined?(original_configuration)
+  test "invalidation waits for forced preparation and wins" do
+    assert_clear_wins(:prepare_registry!)
   end
 
-  test "Rails to_prepare fails closed for an invalid configured registry" do
-    original_configuration = Hitch.configuration
-    fresh_configuration = Hitch::Configuration.new
-    Hitch.instance_variable_set(:@configuration, fresh_configuration)
-    Hitch.configure do |configuration|
-      configuration.resource_uri = "https://dummy.test/mcp"
-      configuration.mcp.enabled = true
-      configuration.mcp.registry = "MissingMcpToolRegistry"
-      configuration.mcp.server_info = { name: "dummy", version: "1" }
-      configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
-      configuration.mcp.request_limit = { to: 120, within: 60 }
-    end
-
-    assert_raises(ArgumentError) { Rails.application.reloader.prepare! }
-    assert_raises(ArgumentError) { fresh_configuration.mcp.registry_snapshot! }
-  ensure
-    Hitch.instance_variable_set(:@configuration, original_configuration) if defined?(original_configuration)
-  end
-
-  test "Rails to_prepare fails closed for a malformed server_info" do
-    original_configuration = Hitch.configuration
-    fresh_configuration = Hitch::Configuration.new
-    Hitch.instance_variable_set(:@configuration, fresh_configuration)
-    Hitch.configure do |configuration|
-      configuration.resource_uri = "https://dummy.test/mcp"
-      configuration.supported_scopes = [ "mcp" ]
-      configuration.mcp.enabled = true
-      configuration.mcp.registry = "McpToolRegistry"
-      configuration.mcp.server_info = { name: "dummy" }
-      configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
-      configuration.mcp.request_limit = { to: 120, within: 60 }
-    end
-
-    error = assert_raises(ArgumentError) { Rails.application.reloader.prepare! }
-    assert_includes error.message, "mcp.server_info"
-  ensure
-    Hitch.instance_variable_set(:@configuration, original_configuration) if defined?(original_configuration)
+  test "invalidation waits for first-use preparation and wins" do
+    assert_clear_wins(:ensure_registry_prepared!)
   end
 
   private
 
+  def assert_clear_wins(preparation)
+    entered = Queue.new
+    release = Queue.new
+    install_blocking_registry(entered:, release:)
+
+    result = Queue.new
+    prepare_thread = Thread.new do
+      snapshot = @configuration.public_send(preparation, supported_scopes: [ "mcp" ])
+      result << [ :ok, snapshot ]
+    rescue StandardError => error
+      result << [ :error, error ]
+    end
+    wait_for(entered)
+
+    clear_started = Queue.new
+    clear_thread = Thread.new do
+      clear_started << true
+      @configuration.clear_registry_snapshot!
+    end
+    wait_for(clear_started)
+    assert_nil clear_thread.join(0.05), "invalidation must wait for in-flight registry resolution"
+
+    release << true
+    assert prepare_thread.join(5), "registry preparation did not finish"
+    assert clear_thread.join(5), "registry invalidation did not finish"
+    assert_equal :ok, result.pop.fetch(0)
+    assert_raises(ArgumentError) { registry_snapshot }
+  ensure
+    release << true if defined?(release) && release.empty?
+    prepare_thread&.join(1)
+    clear_thread&.join(1)
+  end
+
+  def install_blocking_registry(entered:, release:)
+    namespace = Module.new
+    HitchMcpReloadFixtures.const_set(:Blocking, namespace)
+    tool = Class.new(Hitch::MCP::Tool)
+    namespace.const_set(:Tool, tool)
+    configure_tool(tool, description: "blocked descriptor")
+    registry = Class.new(Hitch::MCP::Registry)
+    registry.register(tool, scopes: [ "mcp" ])
+    namespace.define_singleton_method(:const_missing) do |name|
+      return super(name) unless name == :Registry
+
+      entered << true
+      release.pop
+      const_set(:Registry, registry)
+    end
+    @configuration.registry = "HitchMcpReloadFixtures::Blocking::Registry"
+  end
+
+  def wait_for(queue)
+    Timeout.timeout(5) { queue.pop }
+  end
+
   def define_reload_pair(tool_name: "reload.tool", description:, description_gate: nil)
     tool = Class.new(Hitch::MCP::Tool)
     HitchMcpReloadFixtures.const_set(:Tool, tool)
-    tool.tool_name tool_name
-    tool.description description
-    tool.input_schema type: "object", properties: {}, additionalProperties: false
+    configure_tool(tool, tool_name:, description:)
     if description_gate
       entered, release = description_gate
       tool.define_singleton_method(:description) do
@@ -203,8 +208,14 @@ class Hitch::MCP::RegistryReloadTest < ActiveSupport::TestCase
 
     registry = Class.new(Hitch::MCP::Registry)
     HitchMcpReloadFixtures.const_set(:Registry, registry)
-    registry.register tool, scopes: [ "mcp" ]
+    registry.register(tool, scopes: [ "mcp" ])
     tool
+  end
+
+  def configure_tool(tool, tool_name: "reload.tool", description:)
+    tool.tool_name tool_name
+    tool.description description
+    tool.input_schema type: "object", properties: {}, additionalProperties: false
   end
 
   def prepare_registry
@@ -221,10 +232,8 @@ class Hitch::MCP::RegistryReloadTest < ActiveSupport::TestCase
     end
   end
 
-  # The snapshot must never retain a reloadable host class — resolution goes
-  # through class names so each prepare cycle serves fresh constants. The one
-  # class it may hold is the framework-built anonymous SDK tool wrapper,
-  # rebuilt with every snapshot from frozen entry data.
+  # The snapshot must never retain a reloadable host class. The anonymous SDK
+  # wrapper is the exception: it is framework-owned and rebuilt per snapshot.
   def refute_contains_class(value)
     if value.is_a?(Class)
       assert_nil value.name

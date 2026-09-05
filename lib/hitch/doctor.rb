@@ -263,8 +263,7 @@ module Hitch
 
       def registry_facts
         configuration = Hitch.configuration
-        snapshot = Hitch::MCP::Internal::RegistryRuntime.build_snapshot(
-          registry_name: configuration.mcp.registry,
+        snapshot = configuration.mcp.prepare_registry!(
           supported_scopes: configuration.supported_scopes
         )
         {

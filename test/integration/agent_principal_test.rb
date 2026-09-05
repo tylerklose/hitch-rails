@@ -53,7 +53,6 @@ class AgentPrincipalTest < ActionDispatch::IntegrationTest
       configuration.mcp.registry = "AgentPrincipalFixtures::Registry"
       configuration.mcp.server_info = { name: "hitch-agent-principal", version: "1" }
     end
-    Hitch.configuration.mcp.prepare_registry!(supported_scopes: Hitch.configuration.supported_scopes)
     @agent = Agent.create!(name: "nightly")
     @token = mint_mcp_token(principal: @agent)
   end

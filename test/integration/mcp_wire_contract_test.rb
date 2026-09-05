@@ -41,7 +41,6 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
       configuration.mcp.scope_resolver = ->(principal:, access_token:, request:) { principal }
       configuration.mcp.request_limit = { to: 120, within: 60 }
     end
-    Hitch.configuration.mcp.prepare_registry!(supported_scopes: Hitch.configuration.supported_scopes)
     McpController.wire_slice_enabled = true
 
     @user = User.create!(email: "wire@example.test")
@@ -256,10 +255,9 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
       Hitch.configuration.mcp.server_info = ->(_context) { { name: "server-info-secret", version: "1" } }
     end
 
-    # A malformed Hash fails on the validated read. At boot that read runs in
-    # the engine's to_prepare hook; assigned after boot, as here, the request
-    # path hits it first and the wire stays generic with no registry or SDK
-    # work.
+    # A malformed Hash fails on the validated read. Eager boot forces that
+    # read; assigned after boot, as here, the request path hits it first and
+    # the wire stays generic with no registry or SDK work.
     Hitch.configuration.mcp.server_info = { name: "first", "name" => "server-info-secret", version: "1" }
     McpController.reset_wire_metrics!
 

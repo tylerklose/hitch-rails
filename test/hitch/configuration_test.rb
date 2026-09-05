@@ -45,8 +45,8 @@ class Hitch::ConfigurationTest < ActiveSupport::TestCase
     # configuration, not per request.
     assert_raises(ArgumentError) { configuration.server_info = ->(_context) { { name: "x", version: "1" } } }
 
-    # A malformed Hash passes the structural setter and fails on the read the
-    # engine's to_prepare hook forces, so a bad value stops the boot.
+    # A malformed Hash passes the structural setter and fails on the validated
+    # read. Eager boot forces that read; non-eager MCP use reaches it lazily.
     configuration.server_info = { name: "example" }
     assert_raises(ArgumentError) { configuration.server_info }
 

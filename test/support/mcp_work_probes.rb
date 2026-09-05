@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # Counts the endpoint's downstream work by spying on the real collaborators —
-# the body parse, the registry snapshot read, and the SDK dispatch — so the
+# the body parse, the registry preparation, and the SDK dispatch — so the
 # zero-work and single-dispatch invariants stay assertable without the
 # endpoint carrying test seams. Each probe delegates straight through; the
 # production path is what runs.
@@ -11,7 +11,7 @@ module McpWorkProbes
 
     @installed = true
     Hitch::MCP::Internal::VerifiedRequest.singleton_class.prepend(BodyParse)
-    Hitch::MCP::Configuration.prepend(RegistrySnapshot)
+    Hitch::MCP::Configuration.prepend(RegistryPreparation)
     Hitch::MCP::Internal::SDKAdapter.singleton_class.prepend(SDKDispatch)
   end
 
@@ -22,9 +22,9 @@ module McpWorkProbes
     end
   end
 
-  # Counts only successful snapshot reads, exactly as the endpoint proceeds.
-  module RegistrySnapshot
-    def registry_snapshot!
+  # Counts only successful preparation, exactly as the endpoint proceeds.
+  module RegistryPreparation
+    def ensure_registry_prepared!(...)
       super.tap { McpController.increment_wire_metric!(:registry) }
     end
   end

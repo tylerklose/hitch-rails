@@ -16,6 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Result.text` / structured `text:`; it is not a Result. The README
   points at the client half of the contract.
 
+### Fixed
+
+- Registry preparation now runs after eager loading instead of constantizing
+  host tools from Rails' initial `to_prepare` callback. Eager boot and reload
+  remain fail-fast; non-eager applications prepare on first MCP use, and
+  `hitch:doctor` prepares only after the application boots. This removes the
+  early-load warning without serving stale reloadable classes.
+  ([#44](https://github.com/tylerklose/hitch-rails/issues/44))
+
 ### Changed
 
 - **Native redirect URIs are an allowlist, vouched — not a denylist.**

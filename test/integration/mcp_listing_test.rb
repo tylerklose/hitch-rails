@@ -444,7 +444,6 @@ class MCPListingTest < ActionDispatch::IntegrationTest
       configuration.mcp.max_request_bytes = 8_192
     end
     Hitch.configuration.validate!
-    prepare_registry
   end
 
   def prepare_registry

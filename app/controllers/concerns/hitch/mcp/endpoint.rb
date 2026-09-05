@@ -204,11 +204,14 @@ module Hitch
       end
 
       def hitch_mcp_dispatch!(verified_request)
+        configuration = Hitch.configuration
         scope = hitch_mcp_resolve_scope
         context = hitch_mcp_context(verified_request, scope:)
-        server_info = Hitch.configuration.mcp.server_info
+        server_info = configuration.mcp.server_info
 
-        snapshot = Hitch.configuration.mcp.registry_snapshot!
+        snapshot = configuration.mcp.ensure_registry_prepared!(
+          supported_scopes: configuration.supported_scopes
+        )
         tools = hitch_mcp_tools(verified_request:, context:, snapshot:)
         return if performed?
 

@@ -6,7 +6,9 @@ module Hitch
 
     class << self
       def doctor_command?
-        ARGV.reject { |argument| argument.start_with?("-") } == [ "hitch:doctor" ]
+        return false unless defined?(Rake) && Rake.respond_to?(:application)
+
+        Rake.application.top_level_tasks == [ "hitch:doctor" ]
       end
     end
 
@@ -123,22 +125,33 @@ module Hitch
         (%w[generate g].include?(ARGV.first) && ARGV[1] == "hitch:install")
       next if install_generator || Hitch::Engine.doctor_command?
 
-      Hitch.configuration.validate!
+      configuration = Hitch.configuration
+      configuration.validate!
+      configuration.mcp.validate_rate_limit_store! if configuration.mcp.enabled
     end
 
-    config.to_prepare do
-      configuration = Hitch.configuration
-      next if Hitch::Engine.doctor_command?
-      next unless configuration.resource_uri.present?
-      next unless configuration.mcp.enabled
+    config.after_initialize do |app|
+      app.reloader.before_class_unload do
+        Hitch.configuration.mcp.clear_registry_snapshot!
+      end
 
-      configuration.mcp.validate!
+      next unless app.config.eager_load
 
-      configuration.mcp.prepare_registry!(supported_scopes: configuration.supported_scopes)
-      # Forces server_info normalization so a malformed value fails here,
-      # alongside registry validation, rather than on the first request.
-      configuration.mcp.server_info
-      configuration.mcp.validate_rate_limit_store!
+      prepare_registry = lambda do
+        configuration = Hitch.configuration
+        next if Hitch::Engine.doctor_command?
+        next unless configuration.resource_uri.present? && configuration.mcp.enabled
+
+        configuration.mcp.prepare_registry!(
+          supported_scopes: configuration.supported_scopes
+        )
+        configuration.mcp.server_info
+      end
+
+      # Active Support runs after callbacks in reverse registration order.
+      # Prepending this leaves Rails' main-autoloader eager load first.
+      app.reloader.after_class_unload(prepend: true, &prepare_registry)
+      prepare_registry.call
     end
 
     # Filter OAuth secrets out of Rails request logs. Without this, a

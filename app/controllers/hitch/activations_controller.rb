@@ -168,7 +168,7 @@ module Hitch
 
     def reject_oversized_oauth_form_body!
       render_new alert: "That submission was too large. Enter just the short code your device is showing.",
-        status: :content_too_large
+        status: 413
     end
   end
 end

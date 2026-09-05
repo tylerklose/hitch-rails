@@ -33,6 +33,11 @@ jobs:
       matrix:
         include:
           - ruby: "3.3"
+            rails: "7.2"
+            adapter: postgresql
+            profile: rails_7_2_postgresql
+            gemfile: gemfiles/rails_7_2_postgresql.gemfile
+          - ruby: "3.3"
             rails: "8.0"
             adapter: sqlite3
             profile: rails_8_0_sqlite
@@ -64,6 +69,10 @@ jobs:
 
       - name: Run supported-lane suite
         run: bin/ci-appraisal ${{ matrix.profile }} -- bin/rails test
+
+      - name: Run Skillit-shaped Redis gate
+        if: matrix.profile == 'rails_7_2_postgresql'
+        run: bin/ci-rate-limit rails_7_2_postgresql
 
       - name: Run style gate
         run: bin/rubocop
@@ -117,6 +126,11 @@ jobs:
 
       - name: Set up pinned authorization conformance npm
         run: npm install --global npm@11.1.0
+
+      - name: Install Rails 7.2 / PostgreSQL appraisal
+        env:
+          BUNDLE_GEMFILE: gemfiles/rails_7_2_postgresql.gemfile
+        run: bundle install
 
       - name: Install Rails 8.0 / SQLite appraisal
         env:

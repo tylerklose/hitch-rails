@@ -27,7 +27,7 @@ class DynamicRegistrationLimitsTest < ActionDispatch::IntegrationTest
       post_raw_json("#{body} ")
     end
 
-    assert_response :content_too_large
+    assert_response 413
     assert_equal "invalid_client_metadata", JSON.parse(response.body).fetch("error")
     assert_equal 1, Hitch::Client.count
   end

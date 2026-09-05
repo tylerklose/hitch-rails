@@ -62,6 +62,6 @@ module RackInputTestSupport
   private
 
   def input_size(input)
-    input.instance_variable_get(:@stream).size
+    input.respond_to?(:size) ? input.size : input.instance_variable_get(:@stream).size
   end
 end

@@ -88,7 +88,7 @@ class RegistrationAdmissionTest < ActionDispatch::IntegrationTest
     body_events = processing_events do
       post_json(oversized)
     end
-    assert_response :content_too_large
+    assert_response 413
     assert_empty body_events
     assert_equal 0, Hitch::Client.count
   end

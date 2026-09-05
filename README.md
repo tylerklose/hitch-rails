@@ -49,9 +49,12 @@ needs:
 - **Generators, a test helper, and a read-only `hitch:doctor`** for
   installing, testing, and diagnosing the integration
 
-SQLite and PostgreSQL are supported, on Ruby >= 3.3 and Rails 8.x. CI tests
-Rails 8.0 and 8.1 on every push; later 8.x releases — including edge Rails —
-install and are expected to work, but are not covered by a lane.
+On `main`, SQLite and PostgreSQL are supported on Ruby >= 3.3, < 4.1 and Rails
+>= 7.2, < 9. CI tests Rails 7.2/Rack 2.2/PostgreSQL, Rails 8.0/SQLite, and Rails
+8.1/PostgreSQL on every push; later 8.x releases — including edge Rails —
+install and are expected to work, but are not covered by a release lane. Rails
+7.2 support is currently unreleased; the published 0.4.0 gem still requires
+Rails >= 8.0.
 Host models with integer, UUID, or ULID primary keys all work: access tokens
 store principal IDs losslessly as strings.
 

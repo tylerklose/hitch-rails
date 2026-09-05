@@ -11,6 +11,15 @@ module Hitch
   # format/trailing-slash variants, host routes may shadow the engine, and the
   # MCP controller/route remain host-owned.
   class RackFormGuard
+    REQUEST_FORM_HASH = Rack::RACK_REQUEST_FORM_HASH
+    REQUEST_FORM_INPUT = Rack::RACK_REQUEST_FORM_INPUT
+    # Rack 2 reads only form_hash and does not define the pairs key.
+    REQUEST_FORM_PAIRS = if Rack.const_defined?(:RACK_REQUEST_FORM_PAIRS)
+      Rack::RACK_REQUEST_FORM_PAIRS
+    else
+      "rack.request.form_pairs"
+    end
+
     ENDPOINTS = {
       "hitch/authorizations" => "create",
       "hitch/registrations" => "create",
@@ -34,8 +43,9 @@ module Hitch
     def call(environment)
       route_type = hitch_strict_body_route(environment)
       if route_type
-        environment[Rack::RACK_REQUEST_FORM_HASH] = {}
-        environment[Rack::RACK_REQUEST_FORM_PAIRS] = []
+        environment[REQUEST_FORM_HASH] = {}
+        environment[REQUEST_FORM_INPUT] = environment[Rack::RACK_INPUT]
+        environment[REQUEST_FORM_PAIRS] = []
         # The MCP route is permanently POST/OPTIONS. A generic Rack method
         # override must neither parse its body nor turn authenticated POST
         # traffic into an unauthenticated OPTIONS request.
@@ -64,8 +74,9 @@ module Hitch
       probe_environment = environment.dup
       probe_environment.delete("action_dispatch.request.path_parameters")
       probe_environment["rack.input"] = StringIO.new
-      probe_environment[Rack::RACK_REQUEST_FORM_HASH] = {}
-      probe_environment[Rack::RACK_REQUEST_FORM_PAIRS] = []
+      probe_environment[REQUEST_FORM_HASH] = {}
+      probe_environment[REQUEST_FORM_INPUT] = probe_environment[Rack::RACK_INPUT]
+      probe_environment[REQUEST_FORM_PAIRS] = []
       probe_environment["CONTENT_LENGTH"] = "0"
       probe_environment[Rack::PATH_INFO] = normalized_path
 

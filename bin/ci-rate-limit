@@ -1,9 +1,9 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Runs the cross-process rate-limit suites in both release lanes against a
-# disposable Redis container, exercising RedisCacheStore as one supported
-# admission backend.
+# Runs the cross-process rate-limit suites in every release lane by default, or
+# in the named lanes when arguments are provided, against a disposable Redis
+# container. This exercises RedisCacheStore as one supported admission backend.
 
 require "open3"
 require "timeout"
@@ -11,7 +11,7 @@ require "tmpdir"
 require_relative "../test/checkpoint/disposable_redis"
 
 ROOT = File.expand_path("..", __dir__)
-LANES = %w[rails_8_0_sqlite rails_8_1_postgresql].freeze
+LANES = %w[rails_7_2_postgresql rails_8_0_sqlite rails_8_1_postgresql].freeze
 MINIMUM_TEST_RUNS = 27
 TEST_FILES = %w[
   test/hitch/configuration_test.rb
@@ -20,6 +20,10 @@ TEST_FILES = %w[
   test/integration/mcp_rate_limit_cross_process_contract.rb
   test/integration/mcp_rate_limit_test.rb
 ].freeze
+
+lanes = ARGV.empty? ? LANES : ARGV.uniq
+unknown_lanes = lanes - LANES
+abort "Unknown rate-limit lane(s): #{unknown_lanes.join(', ')}" if unknown_lanes.any?
 
 def capture!(*command, environment: {}, timeout_seconds: 180)
   output = +""
@@ -52,7 +56,7 @@ HitchCheckpoint::DisposableRedis.open do |redis_service|
   Dir.mktmpdir("hitch-rate-limit-lanes-") do |directory|
     rails_log = File.join(directory, "rails.log")
     File.open(rails_log, File::WRONLY | File::CREAT | File::EXCL, 0o600) { }
-    LANES.each do |lane|
+    lanes.each do |lane|
       lane_path = File.join(directory, "#{lane}.json")
       environment = {
         "HITCH_MCP_REDIS_URL" => redis_service.url,

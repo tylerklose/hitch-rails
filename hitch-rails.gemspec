@@ -72,5 +72,5 @@ Gem::Specification.new do |spec|
   spec.add_dependency "json", ">= 2.13", "< 3"
   spec.add_dependency "json_schemer", ">= 2.4", "< 3"
   spec.add_dependency "mcp", ">= 1.4", "< 2"
-  spec.add_dependency "rails", ">= 8.0", "< 9"
+  spec.add_dependency "rails", ">= 7.2", "< 9"
 end

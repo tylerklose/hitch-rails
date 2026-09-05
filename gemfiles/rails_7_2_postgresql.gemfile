@@ -1,0 +1,19 @@
+source "https://rubygems.org"
+
+gemspec path: ".."
+
+gem "rails", "~> 7.2.0"
+gem "rack", ">= 2.2.10", "< 3"
+gem "pg", ">= 1.5", "< 2"
+gem "puma"
+
+gem "rubocop-rails-omakase", require: false
+
+# Exercises RedisCacheStore as one supported admission backend for
+# bin/ci-rate-limit. Hitch declares no runtime Redis dependency; see
+# docs/operator/rate_limiting.md.
+gem "redis", ">= 5", "< 7"
+
+# Rails 7.2's RedisCacheStore passes ConnectionPool.new a positional hash,
+# which connection_pool 3.x rejects; Rails 8 is unaffected.
+gem "connection_pool", "< 3"

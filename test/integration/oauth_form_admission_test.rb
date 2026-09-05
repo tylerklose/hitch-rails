@@ -60,7 +60,7 @@ class OauthFormAdmissionTest < ActionDispatch::IntegrationTest
       post "/oauth/token", params: "code_verifier=#{'a' * 20_000}",
         headers: { "CONTENT_TYPE" => "application/x-www-form-urlencoded" }
     end
-    assert_response :content_too_large
+    assert_response 413
     assert_empty token_events
 
     revoke_events = processing_payloads do
@@ -144,7 +144,7 @@ class OauthFormAdmissionTest < ActionDispatch::IntegrationTest
 
   test "a host route shadowing the token path retains its ordinary form body" do
     [ "/oauth/token", "/oauth/./token" ].each do |path|
-      input = NonRewindableInput.new("ordinary=value")
+      input = StringIO.new("ordinary=value")
 
       response = call_app_with_input(
         path: path,
@@ -166,7 +166,7 @@ class OauthFormAdmissionTest < ActionDispatch::IntegrationTest
       }
     end
 
-    assert_response :content_too_large
+    assert_response 413
     assert_equal "https://allowed.example", response.headers["Access-Control-Allow-Origin"]
     assert_includes response.headers["Vary"], "Origin"
     assert_empty events

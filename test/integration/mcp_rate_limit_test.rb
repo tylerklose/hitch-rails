@@ -50,9 +50,10 @@ class MCPRateLimitTest < ActionDispatch::IntegrationTest
       headers: admission_env(token: @token, method: "tools/list")
     )
 
+    headers = rejected.headers.transform_keys(&:downcase)
     assert_equal 429, rejected.status
-    assert_equal "60", rejected.headers.fetch("retry-after")
-    assert_includes rejected.headers.fetch("access-control-expose-headers"), "Retry-After"
+    assert_equal "60", headers.fetch("retry-after")
+    assert_includes headers.fetch("access-control-expose-headers"), "Retry-After"
     assert_equal 0, input.bytes_read
     assert_equal before_rejection, downstream_metrics
     assert_equal({ body_parses: 3, registry: 3, sdk: 3, host: 1 }, downstream_metrics)

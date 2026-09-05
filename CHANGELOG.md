@@ -52,6 +52,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Authorization-code `invalid_grant` uses one public `error_description`.** Wrong client, wrong `redirect_uri`, PKCE failure, expired, and unknown all return the same string (RFC 6819). The code is not consumed on a failed binding check.
 - **Device `/activate` sends `Cache-Control: no-store` and `Referrer-Policy: no-referrer`** on the code-entry, confirm, and done pages.
 
+## [Unreleased]
+
+### Added
+
+- Rails 7.2 is supported again, with a Ruby 3.3/Rack 2.2/PostgreSQL release
+  lane that exercises the full suite, eager loading, and the real Redis
+  fallback gate.
+
 ## [0.4.0] - 2026-08-25
 
 Upgrading from 0.3.0 requires running three new migrations. See

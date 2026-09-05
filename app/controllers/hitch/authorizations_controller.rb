@@ -108,7 +108,7 @@ module Hitch
       oauth_error(
         "invalid_request",
         "authorization request body exceeds #{MAX_REQUEST_BODY_BYTES} bytes",
-        :content_too_large
+        413
       )
     end
 

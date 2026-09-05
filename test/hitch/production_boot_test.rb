@@ -38,6 +38,26 @@ class Hitch::ProductionBootTest < ActiveSupport::TestCase
     assert_broken_feature_store("device", "config.device_authorization_rate_store")
   end
 
+  test "bin rails doctor resolves a framework-touching registry after initialization" do
+    stdout, stderr, _status = Open3.capture3(
+      {
+        "RAILS_ENV" => "production",
+        "DATABASE_URL" => production_database_url,
+        "SECRET_KEY_BASE" => "hitch-production-doctor-early-load-probe",
+        "HITCH_DOCTOR_FORMAT" => "json",
+        "HITCH_DOCTOR_EARLY_LOAD_PROBE" => "1"
+      },
+      File.join(dummy_root, "bin/rails"), "hitch:doctor",
+      chdir: dummy_root
+    )
+    json_output = stdout.lines.drop_while { |line| line != "{\n" }.join
+    document = JSON.parse(json_output)
+    registry = document.fetch("checks").find { |check| check.fetch("id") == "registry" }
+
+    assert_equal [ "pass", "valid" ], registry.values_at("status", "code")
+    refute_includes "#{stdout}\n#{stderr}", "loaded before application initialization"
+  end
+
   private
 
   def boot(probe)
@@ -95,5 +115,9 @@ class Hitch::ProductionBootTest < ActiveSupport::TestCase
 
   def repository_root
     Rails.root.join("../..").expand_path.to_s
+  end
+
+  def dummy_root
+    Rails.root.to_s
   end
 end

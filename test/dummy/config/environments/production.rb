@@ -8,6 +8,9 @@ Rails.application.configure do
 
   # Eager load code on boot for better performance and memory savings (ignored by Rake tasks).
   config.eager_load = true
+  if ENV["HITCH_DOCTOR_EARLY_LOAD_PROBE"] && config.respond_to?(:action_on_early_load_hook=)
+    config.action_on_early_load_hook = :raise
+  end
 
   # Full error reports are disabled.
   config.consider_all_requests_local = false

@@ -53,16 +53,13 @@ ActiveSupport::TestCase.teardown do
   Hitch::ClientIdMetadata.instance_variable_set(:@warned, {})
 end
 
-# Hitch's configuration comes from the dummy app's initializer, and its MCP
-# registry from the engine's to_prepare block — both run once, at boot. A test
-# calling Hitch.reset_configuration! therefore left every later test with a
-# blank configuration, reported as a failure in whichever test the seed
-# happened to run next. Put the app's own boot state back, rather than have
-# each test defensively re-establish what it needs.
+# Hitch's configuration comes from the dummy app's initializer. A test calling
+# Hitch.reset_configuration! otherwise leaves every later test with a blank
+# configuration, reported as a failure in whichever test the seed happens to
+# run next. The registry itself is prepared on first MCP use.
 ActiveSupport::TestCase.teardown do
   Hitch.reset_configuration!
   load Rails.root.join("config/initializers/hitch.rb")
-  Rails.application.reloader.prepare!
 end
 
 ActiveSupport::TestCase.include(StubClassMethod)

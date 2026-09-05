@@ -108,7 +108,6 @@ class MCPRateLimitTest < ActionDispatch::IntegrationTest
       configuration.mcp.max_request_bytes = 8_192
     end
     Hitch.configuration.validate!
-    Hitch.configuration.mcp.prepare_registry!(supported_scopes: Hitch.configuration.supported_scopes)
   end
 
   def mint_token(principal, client_id:)

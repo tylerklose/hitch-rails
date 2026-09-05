@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "rake"
 
 class Hitch::EngineTest < ActiveSupport::TestCase
   # Stands in for a store shared across processes; MemoryStore and NullStore
@@ -213,15 +214,28 @@ class Hitch::EngineTest < ActiveSupport::TestCase
     Hitch.reset_configuration!
     Hitch.configuration.dynamic_client_registration_enabled = true
     production = ActiveSupport::EnvironmentInquirer.new("production")
-    original_arguments = ARGV.dup
-    ARGV.replace([ "hitch:doctor" ])
 
-    stub_class_method(Rails, :env, -> { production }) do
-      assert_nothing_raised { dynamic_registration_initializer.run(Rails.application) }
+    with_rake_tasks("hitch:doctor") do
+      stub_class_method(Rails, :env, -> { production }) do
+        assert_nothing_raised { dynamic_registration_initializer.run(Rails.application) }
+      end
     end
   ensure
-    ARGV.replace(original_arguments) if original_arguments
     Hitch.reset_configuration!
+  end
+
+  test "doctor command is exactly one parsed Rake top-level task" do
+    with_rake_tasks("--trace", "hitch:doctor") do
+      assert_predicate Hitch::Engine, :doctor_command?
+    end
+
+    with_rake_tasks("hitch:doctor", "db:migrate") do
+      refute_predicate Hitch::Engine, :doctor_command?
+    end
+
+    with_rake_tasks("db:migrate") do
+      refute_predicate Hitch::Engine, :doctor_command?
+    end
   end
 
   test "boot refuses a missing canonical resource URI with an actionable error" do
@@ -271,11 +285,14 @@ class Hitch::EngineTest < ActiveSupport::TestCase
     ARGV.replace([ "hitch:install" ])
     assert_nothing_raised { configuration_initializer.run(Rails.application) }
 
-    ARGV.replace([ "hitch:doctor" ])
-    assert_nothing_raised { configuration_initializer.run(Rails.application) }
+    ARGV.replace([])
+    with_rake_tasks("hitch:doctor") do
+      assert_nothing_raised { configuration_initializer.run(Rails.application) }
+    end
 
-    ARGV.replace([ "hitch:doctor", "db:migrate" ])
-    assert_raises(ArgumentError) { configuration_initializer.run(Rails.application) }
+    with_rake_tasks("hitch:doctor", "db:migrate") do
+      assert_raises(ArgumentError) { configuration_initializer.run(Rails.application) }
+    end
 
     ARGV.replace([ "generate", "unrelated" ])
     assert_raises(ArgumentError) { configuration_initializer.run(Rails.application) }
@@ -322,14 +339,13 @@ class Hitch::EngineTest < ActiveSupport::TestCase
     Hitch.reset_configuration!
     Hitch.configuration.device_authorization_enabled = true
     production = ActiveSupport::EnvironmentInquirer.new("production")
-    original_arguments = ARGV.dup
-    ARGV.replace([ "hitch:doctor" ])
 
-    stub_class_method(Rails, :env, -> { production }) do
-      assert_nothing_raised { device_authorization_initializer.run(Rails.application) }
+    with_rake_tasks("hitch:doctor") do
+      stub_class_method(Rails, :env, -> { production }) do
+        assert_nothing_raised { device_authorization_initializer.run(Rails.application) }
+      end
     end
   ensure
-    ARGV.replace(original_arguments) if original_arguments
     Hitch.reset_configuration!
   end
 
@@ -355,6 +371,13 @@ class Hitch::EngineTest < ActiveSupport::TestCase
   def configuration_initializer
     Hitch::Engine.initializers.find do |initializer|
       initializer.name == "hitch.validate_configuration"
+    end
+  end
+
+  def with_rake_tasks(*arguments)
+    Rake.with_application do |rake|
+      rake.init("rake", arguments)
+      yield
     end
   end
 end

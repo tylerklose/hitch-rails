@@ -2,6 +2,13 @@
 
 module McpTools
   class Echo < Hitch::MCP::Tool
+    if ENV["HITCH_DOCTOR_EARLY_LOAD_PROBE"]
+      raise "Doctor loaded its registry before initialization" unless Rails.application.initialized?
+
+      MODEL_TRANSLATION = ActiveModel::Translation
+      RECORD_BASE = ActiveRecord::Base
+    end
+
     tool_name "dummy.echo"
     description "Describe the dummy application's registered echo tool"
     input_schema(

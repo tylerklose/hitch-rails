@@ -20,9 +20,6 @@ class McpTestHelperSchemeTest < ActionDispatch::IntegrationTest
       configuration.mcp.registry = "McpToolRegistry"
       configuration.mcp.rate_limit_store = ActiveSupport::Cache::MemoryStore.new
     end
-    Hitch.configuration.mcp.prepare_registry!(
-      supported_scopes: Hitch.configuration.supported_scopes
-    )
     # Undo the suite-wide default, so this starts where a host's own generated
     # test starts.
     https!(false)

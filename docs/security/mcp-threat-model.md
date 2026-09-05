@@ -33,8 +33,9 @@ separate trust boundary owned by the adopting Rails application.
   cap, SDK backstop, generic errors, explicit safe Result.error only. Hosts may
   opt into `Hitch::MCP::UntrustedText.wrap` to label attacker-influenced result
   text; Hitch never wraps automatically.
-- Cross-request/reload leakage: fresh verified request/context/adapter/server and
-  class-name registry snapshots rebuilt atomically under `to_prepare`.
+- Cross-request/reload leakage: fresh verified request/context/adapter/server;
+  class-name registry snapshots invalidated before class unload and published
+  atomically after eager boot/reload or on the next non-eager MCP dispatch.
 - Rate-limit bypass/race: HMAC validated principal/client key and one
   cache-store increment/first-expiry operation. A raised store error is 503
   with no downstream work; a nil count admits without a limit — Rails'

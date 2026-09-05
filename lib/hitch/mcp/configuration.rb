@@ -48,8 +48,8 @@ module Hitch
 
       # Returns the validated, frozen, string-keyed identity hash. Normalized
       # lazily so the reloadable validator constant is only touched after
-      # boot; the engine's to_prepare hook forces this read, so a malformed
-      # value fails the boot rather than the first request.
+      # boot in non-eager applications; eager boot forces this read, while a
+      # non-eager application validates it on first MCP use.
       def server_info
         @normalized_server_info ||= Hitch::MCP::Internal::ServerInfo.normalize(
           @server_info || {
@@ -120,8 +120,8 @@ module Hitch
       end
 
       # Resolved separately from validate! because the application's cache store
-      # is assembled by Rails' own initializers; this runs from to_prepare, once
-      # config.cache_store is settled.
+      # is assembled by Rails' own initializers; the engine runs this only after
+      # host configuration and Rails' cache initialization have settled.
       # The raw setting is passed, not the resolving reader: reading it here
       # would ask ActionController::Base for the default store during
       # initialization, which is the premature load this avoids.
@@ -131,16 +131,23 @@ module Hitch
         Hitch::RateLimitStore.assert_shared_at_boot!(@rate_limit_store, setting: SETTING)
       end
 
-      # Framework lifecycle, not a host knob: the engine's to_prepare hook
-      # rebuilds the snapshot; the endpoint reads it per request.
+      # Framework lifecycle, not a host knob. Resolution and publication share
+      # one lock so invalidation cannot race an old snapshot back into service.
       def prepare_registry!(supported_scopes:)
         @registry_mutex.synchronize do
           @registry_snapshot = nil
-          @registry_snapshot = Hitch::MCP::Internal::RegistryRuntime.build_snapshot(
-            registry_name: @registry,
-            supported_scopes:
-          )
+          @registry_snapshot = build_registry_snapshot(supported_scopes:)
         end
+      end
+
+      def ensure_registry_prepared!(supported_scopes:)
+        @registry_mutex.synchronize do
+          @registry_snapshot ||= build_registry_snapshot(supported_scopes:)
+        end
+      end
+
+      def clear_registry_snapshot!
+        @registry_mutex.synchronize { @registry_snapshot = nil }
       end
 
       def registry_snapshot!
@@ -150,6 +157,13 @@ module Hitch
       end
 
       private
+
+      def build_registry_snapshot(supported_scopes:)
+        Hitch::MCP::Internal::RegistryRuntime.build_snapshot(
+          registry_name: @registry,
+          supported_scopes:
+        )
+      end
 
       def normalize_request_limit(value)
         unless value.respond_to?(:to_h)

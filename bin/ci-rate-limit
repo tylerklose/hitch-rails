@@ -5,6 +5,12 @@
 # in the named lanes when arguments are provided, against a disposable Redis
 # container. This exercises RedisCacheStore as one supported admission backend.
 
+# Isolated bundles (ruby/setup-ruby's vendor/bundle, BUNDLE_GEMFILE appraisal
+# lanes) do not put redis on the default load path. DisposableRedis pings the
+# published loopback URL before any lane runs.
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../Gemfile", __dir__)
+require "bundler/setup" if File.exist?(ENV["BUNDLE_GEMFILE"])
+
 require "open3"
 require "timeout"
 require "tmpdir"

@@ -55,6 +55,7 @@ On `main`, SQLite and PostgreSQL are supported on Ruby >= 3.3, < 4.1 and Rails
 install and are expected to work, but are not covered by a release lane. Rails
 7.2 support is currently unreleased; the published 0.4.0 gem still requires
 Rails >= 8.0.
+
 Host models with integer, UUID, or ULID primary keys all work: access tokens
 store principal IDs losslessly as strings.
 

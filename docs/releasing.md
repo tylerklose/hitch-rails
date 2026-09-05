@@ -28,6 +28,10 @@ So the commit comes after the gate, not before.
    off a stale index, for far longer than waiting fixes; that one is
    `gem sources --clear-all`.
 8. Publish a GitHub release for the tag, pointing at the CHANGELOG entry.
+9. Redeploy https://hitch-rails.com — `kamal deploy` in
+   `hitch-rails-site`. That site reads the version and description from
+   the rubygems.org API at build time, so until it redeploys it still
+   advertises the previous release.
 
 When the minor version changes, `docs/public_api/<version>.md` is a new file
 and the gemspec names the old one twice — in `spec.files` and in

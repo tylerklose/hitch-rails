@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-05
+
+Upgrading from 0.4.0 requires MCP >= 1.4 and a review of native redirect
+schemes and CIMD metadata. No new migrations are required. See
+[`docs/upgrading/0.4-to-0.5.md`](docs/upgrading/0.4-to-0.5.md).
+
 ### Added
 
 - **`Hitch::MCP::UntrustedText.wrap(text, source:)`** labels

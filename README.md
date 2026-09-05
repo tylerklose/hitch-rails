@@ -49,12 +49,11 @@ needs:
 - **Generators, a test helper, and a read-only `hitch:doctor`** for
   installing, testing, and diagnosing the integration
 
-On `main`, SQLite and PostgreSQL are supported on Ruby >= 3.3, < 4.1 and Rails
->= 7.2, < 9. CI tests Rails 7.2/Rack 2.2/PostgreSQL, Rails 8.0/SQLite, and Rails
+SQLite and PostgreSQL are supported on Ruby >= 3.3, < 4.1 and Rails >= 7.2,
+< 9. CI tests Rails 7.2/Rack 2.2/PostgreSQL, Rails 8.0/SQLite, and Rails
 8.1/PostgreSQL on every push; later 8.x releases — including edge Rails —
-install and are expected to work, but are not covered by a release lane. Rails
-7.2 support is currently unreleased; the published 0.4.0 gem still requires
-Rails >= 8.0.
+install and are expected to work, but are not covered by a release lane.
+Hitch requires the official Ruby MCP SDK >= 1.4, < 2.
 
 Host models with integer, UUID, or ULID primary keys all work: access tokens
 store principal IDs losslessly as strings.
@@ -754,10 +753,12 @@ or undermine its guarantees:
 
 ## Status
 
-0.4.0 is the current release. The public API may change before v1.0.0.
-The exact 0.4 public surface is documented in
-[`docs/public_api/0.4.0.md`](https://github.com/tylerklose/hitch-rails/blob/v0.4.0/docs/public_api/0.4.0.md); removal is covered in
-[`docs/removing.md`](docs/removing.md).
+0.5.0 is the current release. The public API may change before v1.0.0.
+The exact 0.5 public surface is documented in
+[`docs/public_api/0.5.0.md`](https://github.com/tylerklose/hitch-rails/blob/v0.5.0/docs/public_api/0.5.0.md).
+For adopter actions, see
+[`docs/upgrading/0.4-to-0.5.md`](docs/upgrading/0.4-to-0.5.md); removal is
+covered in [`docs/removing.md`](docs/removing.md).
 
 ## Contributing
 

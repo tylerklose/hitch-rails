@@ -4,7 +4,7 @@ Gem::Specification.new do |spec|
   spec.name        = "hitch-rails"
   spec.version     = Hitch::VERSION
   spec.authors     = [ "Tyler Klose" ]
-  spec.homepage    = "https://github.com/tylerklose/hitch-rails"
+  spec.homepage    = "https://hitch-rails.com"
   spec.summary     = "Let AI agents call your Rails app's tools: an OAuth 2.1 authorization server plus an authenticated MCP endpoint, built on the sign-in you already have"
   spec.description = <<~DESC
     Hitch lets MCP clients -- Claude, ChatGPT, Cursor -- call your Rails
@@ -24,10 +24,7 @@ Gem::Specification.new do |spec|
   DESC
   spec.license = "MIT"
 
-  # spec.homepage above is the canonical repo URL; rubygems pulls
-  # homepage_uri from it automatically. source_code_uri intentionally
-  # omitted to avoid the duplicate-URI warning when both pointed at the
-  # same place.
+  spec.metadata["source_code_uri"] = "https://github.com/tylerklose/hitch-rails"
   spec.metadata["changelog_uri"] = "https://github.com/tylerklose/hitch-rails/blob/main/CHANGELOG.md"
   spec.metadata["bug_tracker_uri"] = "https://github.com/tylerklose/hitch-rails/issues"
   # A mis-set RUBYGEMS_HOST would otherwise publish this somewhere else.

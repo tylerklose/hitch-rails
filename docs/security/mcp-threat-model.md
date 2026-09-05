@@ -30,7 +30,9 @@ separate trust boundary owned by the adopting Rails application.
 - Policy/schema bypass: SDK schema validation precedes frozen argument policy;
   framework `.call` cannot be overridden; default policy denies.
 - Output/error exfiltration: closed Result constructors, schema plus exact JSON
-  cap, SDK backstop, generic errors, explicit safe Result.error only.
+  cap, SDK backstop, generic errors, explicit safe Result.error only. Hosts may
+  opt into `Hitch::MCP::UntrustedText.wrap` to label attacker-influenced result
+  text; Hitch never wraps automatically.
 - Cross-request/reload leakage: fresh verified request/context/adapter/server and
   class-name registry snapshots rebuilt atomically under `to_prepare`.
 - Rate-limit bypass/race: HMAC validated principal/client key and one

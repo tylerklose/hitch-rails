@@ -184,28 +184,24 @@ module Hitch
       end
 
       def hitch_mcp_rate_admission!
-        configuration = Hitch.configuration.mcp
-        # Raised here so the StandardError rescue below cannot swallow the
-        # operator message Sentry needs. Client bodies stay generic.
-        Hitch::RateLimitStore.assert_shared!(
-          configuration.rate_limit_store,
-          setting: Hitch::MCP::Configuration::SETTING
-        ) if Rails.env.production?
-
-        hitch_mcp_count_authenticated_request!
-      end
-
-      def hitch_mcp_count_authenticated_request!
         limit = Hitch.configuration.mcp.request_limit
         count = hitch_mcp_admit_authenticated_request(
           principal: @hitch_mcp_principal,
           client_id: @hitch_mcp_client_id
         )
-        return if count.nil? || count <= limit.fetch(:to)
+        # Integer check before `<=` so a garbage count stays 503 and does not
+        # raise ArgumentError — that class is reserved for the unshared store.
+        return if count.nil? || (count.is_a?(Integer) && count <= limit.fetch(:to))
+        unless count.is_a?(Integer)
+          Internal::EndpointErrorReporter.report(category: :request_admission)
+          return head :service_unavailable
+        end
 
         response.headers["Retry-After"] = limit.fetch(:within).to_s
         response.headers["Access-Control-Expose-Headers"] = "Retry-After"
         head :too_many_requests
+      rescue ArgumentError
+        raise
       # NotImplementedError is a ScriptError, not a StandardError: the base
       # ActiveSupport::Cache::Store#increment raises it, and every subclass
       # answers respond_to?(:increment), so a store that never overrode it
@@ -356,7 +352,11 @@ module Hitch
       # else a store returns fails the comparison above and becomes a 503.
       def hitch_mcp_admit_authenticated_request(principal:, client_id:)
         configuration = Hitch.configuration.mcp
-        configuration.rate_limit_store.increment(
+        store = configuration.rate_limit_store
+        Hitch::RateLimitStore.assert_shared!(
+          store, setting: Hitch::MCP::Configuration::SETTING
+        ) if Rails.env.production?
+        store.increment(
           RateLimitKey.call(principal:, client_id:),
           expires_in: configuration.request_limit.fetch(:within)
         )

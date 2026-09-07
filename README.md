@@ -286,7 +286,9 @@ Request admission shares one fixed-window quota per principal/client across
 `server/discover`, `tools/list`, and `tools/call`, counted through your cache
 store with HMAC keys (no raw identifiers, no reset on token rotation).
 Production refuses a store that cannot count across processes
-(`:memory_store`, `:null_store`, `:file_store`); see the
+(`:memory_store`, `:null_store`, `:file_store`) when hitch counts, not at
+boot — `/up` can be green while MCP is not; `hitch:doctor` still fails in
+production. See the
 [request admission guide](docs/operator/rate_limiting.md).
 
 ## Testing your tools
@@ -565,10 +567,10 @@ are yours to operate:
   (~40 bits, no I/L/O/U; typing `o` for `0` still works), live ten minutes,
   and every verification attempt is counted per signed-in principal —
   behind your app's own sign-in. Minting is counted per IP. Both quotas
-  **fail closed**: in production an uncountable store refuses the request,
-  and the boot refuses a store that cannot count across processes
+  **fail closed**: in production an uncountable store refuses the request
   (`config.device_authorization_rate_store`, defaulting to your cache
-  store — same rule as everything else here).
+  store — same rule as everything else here). The app still boots; doctor
+  still fails.
 - **The words on the page.** The flow's known abuse (RFC 8628 §5.4) is a
   stranger sending someone a code to approve — every technical control
   passes, because the grant is genuine. What stands between that email and

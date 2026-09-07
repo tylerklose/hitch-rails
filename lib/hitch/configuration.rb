@@ -264,16 +264,6 @@ module Hitch
       Hitch::RateLimitStore.resolve(@dynamic_client_registration_rate_store)
     end
 
-    # Same boot-time shape as mcp.validate_rate_limit_store!, and for the same
-    # reason: the engine's initializer must not resolve the default store by
-    # way of ActionController::Base while the application is initializing.
-    def validate_dynamic_client_registration_rate_store!
-      Hitch::RateLimitStore.assert_shared_at_boot!(
-        @dynamic_client_registration_rate_store,
-        setting: Hitch::DynamicRegistrationRateLimit::SETTING
-      )
-    end
-
     def dynamic_client_registration_rate_store=(value)
       @dynamic_client_registration_rate_store = Hitch::RateLimitStore.validate!(
         value, setting: "config.dynamic_client_registration_rate_store"
@@ -319,13 +309,6 @@ module Hitch
     # @return [ActiveSupport::Cache::Store, nil]
     def device_authorization_rate_store
       Hitch::RateLimitStore.resolve(@device_authorization_rate_store)
-    end
-
-    def validate_device_authorization_rate_store!
-      Hitch::RateLimitStore.assert_shared_at_boot!(
-        @device_authorization_rate_store,
-        setting: Hitch::DeviceAuthorizationRateLimit::SETTING
-      )
     end
 
     def device_authorization_rate_store=(value)

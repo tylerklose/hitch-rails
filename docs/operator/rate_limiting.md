@@ -41,9 +41,12 @@ or upgrade Rails.
 
 ## What production requires
 
-Production boot fails closed when the resolved store cannot count one
-principal's requests across the processes serving them. Three stores are
-refused:
+Production can boot with an unshared store — Rails itself does not abort boot
+for a bad `cache_store`, and Hitch does not take the whole app down for one
+either. `/up` green is not MCP healthy. The hitch surfaces fail closed on the
+request that needs to count: MCP admission, DCR, and device authorization
+raise when the resolved store cannot count one principal's requests across the
+processes serving them. Three stores are refused at that point:
 
 | Store | Why it is refused |
 | --- | --- |
@@ -53,7 +56,8 @@ refused:
 
 Development and test may use any of them. Where the store cannot count at all,
 admission is not enforced rather than failing every request — the same posture
-Rails takes, and safe because production refuses those stores at boot.
+Rails takes. Run `bin/rails hitch:doctor` in the deployment environment;
+production doctor still fails on an unshared store.
 
 ## Accuracy
 

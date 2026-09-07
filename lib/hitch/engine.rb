@@ -98,22 +98,6 @@ module Hitch
           "default: your cache store) to count across processes; new installs disable DCR."
         )
       end
-
-      next unless Rails.env.production?
-
-      configuration.validate_dynamic_client_registration_rate_store!
-    end
-
-    initializer "hitch.validate_device_authorization", after: :load_config_initializers do
-      configuration = Hitch.configuration
-      next unless configuration.device_authorization_enabled
-      next if Hitch::Engine.doctor_command?
-      next unless Rails.env.production?
-
-      # The verification quota is what makes short user codes safe, and it
-      # fails closed — so a store that cannot count across processes must
-      # refuse the boot, not every /activate submission.
-      configuration.validate_device_authorization_rate_store!
     end
 
     initializer "hitch.validate_configuration", after: :load_config_initializers do
@@ -127,7 +111,6 @@ module Hitch
 
       configuration = Hitch.configuration
       configuration.validate!
-      configuration.mcp.validate_rate_limit_store! if configuration.mcp.enabled
     end
 
     config.after_initialize do |app|

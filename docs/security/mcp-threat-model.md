@@ -40,14 +40,15 @@ separate trust boundary owned by the adopting Rails application.
   cache-store increment/first-expiry operation. A raised store error is 503
   with no downstream work; a nil count admits without a limit — Rails'
   posture on the same stores, bounded because this request already passed
-  bearer authentication and production refuses uncountable stores at boot.
+  bearer authentication and production refuses uncountable stores when
+  admission counts, not at boot.
 - Observation leakage/interference: exact versioned payload keys, all SDK
   callbacks replaced, secret canaries, subscriber exceptions isolated/reported.
 - Device-flow code abuse (RFC 8628): user codes are 40-bit Crockford base32
   digested at rest and erased in the statement that decides them; guessing is
   counted per signed-in principal and minting per IP, both fail-closed
-  (production refuses an uncountable store at the request, the boot, and the
-  doctor); every grant transition is one conditional UPDATE, so no
+  (production refuses an uncountable store at the request and the
+  doctor; the app still boots); every grant transition is one conditional UPDATE, so no
   approved-but-unowned or twice-consumed state exists; the §5.4 phishing
   surface is answered structurally — a device grant needs a vouched client
   (a CIMD document, or an operator-registered confidential client whose

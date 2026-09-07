@@ -52,7 +52,10 @@ module Hitch
 
     # One JSON mapping for a fixed-window refusal, shared by every counted
     # machine endpoint: 429 with Retry-After when counted out, 503 when the
-    # store cannot count. Yields to the limiter; returns whether to proceed.
+    # store cannot count. An unshared production store raises from check!
+    # and is not rescued here — Rails' error page stays generic; Sentry
+    # sees the operator message. Yields to the limiter; returns whether to
+    # proceed.
     def hitch_admit_rate!(activity)
       yield
       true

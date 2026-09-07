@@ -184,6 +184,18 @@ module Hitch
       end
 
       def hitch_mcp_rate_admission!
+        configuration = Hitch.configuration.mcp
+        # Raised here so the StandardError rescue below cannot swallow the
+        # operator message Sentry needs. Client bodies stay generic.
+        Hitch::RateLimitStore.assert_shared!(
+          configuration.rate_limit_store,
+          setting: Hitch::MCP::Configuration::SETTING
+        ) if Rails.env.production?
+
+        hitch_mcp_count_authenticated_request!
+      end
+
+      def hitch_mcp_count_authenticated_request!
         limit = Hitch.configuration.mcp.request_limit
         count = hitch_mcp_admit_authenticated_request(
           principal: @hitch_mcp_principal,
@@ -337,11 +349,11 @@ module Hitch
       # Counts through the host application's own cache store, exactly as
       # ActionController::RateLimiting does. A nil count admits, same as
       # Rails: :null_store returns nil (test, and development without
-      # caching — production refuses those stores at boot), and Redis and
-      # Solid Cache stores return nil during a backend outage rather than
-      # raising. This request is already authenticated, so an outage widens
-      # one token holder's quota, not the front door. Anything else a store
-      # returns fails the comparison above and becomes a 503.
+      # caching — production refuses those stores when this path counts),
+      # and Redis and Solid Cache stores return nil during a backend outage
+      # rather than raising. This request is already authenticated, so an
+      # outage widens one token holder's quota, not the front door. Anything
+      # else a store returns fails the comparison above and becomes a 503.
       def hitch_mcp_admit_authenticated_request(principal:, client_id:)
         configuration = Hitch.configuration.mcp
         configuration.rate_limit_store.increment(

@@ -71,10 +71,11 @@ class Hitch::DeviceAuthorizationRateLimitTest < ActiveSupport::TestCase
     Hitch.configuration.device_authorization_rate_store = ActiveSupport::Cache::NullStore.new
 
     with_production do
-      assert_raises(Hitch::RateLimitStore::Unavailable) do
+      error = assert_raises(ArgumentError) do
         Hitch::DeviceAuthorizationRateLimit.check_mint!(remote_ip: "203.0.113.7")
       end
-      assert_raises(Hitch::RateLimitStore::Unavailable) do
+      assert_includes error.message, "ActiveSupport::Cache::NullStore"
+      assert_raises(ArgumentError) do
         Hitch::DeviceAuthorizationRateLimit.check_verification!(principal: @user)
       end
     end
@@ -97,25 +98,28 @@ class Hitch::DeviceAuthorizationRateLimitTest < ActiveSupport::TestCase
     assert Hitch::DeviceAuthorizationRateLimit.check_mint!(remote_ip: "203.0.113.7")
   end
 
-  test "the boot check refuses a store that cannot count across processes" do
+  test "production counting refuses a store that cannot count across processes" do
     Hitch.configuration.device_authorization_rate_store = ActiveSupport::Cache::MemoryStore.new
     error = assert_raises(ArgumentError) do
-      Hitch.configuration.validate_device_authorization_rate_store!
+      with_production { Hitch::DeviceAuthorizationRateLimit.check_mint!(remote_ip: "203.0.113.7") }
     end
     assert_includes error.message, "device_authorization_rate_store"
+    assert_includes error.message, "ActiveSupport::Cache::MemoryStore"
 
     # nil resolves this environment's :null_store — the adopter default a
-    # production boot must also refuse.
+    # production request must also refuse.
     Hitch.configuration.device_authorization_rate_store = nil
     assert_raises(ArgumentError) do
-      Hitch.configuration.validate_device_authorization_rate_store!
+      with_production { Hitch::DeviceAuthorizationRateLimit.check_mint!(remote_ip: "203.0.113.7") }
     end
 
     shared = Class.new(ActiveSupport::Cache::Store) do
       def increment(_name, amount = 1, **) = amount
     end.new
     Hitch.configuration.device_authorization_rate_store = shared
-    assert Hitch.configuration.validate_device_authorization_rate_store!
+    assert with_production {
+      Hitch::DeviceAuthorizationRateLimit.check_mint!(remote_ip: "203.0.113.7")
+    }
   end
 
   test "a raising store refuses in every environment" do

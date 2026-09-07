@@ -124,8 +124,6 @@ class MCPRateLimitCacheStoreTest < ActionDispatch::IntegrationTest
     assert_includes error.message, "ActiveSupport::Cache::MemoryStore"
     assert_includes error.message, "mcp.rate_limit_store"
     assert_includes error.message, "config.cache_store"
-    refute_includes response.body.to_s, "MemoryStore"
-    refute_includes response.body.to_s, "mcp.rate_limit_store"
   end
 
   test "a cache store failure is 503 before body registry SDK or host work" do

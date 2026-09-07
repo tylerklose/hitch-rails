@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `hitch:doctor` no longer reports WARNING for a stock Rails development
+  `memory_store`. An unshared but countable admission store passes outside
+  production, with a note that production needs a shared store; production
+  still fails closed. Uncountable stores still warn outside production and
+  fail in it.
+  ([#41](https://github.com/tylerklose/hitch-rails/issues/41))
+
 ## [0.5.0] - 2026-09-05
 
 Upgrading from 0.4.0 requires MCP >= 1.4 and a review of native redirect

@@ -20,8 +20,8 @@ HITCH_DOCTOR_FORMAT=json bin/rails hitch:doctor
 The only accepted formats are `human` and `json`. The process exits zero when
 all findings are `pass`, `skip`, or `warn`; any `fail` finding exits one after
 the complete report is printed. Warnings identify a supported but non-golden
-posture, such as an unshared cache store in development/test, an empty
-explicit Registry, or plain-HTTP browser origins in production.
+posture, such as an empty explicit Registry or plain-HTTP browser origins in
+production.
 
 ## Stable check categories
 
@@ -52,8 +52,9 @@ these IDs in this order:
 9. `rate_limit_store` — one isolated diagnostic key increments twice against
    the configured admission store, returns `1` then `2`, and is removed. It
    never uses Hitch's application quota-key namespace. A store that cannot
-   count, or one that cannot count across processes, fails in production and
-   warns elsewhere; auth-only mode skips it.
+   count fails in production and warns elsewhere. An unshared but countable
+   store (the `memory_store` Rails ships in development) fails in production
+   and passes elsewhere; auth-only mode skips it.
 
 Every check names something the host can act on. Gem-self-diagnosis (packaged
 file integrity) lives in this repository's CI, not here. The `versions` bounds

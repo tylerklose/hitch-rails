@@ -19,24 +19,26 @@ module Hitch
     # alpha third-party runner and publish the result as conformance evidence,
     # so the chain has to prove what was patched.
     #
-    # This direction's patch (resource-aware-grants.patch) does two things.
-    # The resource indicator half is filed upstream as
-    # modelcontextprotocol/conformance#465 / #466 — when that merges, bump the
-    # pin and delete that half. The token-endpoint auth-method half is not
-    # filed yet: upstream selects `none` whenever an authorization server
-    # advertises it, even when a client secret was supplied, so a confidential
-    # client cannot be exercised against a server that also supports public
-    # clients. That affects any such AS, not just Hitch.
+    # This direction's patch (resource-aware-grants.patch) does one thing:
+    # it makes the runner authenticate as a confidential client when a secret
+    # is supplied. Upstream selects `none` whenever an authorization server
+    # advertises it, even with a client secret, so a confidential client
+    # cannot be exercised against a server that also serves public clients.
+    # That affects any such AS, not just Hitch. Not filed upstream yet.
+    #
+    # The patch used to also send the RFC 8707 resource indicator. That went
+    # upstream as modelcontextprotocol/conformance#465 / #466 and the pin now
+    # sits on the merge commit, so that half is gone.
     class AuthorizationHarness
       class Failure < StandardError; end
 
       REPOSITORY = "https://github.com/modelcontextprotocol/conformance.git"
-      COMMIT = "a9896553900a2ef61787b57adfcbbe936a8ab1f9"
-      PACKAGE_VERSION = "0.2.0-alpha.10"
+      COMMIT = "a983ba93c91e0bb31d0b6849eeb52f0ad1083107"
+      PACKAGE_VERSION = "0.2.0-alpha.11"
       SPEC_VERSION = "2026-07-28"
       NODE_VERSION = "v23.7.0"
       NPM_VERSION = "11.1.0"
-      PATCH_SHA256 = "35403574632cf54ca6b133abfa5d52c91499972f17d55904890853ca130d2597"
+      PATCH_SHA256 = "7310dec87eb8dfcb2b5e0ed7b326a595f07986daa9efe44acf786522dcf8d7e4"
 
       # Opt-in: run an unpinned local checkout of the conformance runner instead
       # of the pinned upstream clone plus reviewed patch. For validating an
@@ -46,23 +48,19 @@ module Hitch
       LOCAL_RUNNER_ENV = "HITCH_CONFORMANCE_LOCAL_RUNNER"
 
       SOURCE_SHA256 = {
-        "package-lock.json" => "cc83986778543b99cc7ef22680ed932cab899d068b90ee3d676a7eeab4ae9cf3",
-        "package.json" => "29ef755c66311589bf731763045790aba83adaa462334363c5edad194aa4420b",
-        "src/index.ts" => "467d34bdb0d5e084b60e1886eb763572e37cb17887e61acc2976d2975513a34c",
-        "src/schemas.ts" => "7ad0859a285ba3b20a096cd8624c8f9633fa13cad1d371e7c05f025cc79d1a9a",
+        "package-lock.json" => "8c30fe8f15735bc4660c682225b12ec84bbd08c22e839127445d06b5476c4945",
+        "package.json" => "f699ac5e56ffeaad1090ee26e126c0d9f9d68e7fad6db30923d30fd7b429c640",
         "src/scenarios/authorization-server/authorization-server-metadata.ts" =>
           "3fda4c799ba278295380ba2cf002587da79f95245e4e83b8d3a65e1e349288c8",
         "src/scenarios/authorization-server/authorization-code-grant.ts" =>
-          "eb533f606e841d1fa710d374419337ca1eb2ba40a1f2f4812cd6a5fda672a0b2",
+          "3b2a59c063b0cb2b61933e1d507ad42cfe16218a8f33445e88fa0e6a147e4b5d",
         "src/scenarios/authorization-server/authorization-code-grant.test.ts" =>
-          "05f4977d39dd0e1f2e6e8a34d609aaf77463e16ea8b1aa9b3129f9f456c092d9"
+          "ddb2830c3975fdc976a8d6cebe3386d831e61f4551de73a89c561101244b2180"
       }.freeze
 
       PATCHED_FILES = %w[
-        src/index.ts
         src/scenarios/authorization-server/authorization-code-grant.test.ts
         src/scenarios/authorization-server/authorization-code-grant.ts
-        src/schemas.ts
       ].freeze
 
       def initialize(root:, profile:)
@@ -98,9 +96,9 @@ module Hitch
 
           if profile == "resource-aware-grants"
             apply_and_test_extension! unless local_runner?
-            result[:reviewed_resource_indicator_extension_public] =
+            result[:reviewed_confidential_client_extension_public] =
               run_extended_grant!("public", @fixtures.join("public-settings.json"), fixture)
-            result[:reviewed_resource_indicator_extension_confidential] =
+            result[:reviewed_confidential_client_extension_confidential] =
               run_extended_grant!("confidential", @fixtures.join("confidential-settings.json"), fixture)
           end
 

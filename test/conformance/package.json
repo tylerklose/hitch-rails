@@ -6,6 +6,6 @@
     "npm": "11.1.0"
   },
   "dependencies": {
-    "@modelcontextprotocol/conformance": "0.2.0-alpha.10"
+    "@modelcontextprotocol/conformance": "0.2.0-alpha.11"
   }
 }

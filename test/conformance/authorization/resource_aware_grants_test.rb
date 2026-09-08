@@ -34,7 +34,7 @@ class ResourceAwareGrantsProfileTest < ActionDispatch::IntegrationTest
     assert JSON.parse(response.body).fetch("access_token").present?
   end
 
-  test "reviewed extension is an exact four-file delta from the pinned runner" do
+  test "reviewed extension is an exact two-file delta from the pinned runner" do
     profile = YAML.safe_load_file(File.expand_path("profile.yml", __dir__))
     extension = profile.fetch("reviewed_extension")
     patch_path = File.expand_path("../../../#{extension.fetch('patch')}", __dir__)
@@ -42,12 +42,11 @@ class ResourceAwareGrantsProfileTest < ActionDispatch::IntegrationTest
 
     assert_equal extension.fetch("patch_sha256"), Digest::SHA256.file(patch_path).hexdigest
     assert_equal %w[
-      src/index.ts
       src/scenarios/authorization-server/authorization-code-grant.test.ts
       src/scenarios/authorization-server/authorization-code-grant.ts
-      src/schemas.ts
     ], patch.scan(%r{^diff --git a/(\S+) b/}).flatten
-    assert_equal "reviewed_resource_indicator_extension", extension.fetch("evidence_class")
+    refute_includes patch, "resource"
+    assert_equal "reviewed_confidential_client_extension", extension.fetch("evidence_class")
   end
 
   test "confidential client authenticates only with client_secret_basic" do

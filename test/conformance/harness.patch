@@ -11,29 +11,24 @@ index 47952c6..fe37daf 100644
    mcpNameForRequest,
    readSseJsonRpcResponse,
 diff --git a/src/connection/stateless.test.ts b/src/connection/stateless.test.ts
-index 43b935e..3f32070 100644
+index 7943696..a0f8aac 100644
 --- a/src/connection/stateless.test.ts
 +++ b/src/connection/stateless.test.ts
-@@ -3,7 +3,15 @@
+@@ -3,7 +3,10 @@
   * standard header defaults/overrides, `_meta` injection, and JSON parsing.
   */
  import http from 'http';
 -import { describe, test, expect } from 'vitest';
-+import {
-+  chmodSync,
-+  mkdtempSync,
-+  rmSync,
-+  writeFileSync
-+} from 'node:fs';
++import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 +import { tmpdir } from 'node:os';
 +import path from 'node:path';
 +import { afterEach, describe, test, expect } from 'vitest';
  import {
    buildStandardHeaders,
    withRequestMeta,
-@@ -14,6 +22,17 @@ import {
- } from './stateless';
+@@ -15,6 +18,17 @@ import {
  import { DRAFT_PROTOCOL_VERSION } from '../types';
+ import { takeWireViolations } from '../validation/wire-schema';
  
 +const originalAuthorizationFile =
 +  process.env.MCP_CONFORMANCE_AUTHORIZATION_FILE;
@@ -49,7 +44,7 @@ index 43b935e..3f32070 100644
  describe('buildStandardHeaders', () => {
    test('sets the standard headers pinned to the draft protocol version', () => {
      const headers = buildStandardHeaders('tools/list');
-@@ -43,6 +62,38 @@ describe('buildStandardHeaders', () => {
+@@ -44,6 +58,38 @@ describe('buildStandardHeaders', () => {
      expect(headers['MCP-Protocol-Version']).toBeUndefined();
      expect(headers['mcp-protocol-version']).toBe('2025-06-18');
    });
@@ -89,7 +84,7 @@ index 43b935e..3f32070 100644
  
  describe('withRequestMeta', () => {
 diff --git a/src/connection/stateless.ts b/src/connection/stateless.ts
-index 9ed7dac..be05422 100644
+index 38890ac..65a0f1d 100644
 --- a/src/connection/stateless.ts
 +++ b/src/connection/stateless.ts
 @@ -20,6 +20,7 @@
@@ -99,8 +94,8 @@ index 9ed7dac..be05422 100644
 +import { readFileSync, statSync } from 'node:fs';
  import { DRAFT_PROTOCOL_VERSION, type SpecVersion } from '../types';
  import type { JSONRPCNotification } from '../spec-types/2025-11-25';
- import { JsonRpcError, type Connection, type ConnectOptions } from './index';
-@@ -56,6 +57,35 @@ export interface StatelessResponse {
+ import { validateWireMessage } from '../validation/wire-schema';
+@@ -57,6 +58,35 @@ export interface StatelessResponse {
  
  let nextRequestId = 1;
  
@@ -136,7 +131,7 @@ index 9ed7dac..be05422 100644
  /**
   * The `Mcp-Name` source field per SEP-2243: `params.name` for tools/call and
   * prompts/get, `params.uri` for resources/read, `params.taskId` for the
-@@ -99,7 +129,8 @@ export function buildStandardHeaders(
+@@ -100,7 +130,8 @@ export function buildStandardHeaders(
      'Content-Type': 'application/json',
      Accept: 'application/json, text/event-stream',
      'MCP-Protocol-Version': options.specVersion ?? DRAFT_PROTOCOL_VERSION,
@@ -146,61 +141,14 @@ index 9ed7dac..be05422 100644
    };
    const name = mcpNameForRequest(method, params);
    if (name !== undefined) {
-diff --git a/src/index.ts b/src/index.ts
-index b82093c..9dd1d9a 100644
---- a/src/index.ts
-+++ b/src/index.ts
-@@ -530,6 +530,10 @@ program
-     '--client-secret <secret>',
-     'OAuth client secret (omit for public/PKCE-only clients)'
-   )
-+  .option(
-+    '--resource <uri>',
-+    'RFC 8707 resource indicator sent to authorization and token endpoints'
-+  )
-   .option(
-     '-p, --port <port>',
-     'Port for the local OAuth callback server; register http://127.0.0.1:<port>/callback as a redirect URI',
 diff --git a/src/scenarios/authorization-server/authorization-code-grant.test.ts b/src/scenarios/authorization-server/authorization-code-grant.test.ts
-index 6b51bf6..42c591c 100644
+index e2eaf06..d48f1e2 100644
 --- a/src/scenarios/authorization-server/authorization-code-grant.test.ts
 +++ b/src/scenarios/authorization-server/authorization-code-grant.test.ts
-@@ -17,11 +17,13 @@ const mockedStartCallbackServer = vi.mocked(startCallbackServer);
- const SERVER_URL = 'https://example.com';
- const AUTHORIZATION_ENDPOINT = `${SERVER_URL}/auth`;
- const TOKEN_ENDPOINT = `${SERVER_URL}/token`;
-+const RESOURCE = `${SERVER_URL}/mcp`;
- 
- const OPTIONS = {
-   url: SERVER_URL,
-   clientId: 'client',
-   clientSecret: 'secret',
-+  resource: RESOURCE,
-   port: 3000
- };
- 
-@@ -110,6 +112,11 @@ describe('AuthorizationCodeGrantScenario', () => {
-     expect((check.details as any).authorizationRequest).toContain(
-       AUTHORIZATION_ENDPOINT
-     );
-+    expect(
-+      new URL((check.details as any).authorizationRequest).searchParams.get(
-+        'resource'
-+      )
-+    ).toBe(RESOURCE);
- 
-     expect((check.details as any).authorizationResponseUrl).toContain(
-       'code=abc'
-@@ -118,6 +125,75 @@ describe('AuthorizationCodeGrantScenario', () => {
-     expect((check.details as any).body.access_token).toBe('eyJh…0123 (len=36)');
-     expect((check.details as any).body.refresh_token).toBe('[redacted, len=5]');
+@@ -122,6 +122,63 @@ describe('AuthorizationCodeGrantScenario', () => {
      expect((check.details as any).body.token_type).toBe('Bearer');
-+
-+    const [, tokenRequest] = mockedRequest.mock.calls[0];
-+    const tokenBody = new URLSearchParams(tokenRequest.body as string);
-+    expect(tokenBody.get('resource')).toBe(RESOURCE);
-+  });
-+
+   });
+ 
 +  it('uses public client authentication when no secret is supplied', async () => {
 +    const scenario = new AuthorizationCodeGrantScenario();
 +    const options = { ...OPTIONS, clientSecret: undefined };
@@ -208,10 +156,7 @@ index 6b51bf6..42c591c 100644
 +      'authorization-server-metadata-endpoint': {
 +        body: {
 +          ...METADATA,
-+          token_endpoint_auth_methods_supported: [
-+            'none',
-+            'client_secret_basic'
-+          ]
++          token_endpoint_auth_methods_supported: ['none', 'client_secret_basic']
 +        }
 +      }
 +    };
@@ -231,7 +176,6 @@ index 6b51bf6..42c591c 100644
 +    expect(tokenRequest.headers).not.toHaveProperty('authorization');
 +    expect(tokenBody.get('client_id')).toBe(OPTIONS.clientId);
 +    expect(tokenBody.has('client_secret')).toBe(false);
-+    expect(tokenBody.get('resource')).toBe(RESOURCE);
 +  });
 +
 +  it('prefers Basic authentication when a secret and both methods are advertised', async () => {
@@ -240,10 +184,7 @@ index 6b51bf6..42c591c 100644
 +      'authorization-server-metadata-endpoint': {
 +        body: {
 +          ...METADATA,
-+          token_endpoint_auth_methods_supported: [
-+            'none',
-+            'client_secret_basic'
-+          ]
++          token_endpoint_auth_methods_supported: ['none', 'client_secret_basic']
 +        }
 +      }
 +    };
@@ -263,26 +204,16 @@ index 6b51bf6..42c591c 100644
 +    expect(tokenRequest.headers).toHaveProperty('authorization');
 +    expect(tokenBody.has('client_id')).toBe(false);
 +    expect(tokenBody.has('client_secret')).toBe(false);
-+    expect(tokenBody.get('resource')).toBe(RESOURCE);
-   });
- 
++  });
++
    it('returns FAILURE when state parameter is invalid and does not request a token', async () => {
+     const scenario = new AuthorizationCodeGrantScenario();
+ 
 diff --git a/src/scenarios/authorization-server/authorization-code-grant.ts b/src/scenarios/authorization-server/authorization-code-grant.ts
-index 48bcdee..5952ed6 100644
+index 13f3ba0..eaf582b 100644
 --- a/src/scenarios/authorization-server/authorization-code-grant.ts
 +++ b/src/scenarios/authorization-server/authorization-code-grant.ts
-@@ -169,6 +169,10 @@ export class AuthorizationCodeGrantScenario implements ClientScenarioForAuthoriz
-       code_challenge_method: 'S256'
-     });
- 
-+    if (options.resource) {
-+      params.set('resource', options.resource);
-+    }
-+
-     return `${metadata.authorization_endpoint}?${params.toString()}`;
-   }
- 
-@@ -228,15 +232,15 @@ export class AuthorizationCodeGrantScenario implements ClientScenarioForAuthoriz
+@@ -231,15 +231,15 @@ export class AuthorizationCodeGrantScenario implements ClientScenarioForAuthoriz
      const authMethods: string[] =
        metadata.token_endpoint_auth_methods_supported ?? ['client_secret_basic'];
  
@@ -303,17 +234,6 @@ index 48bcdee..5952ed6 100644
      // client_secret_jwt / private_key_jwt / tls_client_auth are not yet
      // implemented; skip rather than fail.
      return null;
-@@ -264,6 +268,10 @@ export class AuthorizationCodeGrantScenario implements ClientScenarioForAuthoriz
-       'content-type': 'application/x-www-form-urlencoded'
-     };
- 
-+    if (options.resource) {
-+      params.set('resource', options.resource);
-+    }
-+
-     if (authMethod === 'none') {
-       // Public client (PKCE-only). RFC 6749 §3.2.1: client_id in the body.
-       params.set('client_id', options.clientId!);
 diff --git a/src/scenarios/server/http-standard-headers.ts b/src/scenarios/server/http-standard-headers.ts
 index d5ca032..6ab71fa 100644
 --- a/src/scenarios/server/http-standard-headers.ts
@@ -334,21 +254,3 @@ index d5ca032..6ab71fa 100644
            ...headers
          }
        },
-diff --git a/src/schemas.ts b/src/schemas.ts
-index 040aa2e..5a397dd 100644
---- a/src/schemas.ts
-+++ b/src/schemas.ts
-@@ -57,6 +57,13 @@ export const AuthorizationServerOptionsSchema = z.object({
-     .optional(),
-   clientId: z.string().min(1, 'Client id cannot be empty').optional(),
-   clientSecret: z.string().min(1, 'Client secret cannot be empty').optional(),
-+  resource: z
-+    .string()
-+    .url('Invalid resource URI')
-+    .refine((value) => new URL(value).hash === '', {
-+      error: 'Resource URI cannot contain a fragment'
-+    })
-+    .optional(),
-   port: z
-     .number()
-     .int('Port must be an integer')

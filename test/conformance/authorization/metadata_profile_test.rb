@@ -21,8 +21,8 @@ class AuthorizationMetadataProfileTest < ActionDispatch::IntegrationTest
     upstream = profile.fetch("upstream")
 
     assert_equal "https://github.com/modelcontextprotocol/conformance", upstream.fetch("repository")
-    assert_equal "0.2.0-alpha.10", upstream.fetch("version")
-    assert_equal "a9896553900a2ef61787b57adfcbbe936a8ab1f9", upstream.fetch("commit")
+    assert_equal "0.2.0-alpha.11", upstream.fetch("version")
+    assert_equal "a983ba93c91e0bb31d0b6849eeb52f0ad1083107", upstream.fetch("commit")
     assert_equal "authorization-server-under-test", upstream.fetch("direction")
     assert_equal "authorization-server-metadata-endpoint",
       profile.fetch("official_profile").fetch("scenario")

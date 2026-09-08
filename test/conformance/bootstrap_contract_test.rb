@@ -29,6 +29,7 @@ class ConformanceBootstrapContractTest < ActiveSupport::TestCase
     end.join
     refute_match(/^[+-].*(?:checks\.push|status:\s*['\"])/, production_delta)
     assert_includes patch, "MCP_CONFORMANCE_AUTHORIZATION_FILE"
-    assert_includes patch, "params.set('resource', options.resource)"
+    assert_includes patch, "options.clientSecret && authMethods.includes('client_secret_basic')"
+    refute_includes patch, "params.set('resource'"
   end
 end

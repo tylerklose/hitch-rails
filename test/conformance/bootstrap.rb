@@ -21,7 +21,7 @@ module Hitch
     #   PATCH_SHA256 / PATCHED_FILES / patch_delta_sha256
     #                            prove the applied delta is exactly the
     #                            reviewed patch, and touches only those files
-    #   upstream_test_count: 41  prove the patch did not disable an upstream
+    #   upstream_test_count: 47  prove the patch did not disable an upstream
     #                            test — the obvious way to cheat a runner you
     #                            are allowed to edit
     #   NODE_VERSION / NPM_VERSION
@@ -34,56 +34,51 @@ module Hitch
     #                            runner hash.
     #
     # The patch exists because the upstream runner cannot (a) authenticate to a
-    # protected server, or (b) send the RFC 8707 resource indicator that the
-    # authorization profile requires. Both are upstream gaps, not Hitch
-    # specifics. (b) is filed:
-    #
-    #   modelcontextprotocol/conformance#465  (issue)
-    #   modelcontextprotocol/conformance#466  (pull request)
+    # protected server, or (b) authenticate as a confidential client to an
+    # authorization server that also advertises `none`. Both are upstream gaps,
+    # not Hitch specifics. A third gap, the RFC 8707 resource indicator, was
+    # filed as modelcontextprotocol/conformance#465 and merged in #466; the pin
+    # now sits on that merge and the resource half of the patch is gone.
     #
     # (a) belongs to their open issue #453 and needs a design we do not own —
     # our local approach only works on the stateless wire (2026-07-28 and
-    # draft), so it is deliberately not proposed upstream.
+    # draft), so it is deliberately not proposed upstream. (b) is not filed
+    # yet; see test/conformance/authorization/harness.rb.
     #
-    # This is scaffolding with an expiry date. When #466 merges, bump the pin
-    # to the merged commit and delete the resource half of the patch along with
-    # its hashes. When #453 is resolved, this file mostly goes away.
+    # This is scaffolding with an expiry date. When #453 is resolved, this file
+    # mostly goes away.
     class Bootstrap
       class Failure < StandardError; end
 
       REPOSITORY = "https://github.com/modelcontextprotocol/conformance.git"
-      COMMIT = "a9896553900a2ef61787b57adfcbbe936a8ab1f9"
-      PACKAGE_VERSION = "0.2.0-alpha.10"
-      PACKAGE_INTEGRITY = "sha512-0V/HZDdWHcg6j0zVBzBsXcPZ571IVi6umKgTpnBhtTx/jm/LONmGF6cIWL2k4Xjyps0OiHV6B37nj2s0pUg0nQ=="
-      UPSTREAM_PACKAGE_LOCK_SHA256 = "cc83986778543b99cc7ef22680ed932cab899d068b90ee3d676a7eeab4ae9cf3"
+      COMMIT = "a983ba93c91e0bb31d0b6849eeb52f0ad1083107"
+      PACKAGE_VERSION = "0.2.0-alpha.11"
+      PACKAGE_INTEGRITY = "sha512-imPK9tx5gQsL6ZKQq4MrsyDYfSaIwpRmX6+ogjbeAXs9LGvxkBxWcY7KcS7TvwaBk/ZiVWl6b/naF4q83UwDRA=="
+      UPSTREAM_PACKAGE_LOCK_SHA256 = "8c30fe8f15735bc4660c682225b12ec84bbd08c22e839127445d06b5476c4945"
       NODE_VERSION = "v23.7.0"
       NPM_VERSION = "11.1.0"
       PATCH_PATH = "test/conformance/harness.patch"
-      PATCH_SHA256 = "495975758b1f42f08c91b46f4151529348d2c8e82e376f672b27d7018faaca8b"
+      PATCH_SHA256 = "e2a144cb620475f1dc24062c40c91140303589579391b53a8ecad2aac163fb78"
       PATCHED_FILES = %w[
         src/connection/index.ts
         src/connection/stateless.test.ts
         src/connection/stateless.ts
-        src/index.ts
         src/scenarios/authorization-server/authorization-code-grant.test.ts
         src/scenarios/authorization-server/authorization-code-grant.ts
         src/scenarios/server/http-standard-headers.ts
-        src/schemas.ts
       ].freeze
       SOURCE_SHA256 = {
         "package-lock.json" => UPSTREAM_PACKAGE_LOCK_SHA256,
-        "package.json" => "29ef755c66311589bf731763045790aba83adaa462334363c5edad194aa4420b",
+        "package.json" => "f699ac5e56ffeaad1090ee26e126c0d9f9d68e7fad6db30923d30fd7b429c640",
         "src/connection/index.ts" => "87baf5c50c7edd9b5683996e2400d033e68d884ea0639fcb28f351272400d186",
-        "src/connection/stateless.test.ts" => "dccf811b1090a36e7bc0d1329af332a703b0154536470b6abba3cff87363670d",
-        "src/connection/stateless.ts" => "517fb06ec04794632bac5d7dd09da64586089f4e38d1b5c6dadd46a16ae42991",
-        "src/index.ts" => "467d34bdb0d5e084b60e1886eb763572e37cb17887e61acc2976d2975513a34c",
+        "src/connection/stateless.test.ts" => "480d12b46b8077b671d6c376415c159ead29930994091d91a2dea11857f5f332",
+        "src/connection/stateless.ts" => "73bdcd2bd225ac93d70af02725c7382d1ddbd29f9d077b21cbc89f8fdf50fec4",
         "src/scenarios/authorization-server/authorization-code-grant.test.ts" =>
-          "05f4977d39dd0e1f2e6e8a34d609aaf77463e16ea8b1aa9b3129f9f456c092d9",
+          "ddb2830c3975fdc976a8d6cebe3386d831e61f4551de73a89c561101244b2180",
         "src/scenarios/authorization-server/authorization-code-grant.ts" =>
-          "eb533f606e841d1fa710d374419337ca1eb2ba40a1f2f4812cd6a5fda672a0b2",
+          "3b2a59c063b0cb2b61933e1d507ad42cfe16218a8f33445e88fa0e6a147e4b5d",
         "src/scenarios/server/http-standard-headers.ts" =>
-          "d3ab710edd60b1f481bdd9cb61f4a855266f0e6a9101a0fd363920fc670716f6",
-        "src/schemas.ts" => "7ad0859a285ba3b20a096cd8624c8f9633fa13cad1d371e7c05f025cc79d1a9a"
+          "d3ab710edd60b1f481bdd9cb61f4a855266f0e6a9101a0fd363920fc670716f6"
       }.freeze
       TEST_FILES = %w[
         src/connection/stateless.test.ts
@@ -200,8 +195,8 @@ module Hitch
           # vitest colorizes its summary on terminals that advertise color
           # support (GitHub Actions does), so match the uncolored text.
           summary = test_output.gsub(/\e\[[0-9;]*m/, "")
-          unless summary.match?(/Test Files\s+4 passed \(4\).*Tests\s+41 passed \(41\)/m)
-            raise Failure, "Reviewed harness tests did not execute the exact 41-test set:\n" \
+          unless summary.match?(/Test Files\s+4 passed \(4\).*Tests\s+47 passed \(47\)/m)
+            raise Failure, "Reviewed harness tests did not execute the exact 47-test set:\n" \
               "#{summary.lines.last(15).join}"
           end
           run!("build reviewed harness", {}, "npm", "run", "build", chdir: checkout)
@@ -272,7 +267,7 @@ module Hitch
           },
           verification: {
             upstream_tests: TEST_FILES,
-            upstream_test_count: 41,
+            upstream_test_count: 47,
             build: "passed",
             runner_sha256: Digest::SHA256.file(checkout.join("dist/index.js")).hexdigest
           }

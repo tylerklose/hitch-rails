@@ -335,7 +335,7 @@
     },
     {
       "type": "forced",
-      "_why": "Nonproduction admission store is not shared across processes.",
+      "_why": "Stock nonproduction MemoryStore is countable and must pass.",
       "assignments": [
         {
           "parameter": "runtime",

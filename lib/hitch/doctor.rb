@@ -649,9 +649,11 @@ module Hitch
       ) unless system.runtime_enabled?
 
       facts = system.rate_limit_store_facts
-      # The code names the defect; the status says how much it matters. Only
-      # production refuses, matching the runtime.
-      report = system.environment_name == "production" ? method(:fail_check) : method(:warning)
+      production = system.environment_name == "production"
+      # Uncountable is a defect everywhere. Unshared is only a production
+      # defect: development ships MemoryStore, and warning there trains
+      # operators to ignore doctor.
+      report = production ? method(:fail_check) : method(:warning)
 
       return report.call(
         "rate_limit_store",
@@ -660,10 +662,17 @@ module Hitch
         facts
       ) unless facts.fetch("counts")
 
-      return report.call(
+      return fail_check(
         "rate_limit_store",
         "unshared",
         "The configured store cannot count one principal's requests across processes",
+        facts
+      ) if facts.fetch("unshared") && production
+
+      return pass(
+        "rate_limit_store",
+        "local",
+        "Request admission counts in-process; production needs a shared store",
         facts
       ) if facts.fetch("unshared")
 

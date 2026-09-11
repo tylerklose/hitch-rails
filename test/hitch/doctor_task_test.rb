@@ -23,14 +23,15 @@ class Hitch::DoctorTaskTest < ActiveSupport::TestCase
     configure_host
   end
 
-  test "real task prints every human category without treating warnings as failure" do
+  test "real task prints every human category and a development memory store is OK" do
     output, error_output, status = invoke
 
     assert_nil status
     assert_empty error_output
-    assert_match(/\AHitch doctor v1: WARNING\n/, output)
+    assert_match(/\AHitch doctor v1: OK\n/, output)
     Doctor::CHECK_IDS.each { |id| assert_match(/\b#{Regexp.escape(id)}\b/, output) }
-    assert_includes output, "unshared"
+    assert_match(/\bPASS\s+rate_limit_store\s+local\b/, output)
+    refute_match(/\bWARN\s+rate_limit_store\b/, output)
   end
 
   test "real task emits one stable machine document" do
@@ -43,7 +44,10 @@ class Hitch::DoctorTaskTest < ActiveSupport::TestCase
     assert_empty error_output
     assert_equal [ "schema", "status", "checks" ], document.keys
     assert_equal "hitch.doctor.v1", document.fetch("schema")
+    assert_equal "ok", document.fetch("status")
     assert_equal Doctor::CHECK_IDS, document.fetch("checks").map { |check| check.fetch("id") }
+    store = document.fetch("checks").find { |check| check.fetch("id") == "rate_limit_store" }
+    assert_equal [ "pass", "local" ], store.values_at("status", "code")
   end
 
   test "actionable report exits one after rendering" do

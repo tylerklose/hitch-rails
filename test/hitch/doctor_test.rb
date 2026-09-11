@@ -221,6 +221,26 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     Doctor::REMEDIES.each_value { |remedy| refute_includes healthy, remedy }
   end
 
+  test "a countable unshared store is OK outside production and fails in it" do
+    nonproduction = HEALTHY_FULL.merge("environment" => "test", "rate_limit_store" => "unshared")
+    report = Doctor.call(system: FixtureSystem.new(nonproduction))
+    check = report.checks.find { |candidate| candidate.id == "rate_limit_store" }
+    human = Doctor.render(report, format: "human")
+
+    assert_equal "ok", report.status
+    assert_equal [ "pass", "local" ], [ check.status, check.code ]
+    refute_includes human, "WARNING"
+    refute_includes human, Doctor::REMEDIES.fetch("unshared")
+
+    production = HEALTHY_FULL.merge("rate_limit_store" => "unshared")
+    production_report = Doctor.call(system: FixtureSystem.new(production))
+    production_check = production_report.checks.find { |candidate| candidate.id == "rate_limit_store" }
+
+    assert_equal "error", production_report.status
+    assert_equal [ "fail", "unshared" ], [ production_check.status, production_check.code ]
+    assert_includes Doctor.render(production_report, format: "human"), Doctor::REMEDIES.fetch("unshared")
+  end
+
   test "healthy full runtime and auth-only modes have exact skip semantics" do
     full_report = Doctor.call(system: FixtureSystem.new(HEALTHY_FULL))
     assert_equal "ok", full_report.status
@@ -614,7 +634,7 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
       [ "registry", "warn", "empty" ],
       [ "hosts", "fail", "blocked" ],
       [ "origins", "warn", "insecure_http" ],
-      [ "rate_limit_store", "warn", "unshared" ],
+      [ "rate_limit_store", "pass", "local" ],
       [ "rate_limit_store", "warn", "uncountable" ],
       [ "rate_limit_store", "fail", "unshared" ],
       [ "rate_limit_store", "fail", "uncountable" ]

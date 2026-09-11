@@ -113,6 +113,19 @@ class MCPRateLimitCacheStoreTest < ActionDispatch::IntegrationTest
       "an explicit store must not fall through to the application cache"
   end
 
+  test "production counting raises for an unshared store instead of admitting or synthesizing a 503" do
+    configure_runtime(to: 3, within: 60, store: ActiveSupport::Cache::MemoryStore.new)
+    production = ActiveSupport::EnvironmentInquirer.new("production")
+
+    error = stub_class_method(Rails, :env, -> { production }) do
+      assert_raises(ArgumentError) { post_admitted_mcp(method: "tools/list", token: @token) }
+    end
+
+    assert_includes error.message, "ActiveSupport::Cache::MemoryStore"
+    assert_includes error.message, "mcp.rate_limit_store"
+    assert_includes error.message, "config.cache_store"
+  end
+
   test "a cache store failure is 503 before body registry SDK or host work" do
     configure_runtime(to: 3, within: 60, store: BrokenCacheStore.new)
     McpController.reset_wire_metrics!

@@ -4,12 +4,6 @@ require "test_helper"
 require "rake"
 
 class Hitch::EngineTest < ActiveSupport::TestCase
-  # Stands in for a store shared across processes; MemoryStore and NullStore
-  # are refused in production.
-  class SharedRateStore < ActiveSupport::Cache::Store
-    def increment(name, amount = 1, **options) = 1
-  end
-
   test "host filter_parameters extended with OAuth secrets" do
     # Rails 8 consolidates filter_parameters into a single regex for
     # performance — assert behavior by actually filtering a sample hash
@@ -183,44 +177,13 @@ class Hitch::EngineTest < ActiveSupport::TestCase
     Hitch.reset_configuration!
   end
 
-  test "production boot refuses enabled DCR without a shared atomic store" do
+  test "production boot does not refuse enabled DCR without a shared atomic store" do
     Hitch.reset_configuration!
     Hitch.configuration.dynamic_client_registration_enabled = true
-    production = ActiveSupport::EnvironmentInquirer.new("production")
-
-    stub_class_method(Rails, :env, -> { production }) do
-      assert_raises(ArgumentError) do
-        dynamic_registration_initializer.run(Rails.application)
-      end
-    end
-  ensure
-    Hitch.reset_configuration!
-  end
-
-  test "production boot accepts the explicit shared-store contract" do
-    Hitch.reset_configuration!
-    Hitch.configure do |configuration|
-      configuration.dynamic_client_registration_enabled = true
-      configuration.dynamic_client_registration_rate_store = SharedRateStore.new
-    end
     production = ActiveSupport::EnvironmentInquirer.new("production")
 
     stub_class_method(Rails, :env, -> { production }) do
       assert_nothing_raised { dynamic_registration_initializer.run(Rails.application) }
-    end
-  ensure
-    Hitch.reset_configuration!
-  end
-
-  test "doctor alone may bypass production DCR boot refusal so it can report it" do
-    Hitch.reset_configuration!
-    Hitch.configuration.dynamic_client_registration_enabled = true
-    production = ActiveSupport::EnvironmentInquirer.new("production")
-
-    with_rake_tasks("hitch:doctor") do
-      stub_class_method(Rails, :env, -> { production }) do
-        assert_nothing_raised { dynamic_registration_initializer.run(Rails.application) }
-      end
     end
   ensure
     Hitch.reset_configuration!
@@ -305,52 +268,6 @@ class Hitch::EngineTest < ActiveSupport::TestCase
 
   private
 
-  test "production boot refuses enabled device authorization without a shared atomic store" do
-    Hitch.reset_configuration!
-    Hitch.configuration.device_authorization_enabled = true
-    production = ActiveSupport::EnvironmentInquirer.new("production")
-
-    stub_class_method(Rails, :env, -> { production }) do
-      assert_raises(ArgumentError) do
-        device_authorization_initializer.run(Rails.application)
-      end
-    end
-  ensure
-    Hitch.reset_configuration!
-  end
-
-  test "production boot accepts a shared device store, and the disabled flag skips the check" do
-    Hitch.reset_configuration!
-    Hitch.configuration.device_authorization_enabled = true
-    Hitch.configuration.device_authorization_rate_store = SharedRateStore.new
-    production = ActiveSupport::EnvironmentInquirer.new("production")
-
-    stub_class_method(Rails, :env, -> { production }) do
-      assert_nothing_raised { device_authorization_initializer.run(Rails.application) }
-    end
-
-    Hitch.reset_configuration!
-    stub_class_method(Rails, :env, -> { production }) do
-      assert_nothing_raised { device_authorization_initializer.run(Rails.application) }
-    end
-  ensure
-    Hitch.reset_configuration!
-  end
-
-  test "doctor alone may bypass the production device boot refusal so it can report it" do
-    Hitch.reset_configuration!
-    Hitch.configuration.device_authorization_enabled = true
-    production = ActiveSupport::EnvironmentInquirer.new("production")
-
-    with_rake_tasks("hitch:doctor") do
-      stub_class_method(Rails, :env, -> { production }) do
-        assert_nothing_raised { device_authorization_initializer.run(Rails.application) }
-      end
-    end
-  ensure
-    Hitch.reset_configuration!
-  end
-
   def cimd_warning_initializer
     Hitch::Engine.initializers.find do |initializer|
       initializer.name == "hitch.warn_on_uncacheable_cimd"
@@ -362,13 +279,6 @@ class Hitch::EngineTest < ActiveSupport::TestCase
       initializer.name == "hitch.validate_dynamic_client_registration"
     end
   end
-
-  def device_authorization_initializer
-    Hitch::Engine.initializers.find do |initializer|
-      initializer.name == "hitch.validate_device_authorization"
-    end
-  end
-
 
   def configuration_initializer
     Hitch::Engine.initializers.find do |initializer|

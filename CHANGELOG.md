@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Production no longer aborts the whole Rails boot when the MCP (or DCR /
+  device) rate-limit store is unshared (`MemoryStore` / `NullStore` /
+  `FileStore`). Rails itself does not refuse to boot for a bad `cache_store`,
+  and Hitch now matches that: `/up` can be green. The hitch surfaces still
+  fail closed — `RateLimitStore.check!` and MCP admission raise on the request
+  that needs to count, with the store class and the two knobs
+  (`config.cache_store` or the hitch setting) in the exception Sentry sees.
+  Client bodies stay the usual generic Rails / hitch errors. `hitch:doctor`
+  in production still fails on unshared.
+
 ## [0.5.0] - 2026-09-05
 
 Upgrading from 0.4.0 requires MCP >= 1.4 and a review of native redirect

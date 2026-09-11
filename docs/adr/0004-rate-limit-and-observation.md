@@ -28,8 +28,9 @@ store raises is 503 and performs no body/registry/SDK/host work. Not every
 store raises: `RedisCacheStore` and Solid Cache swallow backend outages and
 return nil, so during an outage MCP admission is not enforced — the same
 posture as `ActionController::RateLimiting` on the same stores. Production
-refuses a store that cannot count across processes; other environments simply
-do not enforce a limit when the store cannot count.
+refuses a store that cannot count across processes when hitch counts, not
+at boot; other environments simply do not enforce a limit when the store
+cannot count.
 
 `request.hitch_mcp` fires once for every non-OPTIONS request from the outer
 callback. `invocation.hitch_mcp` starts only after SDK schema validation reaches

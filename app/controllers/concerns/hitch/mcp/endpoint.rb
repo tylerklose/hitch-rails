@@ -189,11 +189,19 @@ module Hitch
           principal: @hitch_mcp_principal,
           client_id: @hitch_mcp_client_id
         )
-        return if count.nil? || count <= limit.fetch(:to)
+        # Integer check before `<=` so a garbage count stays 503 and does not
+        # raise ArgumentError — that class is reserved for the unshared store.
+        return if count.nil? || (count.is_a?(Integer) && count <= limit.fetch(:to))
+        unless count.is_a?(Integer)
+          Internal::EndpointErrorReporter.report(category: :request_admission)
+          return head :service_unavailable
+        end
 
         response.headers["Retry-After"] = limit.fetch(:within).to_s
         response.headers["Access-Control-Expose-Headers"] = "Retry-After"
         head :too_many_requests
+      rescue ArgumentError
+        raise
       # NotImplementedError is a ScriptError, not a StandardError: the base
       # ActiveSupport::Cache::Store#increment raises it, and every subclass
       # answers respond_to?(:increment), so a store that never overrode it
@@ -337,14 +345,18 @@ module Hitch
       # Counts through the host application's own cache store, exactly as
       # ActionController::RateLimiting does. A nil count admits, same as
       # Rails: :null_store returns nil (test, and development without
-      # caching — production refuses those stores at boot), and Redis and
-      # Solid Cache stores return nil during a backend outage rather than
-      # raising. This request is already authenticated, so an outage widens
-      # one token holder's quota, not the front door. Anything else a store
-      # returns fails the comparison above and becomes a 503.
+      # caching — production refuses those stores when this path counts),
+      # and Redis and Solid Cache stores return nil during a backend outage
+      # rather than raising. This request is already authenticated, so an
+      # outage widens one token holder's quota, not the front door. Anything
+      # else a store returns fails the comparison above and becomes a 503.
       def hitch_mcp_admit_authenticated_request(principal:, client_id:)
         configuration = Hitch.configuration.mcp
-        configuration.rate_limit_store.increment(
+        store = configuration.rate_limit_store
+        Hitch::RateLimitStore.assert_shared!(
+          store, setting: Hitch::MCP::Configuration::SETTING
+        ) if Rails.env.production?
+        store.increment(
           RateLimitKey.call(principal:, client_id:),
           expires_in: configuration.request_limit.fetch(:within)
         )

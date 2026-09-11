@@ -100,9 +100,10 @@ class DynamicRegistrationPostureTest < ActionDispatch::IntegrationTest
   test "production fails closed when the store cannot count" do
     Hitch.configuration.dynamic_client_registration_rate_store = ActiveSupport::Cache::NullStore.new
 
-    with_production { post_registration }
+    error = assert_raises(ArgumentError) { with_production { post_registration } }
 
-    assert_response :service_unavailable
+    assert_includes error.message, "ActiveSupport::Cache::NullStore"
+    assert_includes error.message, "config.dynamic_client_registration_rate_store"
     assert_equal 0, Hitch::Client.count
   end
 
@@ -134,7 +135,7 @@ class DynamicRegistrationPostureTest < ActionDispatch::IntegrationTest
     assert_equal 0, Hitch::Client.count
   end
 
-  test "production boot refuses a nil store outright" do
+  test "counting refuses a nil store outright" do
     error = assert_raises(ArgumentError) do
       Hitch::RateLimitStore.assert_shared!(
         nil, setting: Hitch::DynamicRegistrationRateLimit::SETTING
@@ -144,7 +145,7 @@ class DynamicRegistrationPostureTest < ActionDispatch::IntegrationTest
     assert_includes error.message, "must be an ActiveSupport::Cache store"
   end
 
-  test "production boot rejects a store that cannot count across processes" do
+  test "production counting rejects a store that cannot count across processes" do
     [ ActiveSupport::Cache::MemoryStore.new, ActiveSupport::Cache::NullStore.new ].each do |store|
       error = assert_raises(ArgumentError, store.class.name) do
         Hitch::RateLimitStore.assert_shared!(

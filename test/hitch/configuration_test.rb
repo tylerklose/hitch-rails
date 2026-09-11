@@ -112,7 +112,7 @@ class Hitch::ConfigurationTest < ActiveSupport::TestCase
     end
   end
 
-  test "production MCP runtime refuses a store that cannot count across processes" do
+  test "production MCP counting refuses a store that cannot count across processes" do
     configuration = Hitch.configuration.mcp
     configuration.registry = "McpToolRegistry"
     configuration.server_info = { name: "example", version: "1" }
@@ -122,16 +122,24 @@ class Hitch::ConfigurationTest < ActiveSupport::TestCase
     production = ActiveSupport::EnvironmentInquirer.new("production")
 
     stub_class_method(Rails, :env, -> { production }) do
-      # Booting needs no store at all; only the resolved store is constrained.
+      # Booting needs no store at all; only the resolved store is constrained
+      # on the path that counts.
       assert configuration.validate!
 
-      error = assert_raises(ArgumentError) { configuration.validate_rate_limit_store! }
+      error = assert_raises(ArgumentError) do
+        Hitch::RateLimitStore.assert_shared!(
+          configuration.rate_limit_store, setting: Hitch::MCP::Configuration::SETTING
+        )
+      end
       assert_includes error.message, "cannot count one"
+      assert_includes error.message, "ActiveSupport::Cache::MemoryStore"
 
       configuration.rate_limit_store = Class.new(ActiveSupport::Cache::Store) do
         def increment(name, amount = 1, **options) = 1
       end.new
-      assert configuration.validate_rate_limit_store!
+      assert Hitch::RateLimitStore.assert_shared!(
+        configuration.rate_limit_store, setting: Hitch::MCP::Configuration::SETTING
+      )
     end
   end
 

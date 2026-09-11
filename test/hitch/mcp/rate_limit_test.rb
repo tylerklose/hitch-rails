@@ -97,7 +97,7 @@ class Hitch::MCP::RateLimitTest < ActiveSupport::TestCase
     assert_includes error.message, "mcp.rate_limit_store"
   end
 
-  test "production refuses a store that cannot count across processes" do
+  test "production counting refuses a store that cannot count across processes" do
     unshared = [
       ActiveSupport::Cache::MemoryStore.new,
       ActiveSupport::Cache::NullStore.new,
@@ -107,26 +107,37 @@ class Hitch::MCP::RateLimitTest < ActiveSupport::TestCase
     unshared.each do |store|
       configuration = configured_runtime(to: 2, within: 60, store:)
 
-      assert configuration.validate_rate_limit_store!,
-        "#{store.class.name} is allowed outside production"
+      Hitch::RateLimitStore.check!(
+        configuration.rate_limit_store, "hitch:mcp:test", { to: 2, within: 60 },
+        setting: Hitch::MCP::Configuration::SETTING
+      )
 
       in_production do
         error = assert_raises(ArgumentError, store.class.name) do
-          configuration.validate_rate_limit_store!
+          Hitch::RateLimitStore.check!(
+            configuration.rate_limit_store, "hitch:mcp:test", { to: 2, within: 60 },
+            setting: Hitch::MCP::Configuration::SETTING
+          )
         end
         assert_includes error.message, "cannot count one"
         assert_includes error.message, store.class.name
+        assert_includes error.message, "mcp.rate_limit_store"
       end
     end
   end
 
-  test "production accepts a store that counts across processes" do
+  test "production counting accepts a store that counts across processes" do
     shared = Class.new(ActiveSupport::Cache::Store) do
       def increment(name, amount = 1, **options) = 1
     end.new
     configuration = configured_runtime(to: 2, within: 60, store: shared)
 
-    in_production { assert configuration.validate_rate_limit_store! }
+    in_production do
+      assert Hitch::RateLimitStore.check!(
+        configuration.rate_limit_store, "hitch:mcp:test", { to: 2, within: 60 },
+        setting: Hitch::MCP::Configuration::SETTING
+      )
+    end
   end
 
   test "validate! no longer demands a store, so a Solid Cache app boots in production" do

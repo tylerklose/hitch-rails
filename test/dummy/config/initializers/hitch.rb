@@ -64,7 +64,8 @@ end
 # in this suite configures mcp.rate_limit_store explicitly, above — so the fall
 # back to the application's own cache store, which is what every adopter gets
 # by default, is exercised nowhere else. That gap is how a boot-killing
-# regression shipped once already.
+# regression shipped once already. Production now boots with an unshared
+# fallback; hitch surfaces raise when they count.
 if ENV["HITCH_BOOT_PROBE"]
   shared_store = Class.new(ActiveSupport::Cache::Store) do
     def increment(name, amount = 1, **options) = amount

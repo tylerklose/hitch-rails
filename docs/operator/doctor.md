@@ -3,7 +3,9 @@
 `hitch:doctor` is a read-only installation diagnostic for the current Rails
 environment. Run it after installation, before a deploy, and whenever routing,
 discovery, registry loading, or request admission behaves differently than the
-host expects:
+host expects. Production can boot with an unshared rate-limit store — a green
+`/up` is not MCP healthy — so this command is what fails closed on that
+posture:
 
 ```sh
 bin/rails hitch:doctor

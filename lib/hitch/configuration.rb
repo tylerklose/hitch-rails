@@ -534,7 +534,8 @@ module Hitch
       end
 
       raise ArgumentError,
-        "Hitch.configuration.resource_uri is required; set it to the canonical MCP endpoint URI"
+        "Hitch.configuration.resource_uri is required; set it to the canonical MCP endpoint URI. " \
+        "New install? Run: bin/rails generate hitch:install"
     end
 
     def refresh_tokens_enabled=(value)

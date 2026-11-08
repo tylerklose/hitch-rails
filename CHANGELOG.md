@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `/mcp` now refuses a request whose `id` has a decimal part, like `1.5`.
+  MCP only allows a string or a whole number. Before, the tool ran anyway.
+  ([#59](https://github.com/tylerklose/hitch-rails/issues/59))
+
 ## [0.5.0] - 2026-09-05
 
 Upgrading from 0.4.0 requires MCP >= 1.4 and a review of native redirect

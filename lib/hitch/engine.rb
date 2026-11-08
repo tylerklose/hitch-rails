@@ -85,6 +85,23 @@ module Hitch
       )
     end
 
+    # First of the validations: with no initializer, the missing
+    # resource_uri is the cause, and the store checks below would only be
+    # symptoms of the defaults (#56).
+    initializer "hitch.validate_configuration", after: :load_config_initializers do
+      # A fresh host has to boot once to run this generator, and the
+      # initializer it creates is what sets resource_uri. Keep the exception
+      # exact: other generators and every ordinary application boot still
+      # validate and fail closed.
+      install_generator = ARGV.first == "hitch:install" ||
+        (%w[generate g].include?(ARGV.first) && ARGV[1] == "hitch:install")
+      next if install_generator || Hitch::Engine.doctor_command?
+
+      configuration = Hitch.configuration
+      configuration.validate!
+      configuration.mcp.validate_rate_limit_store! if configuration.mcp.enabled
+    end
+
     initializer "hitch.validate_dynamic_client_registration", after: :load_config_initializers do
       configuration = Hitch.configuration
       next unless configuration.dynamic_client_registration_enabled
@@ -114,20 +131,6 @@ module Hitch
       # fails closed — so a store that cannot count across processes must
       # refuse the boot, not every /activate submission.
       configuration.validate_device_authorization_rate_store!
-    end
-
-    initializer "hitch.validate_configuration", after: :load_config_initializers do
-      # A fresh host has to boot once to run this generator, and the
-      # initializer it creates is what sets resource_uri. Keep the exception
-      # exact: other generators and every ordinary application boot still
-      # validate and fail closed.
-      install_generator = ARGV.first == "hitch:install" ||
-        (%w[generate g].include?(ARGV.first) && ARGV[1] == "hitch:install")
-      next if install_generator || Hitch::Engine.doctor_command?
-
-      configuration = Hitch.configuration
-      configuration.validate!
-      configuration.mcp.validate_rate_limit_store! if configuration.mcp.enabled
     end
 
     config.after_initialize do |app|

@@ -247,6 +247,24 @@ class Hitch::EngineTest < ActiveSupport::TestCase
       configuration_initializer.run(Rails.application)
     end
     assert_includes error.message, "resource_uri is required"
+    # #56: right after `bundle add`, every command boots into this. Name the fix.
+    assert_includes error.message, "bin/rails generate hitch:install"
+  ensure
+    Hitch.reset_configuration!
+  end
+
+  # #56: production is where a fresh app first boots for real (the Dockerfile
+  # precompiles assets), and DCR is on by default with no initializer. The
+  # missing initializer is the cause, so it has to be the error.
+  test "an unconfigured production boot names the install generator first" do
+    Hitch.reset_configuration!
+    production = ActiveSupport::EnvironmentInquirer.new("production")
+    validations = Rails.application.initializers.tsort.select { |initializer| initializer.name.to_s.start_with?("hitch.validate") }
+
+    error = stub_class_method(Rails, :env, -> { production }) do
+      assert_raises(ArgumentError) { validations.each { |initializer| initializer.run(Rails.application) } }
+    end
+    assert_includes error.message, "bin/rails generate hitch:install"
   ensure
     Hitch.reset_configuration!
   end

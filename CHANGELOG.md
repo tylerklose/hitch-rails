@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The consent and activation pages no longer crash when your layout uses
   your app's route helpers, like `root_path`.
   ([#43](https://github.com/tylerklose/hitch-rails/issues/43))
+- When Hitch isn't set up yet, the boot error tells you to run
+  `bin/rails generate hitch:install`, in production too.
+  ([#56](https://github.com/tylerklose/hitch-rails/issues/56))
 
 ## [0.5.0] - 2026-09-05
 

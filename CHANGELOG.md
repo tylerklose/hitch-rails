@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A structured result without `text:` now also sends its JSON as text,
   so clients that only read `content` still see it.
   ([#60](https://github.com/tylerklose/hitch-rails/issues/60))
+- The consent and activation pages no longer crash when your layout uses
+  your app's route helpers, like `root_path`.
+  ([#43](https://github.com/tylerklose/hitch-rails/issues/43))
 
 ## [0.5.0] - 2026-09-05
 

@@ -23,6 +23,8 @@
   </head>
 
   <body>
+    <%# A host nav uses bare host route helpers, and Hitch renders inside it (#43). %>
+    <nav><%= link_to "Sign in", sign_in_path %></nav>
     <%= yield %>
   </body>
 </html>

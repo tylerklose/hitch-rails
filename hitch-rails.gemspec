@@ -56,6 +56,7 @@ Gem::Specification.new do |spec|
     files.concat(
       Dir[
         "app/controllers/**/*.rb",
+        "app/helpers/**/*.rb",
         "app/models/**/*.rb",
         "app/views/**/*.erb",
         "db/migrate/*.rb",

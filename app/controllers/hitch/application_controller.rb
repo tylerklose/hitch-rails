@@ -10,6 +10,8 @@ module Hitch
     include Hitch::IssuerUrl
     include Hitch::OauthParameterValidation
 
+    helper Hitch::HostRouteHelpers
+
     # Opt out of the host's blanket authentication-enforcement callback.
     # Rails 8's built-in `bin/rails g authentication` adds a global
     # `before_action :require_authentication` to the host's

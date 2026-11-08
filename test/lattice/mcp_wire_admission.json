@@ -1,0 +1,309 @@
+{
+  "model_name": "hitch_mcp_wire_admission",
+  "strength": 3,
+  "_intent_notes": [
+    "Three-way model of authenticated POST /mcp admission: one valid request per row, broken by at most one fault and one masked fault.",
+    "Expected outcomes come from JSON-RPC 2.0 section 4 and 5.1, MCP 2026-07-28 basic (ids are strings or integers, never null; _meta is an object), RFC 8259 section 8.1 (JSON text is UTF-8), and the phase order in test/contracts/mcp_wire_vectors.yml: parse, envelope, _meta, headers, method allowlist, dispatch.",
+    "The earliest failing phase decides the outcome. Within one phase any of that phase's codes is acceptable; the contract does not order checks inside a phase.",
+    "masked_fault is a second defect from the _meta or header phase. When it is in a later phase than fault, fault must still decide the outcome.",
+    "The SDK version is a process-level dimension, not a row parameter: CI runs every row on the rails_8_0_sqlite lane (mcp floor) and the rails_8_1_postgresql lane (mcp 1.9.0)."
+  ],
+  "parameters": [
+    {
+      "name": "method",
+      "values": [
+        "tools_call",
+        "tools_list",
+        "server_discover",
+        "resources_list",
+        "skills_list"
+      ]
+    },
+    {
+      "name": "fault",
+      "values": [
+        "none",
+        "malformed_utf8",
+        "truncated_json",
+        "id_null",
+        "id_absent",
+        "id_fractional",
+        "id_object",
+        "jsonrpc_wrong",
+        "meta_string",
+        "meta_array",
+        "meta_missing_protocol",
+        "method_header_mismatched",
+        "name_header_mismatched",
+        "name_header_invalid_bytes",
+        "protocol_unsupported"
+      ]
+    }
+  ],
+  "constraints": [
+    {
+      "type": "conditional",
+      "_why": "An id fault replaces the id, so the id kind only applies to the others.",
+      "parameter": "id_kind",
+      "values": [
+        "string",
+        "integer",
+        "unicode_long"
+      ],
+      "parent": "fault",
+      "applies_when": [
+        "none",
+        "malformed_utf8",
+        "truncated_json",
+        "jsonrpc_wrong",
+        "meta_string",
+        "meta_array",
+        "meta_missing_protocol",
+        "method_header_mismatched",
+        "name_header_mismatched",
+        "name_header_invalid_bytes",
+        "protocol_unsupported"
+      ]
+    },
+    {
+      "type": "conditional",
+      "_why": "The second defect only exists alongside a first one.",
+      "parameter": "masked_fault",
+      "values": [
+        "none",
+        "meta_array",
+        "method_header_mismatched",
+        "name_header_mismatched",
+        "protocol_unsupported"
+      ],
+      "parent": "fault",
+      "applies_when": [
+        "malformed_utf8",
+        "truncated_json",
+        "id_null",
+        "id_absent",
+        "id_fractional",
+        "id_object",
+        "jsonrpc_wrong",
+        "meta_string",
+        "meta_array",
+        "meta_missing_protocol",
+        "method_header_mismatched",
+        "name_header_mismatched",
+        "name_header_invalid_bytes",
+        "protocol_unsupported"
+      ]
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "Mcp-Name mirrors params.name, which only tools/call carries.",
+      "if": {
+        "parameter": "fault",
+        "value": "name_header_mismatched"
+      },
+      "then_not": {
+        "parameter": "method",
+        "value": "tools_list"
+      }
+    },
+    {
+      "type": "invalid_pair",
+      "if": {
+        "parameter": "fault",
+        "value": "name_header_mismatched"
+      },
+      "then_not": {
+        "parameter": "method",
+        "value": "server_discover"
+      }
+    },
+    {
+      "type": "invalid_pair",
+      "if": {
+        "parameter": "fault",
+        "value": "name_header_mismatched"
+      },
+      "then_not": {
+        "parameter": "method",
+        "value": "resources_list"
+      }
+    },
+    {
+      "type": "invalid_pair",
+      "if": {
+        "parameter": "fault",
+        "value": "name_header_mismatched"
+      },
+      "then_not": {
+        "parameter": "method",
+        "value": "skills_list"
+      }
+    },
+    {
+      "type": "invalid_pair",
+      "if": {
+        "parameter": "fault",
+        "value": "name_header_invalid_bytes"
+      },
+      "then_not": {
+        "parameter": "method",
+        "value": "tools_list"
+      }
+    },
+    {
+      "type": "invalid_pair",
+      "if": {
+        "parameter": "fault",
+        "value": "name_header_invalid_bytes"
+      },
+      "then_not": {
+        "parameter": "method",
+        "value": "server_discover"
+      }
+    },
+    {
+      "type": "invalid_pair",
+      "if": {
+        "parameter": "fault",
+        "value": "name_header_invalid_bytes"
+      },
+      "then_not": {
+        "parameter": "method",
+        "value": "resources_list"
+      }
+    },
+    {
+      "type": "invalid_pair",
+      "if": {
+        "parameter": "fault",
+        "value": "name_header_invalid_bytes"
+      },
+      "then_not": {
+        "parameter": "method",
+        "value": "skills_list"
+      }
+    },
+    {
+      "type": "invalid_pair",
+      "if": {
+        "parameter": "masked_fault",
+        "value": "name_header_mismatched"
+      },
+      "then_not": {
+        "parameter": "method",
+        "value": "tools_list"
+      }
+    },
+    {
+      "type": "invalid_pair",
+      "if": {
+        "parameter": "masked_fault",
+        "value": "name_header_mismatched"
+      },
+      "then_not": {
+        "parameter": "method",
+        "value": "server_discover"
+      }
+    },
+    {
+      "type": "invalid_pair",
+      "if": {
+        "parameter": "masked_fault",
+        "value": "name_header_mismatched"
+      },
+      "then_not": {
+        "parameter": "method",
+        "value": "resources_list"
+      }
+    },
+    {
+      "type": "invalid_pair",
+      "if": {
+        "parameter": "masked_fault",
+        "value": "name_header_mismatched"
+      },
+      "then_not": {
+        "parameter": "method",
+        "value": "skills_list"
+      }
+    },
+    {
+      "type": "invalid_pair",
+      "_why": "A masked fault touches a different field than the fault it hides behind.",
+      "if": {
+        "parameter": "fault",
+        "value": "meta_string"
+      },
+      "then_not": {
+        "parameter": "masked_fault",
+        "value": "meta_array"
+      }
+    },
+    {
+      "type": "invalid_pair",
+      "if": {
+        "parameter": "fault",
+        "value": "meta_array"
+      },
+      "then_not": {
+        "parameter": "masked_fault",
+        "value": "meta_array"
+      }
+    },
+    {
+      "type": "invalid_pair",
+      "if": {
+        "parameter": "fault",
+        "value": "meta_missing_protocol"
+      },
+      "then_not": {
+        "parameter": "masked_fault",
+        "value": "meta_array"
+      }
+    },
+    {
+      "type": "invalid_pair",
+      "if": {
+        "parameter": "fault",
+        "value": "method_header_mismatched"
+      },
+      "then_not": {
+        "parameter": "masked_fault",
+        "value": "method_header_mismatched"
+      }
+    },
+    {
+      "type": "invalid_pair",
+      "if": {
+        "parameter": "fault",
+        "value": "name_header_mismatched"
+      },
+      "then_not": {
+        "parameter": "masked_fault",
+        "value": "name_header_mismatched"
+      }
+    },
+    {
+      "type": "invalid_pair",
+      "if": {
+        "parameter": "fault",
+        "value": "name_header_invalid_bytes"
+      },
+      "then_not": {
+        "parameter": "masked_fault",
+        "value": "name_header_mismatched"
+      }
+    },
+    {
+      "type": "invalid_pair",
+      "if": {
+        "parameter": "fault",
+        "value": "protocol_unsupported"
+      },
+      "then_not": {
+        "parameter": "masked_fault",
+        "value": "protocol_unsupported"
+      }
+    }
+  ]
+}

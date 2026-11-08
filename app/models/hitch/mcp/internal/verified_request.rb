@@ -89,7 +89,8 @@ module Hitch
           invalid_request! unless request.is_a?(Hash)
           invalid_request! unless request["jsonrpc"] == "2.0"
           invalid_request! unless request.key?("id")
-          invalid_request! unless request["id"].is_a?(String) || request["id"].is_a?(Numeric)
+          # MCP 2026-07-28 basic, Requests: the id is a string or an integer.
+          invalid_request! unless request["id"].is_a?(String) || request["id"].is_a?(Integer)
           invalid_request! unless request["method"].is_a?(String)
           invalid_request! unless request["params"].is_a?(Hash)
 

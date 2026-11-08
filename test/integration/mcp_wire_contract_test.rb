@@ -299,7 +299,7 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
   end
 
   test "final request id values survive the SDK compatibility boundary" do
-    [ "a/b", "日本語", 1.5, 10**100 ].each do |request_id|
+    [ "a/b", "日本語", 10**100 ].each do |request_id|
       body = base_body("request-id", "server/discover")
       body["id"] = request_id
       post "/mcp", params: JSON.generate(body), headers: base_headers("server/discover")

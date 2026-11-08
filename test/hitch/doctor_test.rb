@@ -179,8 +179,7 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
   end
 
   test "Lattice fixtures exercise all stable categories and actionable outcomes" do
-    assert_equal 27, SCENARIOS.length
-    assert_equal (1..27).to_a, SCENARIOS.map { |scenario| scenario.fetch("id") }
+    assert_equal (1..SCENARIOS.length).to_a, SCENARIOS.map { |scenario| scenario.fetch("id") }
     seen = Set.new
 
     SCENARIOS.each do |scenario|
@@ -191,6 +190,13 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
       assert_equal expected_overall(report), report.status, scenario_label(scenario)
       report.checks.each { |check| seen << [ check.id, check.status, check.code ] }
       assert_operator system.rate_limit_store_probe_calls, :<=, 1, scenario_label(scenario)
+      store = report.checks.find { |check| check.id == "rate_limit_store" }
+      assert_equal intended_store_verdict(scenario.fetch("values")), [ store.status, store.code ], scenario_label(scenario)
+
+      human = Doctor.render(report, format: "human")
+      human.lines.each_cons(2) do |line, following|
+        refute following.start_with?("     ->") && line.start_with?("PASS"), "remedy under a pass: #{line}"
+      end
 
       rendered = Doctor.render(report, format: "json")
       refute_includes rendered, "redis-super-secret", scenario_label(scenario)
@@ -219,6 +225,20 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
 
     healthy = Doctor.render(Doctor.call(system: FixtureSystem.new(HEALTHY_FULL)), format: "human")
     Doctor::REMEDIES.each_value { |remedy| refute_includes healthy, remedy }
+  end
+
+  # #41: development ships :memory_store, and one process has nothing to share
+  # a count with. Doctor's verdict has to match the environment it runs in.
+  test "a correctly configured development app with the stock memory store is ok" do
+    report = Doctor.call(system: FixtureSystem.new(
+      HEALTHY_FULL.merge("environment" => "development", "rate_limit_store" => "unshared")
+    ))
+    check = report.checks.find { |candidate| candidate.id == "rate_limit_store" }
+
+    assert_equal "ok", report.status
+    assert_equal [ "pass", "unshared" ], [ check.status, check.code ]
+    assert_includes check.summary, "production"
+    refute_includes Doctor.render(report, format: "human"), "->"
   end
 
   test "healthy full runtime and auth-only modes have exact skip semantics" do
@@ -564,6 +584,22 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     assert_equal "shadowed", check.code
   end
 
+  # Rails 8.1 production logs to STDOUT, where HITCH_DOCTOR_FORMAT=json is
+  # read as one document. The doctor's own probe requests must not log there.
+  test "the doctor's probe requests write nothing to the app log" do
+    log = StringIO.new
+    logger = ActiveSupport::BroadcastLogger.new(ActiveSupport::Logger.new(log))
+    original = [ Rails.logger, ActionController::Base.logger ]
+    Rails.logger = ActionController::Base.logger = logger
+
+    report = Doctor.call
+
+    assert_equal "pass", report.checks.find { |check| check.id == "resource_discovery" }.status
+    assert_empty log.string
+  ensure
+    Rails.logger, ActionController::Base.logger = original
+  end
+
   # Rails drops HostAuthorization from the stack entirely when config.hosts is
   # empty, which is what the test environment does. Putting the real middleware
   # back is the only way to see what a host with a narrow config.hosts sees.
@@ -614,11 +650,24 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
       [ "registry", "warn", "empty" ],
       [ "hosts", "fail", "blocked" ],
       [ "origins", "warn", "insecure_http" ],
-      [ "rate_limit_store", "warn", "unshared" ],
+      [ "rate_limit_store", "pass", "unshared" ],
       [ "rate_limit_store", "warn", "uncountable" ],
       [ "rate_limit_store", "fail", "unshared" ],
       [ "rate_limit_store", "fail", "uncountable" ]
     ]
+  end
+
+  # #41: production refuses a store it cannot trust; elsewhere one process
+  # counting for itself is correct, and only a store that cannot count warns.
+  def intended_store_verdict(values)
+    production = values.fetch("environment") == "production"
+    case values.fetch("runtime") == "auth_only" ? "skipped" : values.fetch("rate_limit_store")
+    when "skipped" then [ "skip", "runtime_disabled" ]
+    when "error" then [ "fail", "probe_error" ]
+    when "shared" then [ "pass", "shared" ]
+    when "unshared" then [ production ? "fail" : "pass", "unshared" ]
+    when "uncountable" then [ production ? "fail" : "warn", "uncountable" ]
+    end
   end
 
   def scenario_label(scenario)

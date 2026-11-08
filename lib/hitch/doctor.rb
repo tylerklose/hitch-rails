@@ -345,7 +345,9 @@ module Hitch
           "rack.url_scheme" => resource.scheme,
           "HTTPS" => ("on" if resource.scheme == "https")
         ).compact
-        status, _headers, body = Rails.application.call(environment)
+        # Production logs to STDOUT, where the JSON report goes. These are the
+        # doctor's requests, not the app's, so they stay out of its log.
+        status, _headers, body = Rails.logger.silence(Logger::UNKNOWN) { Rails.application.call(environment) }
         raise HostBlocked if environment["action_dispatch.blocked_hosts"]&.any?
 
         bytes = +""
@@ -431,7 +433,7 @@ module Hitch
         lines = [ "Hitch doctor v1: #{report.status.upcase}" ]
         report.checks.each do |check|
           lines << format("%-4s %-24s %-28s %s", check.status.upcase, check.id, check.code, check.summary)
-          lines << "     -> #{REMEDIES.fetch(check.code)}" if REMEDIES.key?(check.code)
+          lines << "     -> #{REMEDIES.fetch(check.code)}" if check.status != "pass" && REMEDIES.key?(check.code)
         end
         counts = %w[pass warn fail skip].to_h do |status|
           [ status, report.checks.count { |check| check.status == status } ]
@@ -660,12 +662,22 @@ module Hitch
         facts
       ) unless facts.fetch("counts")
 
-      return report.call(
-        "rate_limit_store",
-        "unshared",
-        "The configured store cannot count one principal's requests across processes",
-        facts
-      ) if facts.fetch("unshared")
+      if facts.fetch("unshared")
+        # One development process has nothing to share a count with.
+        return pass(
+          "rate_limit_store",
+          "unshared",
+          "The configured store counts within one process; production needs a shared store",
+          facts
+        ) unless system.environment_name == "production"
+
+        return fail_check(
+          "rate_limit_store",
+          "unshared",
+          "The configured store cannot count one principal's requests across processes",
+          facts
+        )
+      end
 
       pass(
         "rate_limit_store",

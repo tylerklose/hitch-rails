@@ -1,5 +1,8 @@
 Rails.application.routes.draw do
   post "sign_in", to: "sign_ins#create"
+  # Shares a name with the engine's activate route; the engine's forms must
+  # keep their own (#43).
+  get "account/activate", to: redirect("/"), as: :activate
   # A constrained host route proves Hitch's pre-routing form guard does not
   # claim a path the host owns before the root engine mount.
   post "*host_form_path", to: "host_forms#create", format: false,

@@ -38,6 +38,38 @@ class ConsentFlowTest < ActionDispatch::IntegrationTest
     JSON.parse(response.body)["client_id"]
   end
 
+  # #43: the consent page renders inside the host's layout, and a host nav
+  # says sign_in_path, not main_app.sign_in_path. Bare host route helpers have
+  # to resolve to the host, and the engine's own forms have to stay its own.
+  test "consent page renders in a host layout that uses bare host route helpers" do
+    client_id = register_client
+    sign_in @user
+
+    get "/oauth/authorize", params: {
+      response_type: "code",
+      client_id: client_id, redirect_uri: REDIRECT,
+      code_challenge: @challenge, code_challenge_method: "S256", resource: RESOURCE
+    }
+
+    assert_response :success
+    assert_select "nav a[href='/sign_in']"
+    assert_select "form[action='/oauth/authorize']"
+  end
+
+  test "a host route named like an engine route never captures the engine's form" do
+    Hitch.configure do |c|
+      c.device_authorization_enabled = true
+      c.device_authorization_rate_store = ActiveSupport::Cache::MemoryStore.new
+    end
+    sign_in @user
+
+    get "/activate"
+
+    assert_response :success
+    assert_select "form[action='/activate']"
+    assert_select "form[action='/account/activate']", count: 0
+  end
+
   # The consent Approve form redirects to the client's redirect_uri — a
   # cross-origin host. Turbo Drive submits via fetch and CANNOT follow a
   # cross-origin 302, so a default form_with makes "Approve" silently do

@@ -31,6 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tests made by `bin/rails g hitch:tool` sign in as `users(:one)` when that
   fixture exists, instead of `User.first!`.
   ([#40](https://github.com/tylerklose/hitch-rails/issues/40))
+- `hitch:doctor` no longer warns about `:memory_store` in development,
+  where it's fine. Production still fails it.
+  ([#41](https://github.com/tylerklose/hitch-rails/issues/41))
+- `HITCH_DOCTOR_FORMAT=json bin/rails hitch:doctor` prints clean JSON in
+  production. Request logs no longer get mixed in.
+  ([#61](https://github.com/tylerklose/hitch-rails/issues/61))
 
 ## [0.5.0] - 2026-09-05
 

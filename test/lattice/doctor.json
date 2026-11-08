@@ -4,7 +4,8 @@
     "Pairwise operator-diagnostic model for M5.3.",
     "Every row executes all ten stable doctor categories against an immutable fixture system.",
     "Auth-only mode must skip MCP registry and admission-store checks regardless of irrelevant fixture values.",
-    "Forced rows pin the healthy full runtime, healthy auth-only mode, and every actionable failure category."
+    "Forced rows pin the healthy full runtime, healthy auth-only mode, and every actionable failure category.",
+    "#41: environment includes development, where one process has nothing to share a count with; every row asserts the store verdict from runtime, environment and store."
   ],
   "parameters": [
     {
@@ -17,6 +18,7 @@
     {
       "name": "environment",
       "values": [
+        "development",
         "test",
         "production"
       ]
@@ -362,6 +364,42 @@
         {
           "parameter": "environment",
           "value": "test"
+        },
+        {
+          "parameter": "rate_limit_store",
+          "value": "uncountable"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "#41: a development app on the stock memory store.",
+      "assignments": [
+        {
+          "parameter": "runtime",
+          "value": "full"
+        },
+        {
+          "parameter": "environment",
+          "value": "development"
+        },
+        {
+          "parameter": "rate_limit_store",
+          "value": "unshared"
+        }
+      ]
+    },
+    {
+      "type": "forced",
+      "_why": "A development store that cannot count at all.",
+      "assignments": [
+        {
+          "parameter": "runtime",
+          "value": "full"
+        },
+        {
+          "parameter": "environment",
+          "value": "development"
         },
         {
           "parameter": "rate_limit_store",

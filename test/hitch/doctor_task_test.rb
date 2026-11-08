@@ -24,13 +24,15 @@ class Hitch::DoctorTaskTest < ActiveSupport::TestCase
   end
 
   test "real task prints every human category without treating warnings as failure" do
+    # A store that cannot count at all still warns outside production.
+    Hitch.configuration.mcp.rate_limit_store = ActiveSupport::Cache::NullStore.new
     output, error_output, status = invoke
 
     assert_nil status
     assert_empty error_output
     assert_match(/\AHitch doctor v1: WARNING\n/, output)
     Doctor::CHECK_IDS.each { |id| assert_match(/\b#{Regexp.escape(id)}\b/, output) }
-    assert_includes output, "unshared"
+    assert_includes output, "uncountable"
   end
 
   test "real task emits one stable machine document" do

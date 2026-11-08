@@ -77,6 +77,8 @@ class HitchTokensTaskTest < ActionDispatch::IntegrationTest
       # for a no-op, and it must never carry the secret.
       assert_empty stdout
       assert_includes stderr, "Issued an access token"
+      # #42: the operator chose the file, so saying where it went leaks nothing.
+      assert_includes stderr, "written to #{path}"
       refute_includes stderr, token
 
       record = Hitch::AccessToken.sole
@@ -84,6 +86,23 @@ class HitchTokensTaskTest < ActionDispatch::IntegrationTest
       assert_equal record, Hitch::AccessToken.find_by_token(token)
       post_mcp(method: "tools/list", token: token)
       assert_response :success
+    end
+  end
+
+  # #42: Rake runs from the app root, so a relative OUTPUT_FILE is not where
+  # the operator stood. The line has to name a path they can open.
+  test "the confirmation names a path that opens from anywhere" do
+    Dir.mktmpdir("hitch-token") do |directory|
+      Dir.chdir(directory) do
+        ENV["OUTPUT_FILE"] = "agent.token"
+        ENV["PRINCIPAL"] = "User:#{@principal.id}"
+
+        _stdout, stderr = capture_io { Rake::Task[TASK].invoke }
+        printed = stderr[/written to (.+)\.$/, 1]
+
+        assert_equal File.expand_path("agent.token"), printed
+        assert File.file?(printed)
+      end
     end
   end
 

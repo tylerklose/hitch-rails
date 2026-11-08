@@ -173,10 +173,10 @@ namespace :hitch do
       end
 
       # The secret went to the file or the terminal; this goes to stderr, so a
-      # silent success is not mistaken for a no-op. It never names where the
-      # token went, because on a terminal there is no file.
+      # silent success is not mistaken for a no-op.
+      destination = ENV["OUTPUT_FILE"].presence&.then { File.expand_path(_1) }
       warn "Issued an access token for #{principal.class.name}:#{principal.id} " \
-        "(client_id #{client_id}, #{days} days)."
+        "(client_id #{client_id}, #{days} days)#{", written to #{destination}" if destination}."
     end
   end
 

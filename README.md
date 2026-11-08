@@ -749,7 +749,7 @@ or undermine its guarantees:
 - **`protect_from_forgery`** — keep CSRF protection active on the consent
   (`POST /oauth/authorize`) path. On Rails 8.2 defaults (`load_defaults
   8.2`), forgery protection verifies the browser's `Sec-Fetch-Site` header
-  instead of the token the consent form renders
+  instead of a token, and the consent form renders none
   (`forgery_protection_verification_strategy = :header_only`). Browsers
   send that header automatically, so ordinary approvals are unaffected —
   but a non-browser agent driving the consent form over HTTPS without it

@@ -27,7 +27,7 @@ require "base64"
 #        - Through 8.1: the authenticity token the consent form renders.
 #        - load_defaults 8.2: the browser's Sec-Fetch-Site header
 #          (forgery_protection_verification_strategy = :header_only) —
-#          the rendered token is never consulted.
+#          no token is rendered or consulted.
 #
 #      A real browser sends both, so Approve works either way.
 #
@@ -146,9 +146,7 @@ class CsrfProtectionTest < ActionDispatch::IntegrationTest
 
     get "/oauth/authorize", params: authorize_params
     assert_response :success
-    token = css_select("input[name=authenticity_token]").first&.attr("value")
-    assert token.present?,
-      "consent form did not render an authenticity_token — Approve would 422 on token-verified hosts"
+    token = rendered_authenticity_token
 
     redirect_events = []
     subscriber = ->(event) { redirect_events << event }
@@ -169,7 +167,7 @@ class CsrfProtectionTest < ActionDispatch::IntegrationTest
 
     # A same-origin fetch() carries both the CSRF header and Sec-Fetch-Site.
     post "/oauth/authorize", params: authorize_params,
-      headers: BROWSER_SAME_ORIGIN.merge("X-CSRF-Token" => token)
+      headers: BROWSER_SAME_ORIGIN.merge({ "X-CSRF-Token" => token }.compact)
 
     assert_response :redirect
     assert_match(/[?&]code=/, response.location)
@@ -188,7 +186,7 @@ class CsrfProtectionTest < ActionDispatch::IntegrationTest
     if HEADER_VERIFIED
       post "/oauth/authorize", params: authorize_params.merge(authenticity_token: token)
       assert_response :unprocessable_entity,
-        "header-only strategy accepted a token with no Sec-Fetch-Site — token fallback is unexpectedly live"
+        "header-only strategy accepted a POST with no Sec-Fetch-Site — token fallback is unexpectedly live"
 
       post "/oauth/authorize", params: authorize_params, headers: BROWSER_SAME_ORIGIN
       assert_response :redirect,
@@ -286,6 +284,18 @@ class CsrfProtectionTest < ActionDispatch::IntegrationTest
 
   private
 
+  # Under :header_only nothing reads a token, so Rails main renders none
+  # (rails/rails@c82ad5f). Every other strategy checks it, so the form
+  # must carry one or a real Approve 422s.
+  def rendered_authenticity_token
+    token = css_select("input[name=authenticity_token]").first&.attr("value")
+    unless HEADER_VERIFIED
+      assert token.present?,
+        "consent form did not render an authenticity_token — Approve would 422 on token-verified hosts"
+    end
+    token
+  end
+
   def consent_fixture
     post "/oauth/register", params: {
       client_name: "Claude",
@@ -303,8 +313,7 @@ class CsrfProtectionTest < ActionDispatch::IntegrationTest
       state: client_id
     }
     get "/oauth/authorize", params: authorize_params
-    token = css_select("input[name=authenticity_token]").first&.attr("value")
-    assert token.present?
+    token = rendered_authenticity_token
     [ client_id, authorize_params, token ]
   end
 end

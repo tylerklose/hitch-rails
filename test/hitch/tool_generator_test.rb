@@ -63,6 +63,25 @@ class Hitch::ToolGeneratorTest < Rails::Generators::TestCase
     assert_nothing_raised { RubyVM::AbstractSyntaxTree.parse(read(REGISTRY_PATH)) }
   end
 
+  # #40: the Rails authentication generator writes test/fixtures/users.yml
+  # with a `one` user, so the two generators compose without leaning on
+  # fixture order. Any other app keeps the explicit placeholder.
+  test "the generated test signs in as the authentication generator's users(:one)" do
+    test_path = "test/integration/mcp_tools/weather_lookup_test.rb"
+    prepare_registry
+    write("test/fixtures/users.yml", "one:\n  email_address: one@example.com\n\ntwo:\n  email_address: two@example.com\n")
+    invoke_generator
+
+    assert_file test_path, /mint_mcp_token\(principal: users\(:one\)\)/
+    refute_match(/User\.first!/, read(test_path))
+
+    prepare_destination
+    prepare_registry
+    invoke_generator
+
+    assert_file test_path, /mint_mcp_token\(principal: User\.first!\)/
+  end
+
   test "deny-default generation emits the hardened variant and still registers it" do
     prepare_registry
 

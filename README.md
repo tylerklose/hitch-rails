@@ -16,11 +16,11 @@ your app already has: request admission counts through your configured
 app's own authentication says is signed in (`current_user` or Rails 8's
 `Current.user`).
 
-The official Ruby MCP SDK (the `mcp` gem) ships client-side OAuth but no
-server-side auth helpers, so the authorization server is left to you. Hitch
-is that server — on the current profile, with the authenticated endpoint and
-tool registry in the same gem. It is opinionated about **what** to implement
-(the [2026-07-28 MCP authorization spec](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization))
+The official Ruby MCP SDK (the `mcp` gem) can verify bearer tokens on a
+resource server, but it does not issue them, so the authorization server is
+left to you. Hitch is that server — on the current profile, with the
+authenticated endpoint and tool registry in the same gem. It is opinionated
+about **what** to implement (the [2026-07-28 MCP authorization spec](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization))
 but unopinionated about **whom** that auth identifies — the host supplies the
 signed-in record.
 

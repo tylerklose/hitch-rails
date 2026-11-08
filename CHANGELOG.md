@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `hitch:tokens:issue` prints the full path of the file it wrote the
   token to.
   ([#42](https://github.com/tylerklose/hitch-rails/issues/42))
+- Tests made by `bin/rails g hitch:tool` sign in as `users(:one)` when that
+  fixture exists, instead of `User.first!`.
+  ([#40](https://github.com/tylerklose/hitch-rails/issues/40))
 
 ## [0.5.0] - 2026-09-05
 

@@ -132,6 +132,12 @@ module Hitch
         options.fetch("deny_default")
       end
 
+      # The Rails authentication generator's fixture, when it is there.
+      def test_principal
+        fixtures = File.join(destination_root, "test/fixtures/users.yml")
+        File.file?(fixtures) && File.read(fixtures).match?(/^one:/) ? "users(:one)" : "User.first!"
+      end
+
       def operation
         behavior == :revoke ? "rollback" : "generation"
       end

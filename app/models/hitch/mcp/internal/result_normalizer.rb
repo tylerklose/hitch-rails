@@ -101,15 +101,15 @@ module Hitch
           value = result.value
           serialized_value = generate(value)
           validate_output_schema!(value)
-          text = result.text
-          fallback = value.is_a?(Hash) ? nil : serialized_value
-          content = text || fallback
+          # MCP 2026-07-28 tools, Structured Content: a tool returning
+          # structured content SHOULD also return it as serialized JSON text.
+          content = result.text || serialized_value
           canonical = {
-            content: content ? text_content(content) : [],
+            content: text_content(content),
             isError: false,
             structuredContent: value
           }
-          [ deep_freeze(canonical), !content.nil?, nil ]
+          [ deep_freeze(canonical), true, nil ]
         end
 
         def error_result

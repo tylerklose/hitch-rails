@@ -1,0 +1,3075 @@
+{
+  "meta": {
+    "model_name": "hitch_mcp_structured_values",
+    "strength": 3,
+    "test_count": 255,
+    "exhaustive_count": 255,
+    "reduction": "1x",
+    "coverage": "100.0%",
+    "seed": 42
+  },
+  "coverage_curve": [
+    {
+      "scenario": 1,
+      "cumulative_pct": 0.4
+    },
+    {
+      "scenario": 2,
+      "cumulative_pct": 0.8
+    },
+    {
+      "scenario": 3,
+      "cumulative_pct": 1.2
+    },
+    {
+      "scenario": 4,
+      "cumulative_pct": 1.6
+    },
+    {
+      "scenario": 5,
+      "cumulative_pct": 2.0
+    },
+    {
+      "scenario": 6,
+      "cumulative_pct": 2.4
+    },
+    {
+      "scenario": 7,
+      "cumulative_pct": 2.7
+    },
+    {
+      "scenario": 8,
+      "cumulative_pct": 3.1
+    },
+    {
+      "scenario": 9,
+      "cumulative_pct": 3.5
+    },
+    {
+      "scenario": 10,
+      "cumulative_pct": 3.9
+    },
+    {
+      "scenario": 11,
+      "cumulative_pct": 4.3
+    },
+    {
+      "scenario": 12,
+      "cumulative_pct": 4.7
+    },
+    {
+      "scenario": 13,
+      "cumulative_pct": 5.1
+    },
+    {
+      "scenario": 14,
+      "cumulative_pct": 5.5
+    },
+    {
+      "scenario": 15,
+      "cumulative_pct": 5.9
+    },
+    {
+      "scenario": 16,
+      "cumulative_pct": 6.3
+    },
+    {
+      "scenario": 17,
+      "cumulative_pct": 6.7
+    },
+    {
+      "scenario": 18,
+      "cumulative_pct": 7.1
+    },
+    {
+      "scenario": 19,
+      "cumulative_pct": 7.5
+    },
+    {
+      "scenario": 20,
+      "cumulative_pct": 7.8
+    },
+    {
+      "scenario": 21,
+      "cumulative_pct": 8.2
+    },
+    {
+      "scenario": 22,
+      "cumulative_pct": 8.6
+    },
+    {
+      "scenario": 23,
+      "cumulative_pct": 9.0
+    },
+    {
+      "scenario": 24,
+      "cumulative_pct": 9.4
+    },
+    {
+      "scenario": 25,
+      "cumulative_pct": 9.8
+    },
+    {
+      "scenario": 26,
+      "cumulative_pct": 10.2
+    },
+    {
+      "scenario": 27,
+      "cumulative_pct": 10.6
+    },
+    {
+      "scenario": 28,
+      "cumulative_pct": 11.0
+    },
+    {
+      "scenario": 29,
+      "cumulative_pct": 11.4
+    },
+    {
+      "scenario": 30,
+      "cumulative_pct": 11.8
+    },
+    {
+      "scenario": 31,
+      "cumulative_pct": 12.2
+    },
+    {
+      "scenario": 32,
+      "cumulative_pct": 12.5
+    },
+    {
+      "scenario": 33,
+      "cumulative_pct": 12.9
+    },
+    {
+      "scenario": 34,
+      "cumulative_pct": 13.3
+    },
+    {
+      "scenario": 35,
+      "cumulative_pct": 13.7
+    },
+    {
+      "scenario": 36,
+      "cumulative_pct": 14.1
+    },
+    {
+      "scenario": 37,
+      "cumulative_pct": 14.5
+    },
+    {
+      "scenario": 38,
+      "cumulative_pct": 14.9
+    },
+    {
+      "scenario": 39,
+      "cumulative_pct": 15.3
+    },
+    {
+      "scenario": 40,
+      "cumulative_pct": 15.7
+    },
+    {
+      "scenario": 41,
+      "cumulative_pct": 16.1
+    },
+    {
+      "scenario": 42,
+      "cumulative_pct": 16.5
+    },
+    {
+      "scenario": 43,
+      "cumulative_pct": 16.9
+    },
+    {
+      "scenario": 44,
+      "cumulative_pct": 17.3
+    },
+    {
+      "scenario": 45,
+      "cumulative_pct": 17.6
+    },
+    {
+      "scenario": 46,
+      "cumulative_pct": 18.0
+    },
+    {
+      "scenario": 47,
+      "cumulative_pct": 18.4
+    },
+    {
+      "scenario": 48,
+      "cumulative_pct": 18.8
+    },
+    {
+      "scenario": 49,
+      "cumulative_pct": 19.2
+    },
+    {
+      "scenario": 50,
+      "cumulative_pct": 19.6
+    },
+    {
+      "scenario": 51,
+      "cumulative_pct": 20.0
+    },
+    {
+      "scenario": 52,
+      "cumulative_pct": 20.4
+    },
+    {
+      "scenario": 53,
+      "cumulative_pct": 20.8
+    },
+    {
+      "scenario": 54,
+      "cumulative_pct": 21.2
+    },
+    {
+      "scenario": 55,
+      "cumulative_pct": 21.6
+    },
+    {
+      "scenario": 56,
+      "cumulative_pct": 22.0
+    },
+    {
+      "scenario": 57,
+      "cumulative_pct": 22.4
+    },
+    {
+      "scenario": 58,
+      "cumulative_pct": 22.7
+    },
+    {
+      "scenario": 59,
+      "cumulative_pct": 23.1
+    },
+    {
+      "scenario": 60,
+      "cumulative_pct": 23.5
+    },
+    {
+      "scenario": 61,
+      "cumulative_pct": 23.9
+    },
+    {
+      "scenario": 62,
+      "cumulative_pct": 24.3
+    },
+    {
+      "scenario": 63,
+      "cumulative_pct": 24.7
+    },
+    {
+      "scenario": 64,
+      "cumulative_pct": 25.1
+    },
+    {
+      "scenario": 65,
+      "cumulative_pct": 25.5
+    },
+    {
+      "scenario": 66,
+      "cumulative_pct": 25.9
+    },
+    {
+      "scenario": 67,
+      "cumulative_pct": 26.3
+    },
+    {
+      "scenario": 68,
+      "cumulative_pct": 26.7
+    },
+    {
+      "scenario": 69,
+      "cumulative_pct": 27.1
+    },
+    {
+      "scenario": 70,
+      "cumulative_pct": 27.5
+    },
+    {
+      "scenario": 71,
+      "cumulative_pct": 27.8
+    },
+    {
+      "scenario": 72,
+      "cumulative_pct": 28.2
+    },
+    {
+      "scenario": 73,
+      "cumulative_pct": 28.6
+    },
+    {
+      "scenario": 74,
+      "cumulative_pct": 29.0
+    },
+    {
+      "scenario": 75,
+      "cumulative_pct": 29.4
+    },
+    {
+      "scenario": 76,
+      "cumulative_pct": 29.8
+    },
+    {
+      "scenario": 77,
+      "cumulative_pct": 30.2
+    },
+    {
+      "scenario": 78,
+      "cumulative_pct": 30.6
+    },
+    {
+      "scenario": 79,
+      "cumulative_pct": 31.0
+    },
+    {
+      "scenario": 80,
+      "cumulative_pct": 31.4
+    },
+    {
+      "scenario": 81,
+      "cumulative_pct": 31.8
+    },
+    {
+      "scenario": 82,
+      "cumulative_pct": 32.2
+    },
+    {
+      "scenario": 83,
+      "cumulative_pct": 32.5
+    },
+    {
+      "scenario": 84,
+      "cumulative_pct": 32.9
+    },
+    {
+      "scenario": 85,
+      "cumulative_pct": 33.3
+    },
+    {
+      "scenario": 86,
+      "cumulative_pct": 33.7
+    },
+    {
+      "scenario": 87,
+      "cumulative_pct": 34.1
+    },
+    {
+      "scenario": 88,
+      "cumulative_pct": 34.5
+    },
+    {
+      "scenario": 89,
+      "cumulative_pct": 34.9
+    },
+    {
+      "scenario": 90,
+      "cumulative_pct": 35.3
+    },
+    {
+      "scenario": 91,
+      "cumulative_pct": 35.7
+    },
+    {
+      "scenario": 92,
+      "cumulative_pct": 36.1
+    },
+    {
+      "scenario": 93,
+      "cumulative_pct": 36.5
+    },
+    {
+      "scenario": 94,
+      "cumulative_pct": 36.9
+    },
+    {
+      "scenario": 95,
+      "cumulative_pct": 37.3
+    },
+    {
+      "scenario": 96,
+      "cumulative_pct": 37.6
+    },
+    {
+      "scenario": 97,
+      "cumulative_pct": 38.0
+    },
+    {
+      "scenario": 98,
+      "cumulative_pct": 38.4
+    },
+    {
+      "scenario": 99,
+      "cumulative_pct": 38.8
+    },
+    {
+      "scenario": 100,
+      "cumulative_pct": 39.2
+    },
+    {
+      "scenario": 101,
+      "cumulative_pct": 39.6
+    },
+    {
+      "scenario": 102,
+      "cumulative_pct": 40.0
+    },
+    {
+      "scenario": 103,
+      "cumulative_pct": 40.4
+    },
+    {
+      "scenario": 104,
+      "cumulative_pct": 40.8
+    },
+    {
+      "scenario": 105,
+      "cumulative_pct": 41.2
+    },
+    {
+      "scenario": 106,
+      "cumulative_pct": 41.6
+    },
+    {
+      "scenario": 107,
+      "cumulative_pct": 42.0
+    },
+    {
+      "scenario": 108,
+      "cumulative_pct": 42.4
+    },
+    {
+      "scenario": 109,
+      "cumulative_pct": 42.7
+    },
+    {
+      "scenario": 110,
+      "cumulative_pct": 43.1
+    },
+    {
+      "scenario": 111,
+      "cumulative_pct": 43.5
+    },
+    {
+      "scenario": 112,
+      "cumulative_pct": 43.9
+    },
+    {
+      "scenario": 113,
+      "cumulative_pct": 44.3
+    },
+    {
+      "scenario": 114,
+      "cumulative_pct": 44.7
+    },
+    {
+      "scenario": 115,
+      "cumulative_pct": 45.1
+    },
+    {
+      "scenario": 116,
+      "cumulative_pct": 45.5
+    },
+    {
+      "scenario": 117,
+      "cumulative_pct": 45.9
+    },
+    {
+      "scenario": 118,
+      "cumulative_pct": 46.3
+    },
+    {
+      "scenario": 119,
+      "cumulative_pct": 46.7
+    },
+    {
+      "scenario": 120,
+      "cumulative_pct": 47.1
+    },
+    {
+      "scenario": 121,
+      "cumulative_pct": 47.5
+    },
+    {
+      "scenario": 122,
+      "cumulative_pct": 47.8
+    },
+    {
+      "scenario": 123,
+      "cumulative_pct": 48.2
+    },
+    {
+      "scenario": 124,
+      "cumulative_pct": 48.6
+    },
+    {
+      "scenario": 125,
+      "cumulative_pct": 49.0
+    },
+    {
+      "scenario": 126,
+      "cumulative_pct": 49.4
+    },
+    {
+      "scenario": 127,
+      "cumulative_pct": 49.8
+    },
+    {
+      "scenario": 128,
+      "cumulative_pct": 50.2
+    },
+    {
+      "scenario": 129,
+      "cumulative_pct": 50.6
+    },
+    {
+      "scenario": 130,
+      "cumulative_pct": 51.0
+    },
+    {
+      "scenario": 131,
+      "cumulative_pct": 51.4
+    },
+    {
+      "scenario": 132,
+      "cumulative_pct": 51.8
+    },
+    {
+      "scenario": 133,
+      "cumulative_pct": 52.2
+    },
+    {
+      "scenario": 134,
+      "cumulative_pct": 52.5
+    },
+    {
+      "scenario": 135,
+      "cumulative_pct": 52.9
+    },
+    {
+      "scenario": 136,
+      "cumulative_pct": 53.3
+    },
+    {
+      "scenario": 137,
+      "cumulative_pct": 53.7
+    },
+    {
+      "scenario": 138,
+      "cumulative_pct": 54.1
+    },
+    {
+      "scenario": 139,
+      "cumulative_pct": 54.5
+    },
+    {
+      "scenario": 140,
+      "cumulative_pct": 54.9
+    },
+    {
+      "scenario": 141,
+      "cumulative_pct": 55.3
+    },
+    {
+      "scenario": 142,
+      "cumulative_pct": 55.7
+    },
+    {
+      "scenario": 143,
+      "cumulative_pct": 56.1
+    },
+    {
+      "scenario": 144,
+      "cumulative_pct": 56.5
+    },
+    {
+      "scenario": 145,
+      "cumulative_pct": 56.9
+    },
+    {
+      "scenario": 146,
+      "cumulative_pct": 57.3
+    },
+    {
+      "scenario": 147,
+      "cumulative_pct": 57.6
+    },
+    {
+      "scenario": 148,
+      "cumulative_pct": 58.0
+    },
+    {
+      "scenario": 149,
+      "cumulative_pct": 58.4
+    },
+    {
+      "scenario": 150,
+      "cumulative_pct": 58.8
+    },
+    {
+      "scenario": 151,
+      "cumulative_pct": 59.2
+    },
+    {
+      "scenario": 152,
+      "cumulative_pct": 59.6
+    },
+    {
+      "scenario": 153,
+      "cumulative_pct": 60.0
+    },
+    {
+      "scenario": 154,
+      "cumulative_pct": 60.4
+    },
+    {
+      "scenario": 155,
+      "cumulative_pct": 60.8
+    },
+    {
+      "scenario": 156,
+      "cumulative_pct": 61.2
+    },
+    {
+      "scenario": 157,
+      "cumulative_pct": 61.6
+    },
+    {
+      "scenario": 158,
+      "cumulative_pct": 62.0
+    },
+    {
+      "scenario": 159,
+      "cumulative_pct": 62.4
+    },
+    {
+      "scenario": 160,
+      "cumulative_pct": 62.7
+    },
+    {
+      "scenario": 161,
+      "cumulative_pct": 63.1
+    },
+    {
+      "scenario": 162,
+      "cumulative_pct": 63.5
+    },
+    {
+      "scenario": 163,
+      "cumulative_pct": 63.9
+    },
+    {
+      "scenario": 164,
+      "cumulative_pct": 64.3
+    },
+    {
+      "scenario": 165,
+      "cumulative_pct": 64.7
+    },
+    {
+      "scenario": 166,
+      "cumulative_pct": 65.1
+    },
+    {
+      "scenario": 167,
+      "cumulative_pct": 65.5
+    },
+    {
+      "scenario": 168,
+      "cumulative_pct": 65.9
+    },
+    {
+      "scenario": 169,
+      "cumulative_pct": 66.3
+    },
+    {
+      "scenario": 170,
+      "cumulative_pct": 66.7
+    },
+    {
+      "scenario": 171,
+      "cumulative_pct": 67.1
+    },
+    {
+      "scenario": 172,
+      "cumulative_pct": 67.5
+    },
+    {
+      "scenario": 173,
+      "cumulative_pct": 67.8
+    },
+    {
+      "scenario": 174,
+      "cumulative_pct": 68.2
+    },
+    {
+      "scenario": 175,
+      "cumulative_pct": 68.6
+    },
+    {
+      "scenario": 176,
+      "cumulative_pct": 69.0
+    },
+    {
+      "scenario": 177,
+      "cumulative_pct": 69.4
+    },
+    {
+      "scenario": 178,
+      "cumulative_pct": 69.8
+    },
+    {
+      "scenario": 179,
+      "cumulative_pct": 70.2
+    },
+    {
+      "scenario": 180,
+      "cumulative_pct": 70.6
+    },
+    {
+      "scenario": 181,
+      "cumulative_pct": 71.0
+    },
+    {
+      "scenario": 182,
+      "cumulative_pct": 71.4
+    },
+    {
+      "scenario": 183,
+      "cumulative_pct": 71.8
+    },
+    {
+      "scenario": 184,
+      "cumulative_pct": 72.2
+    },
+    {
+      "scenario": 185,
+      "cumulative_pct": 72.5
+    },
+    {
+      "scenario": 186,
+      "cumulative_pct": 72.9
+    },
+    {
+      "scenario": 187,
+      "cumulative_pct": 73.3
+    },
+    {
+      "scenario": 188,
+      "cumulative_pct": 73.7
+    },
+    {
+      "scenario": 189,
+      "cumulative_pct": 74.1
+    },
+    {
+      "scenario": 190,
+      "cumulative_pct": 74.5
+    },
+    {
+      "scenario": 191,
+      "cumulative_pct": 74.9
+    },
+    {
+      "scenario": 192,
+      "cumulative_pct": 75.3
+    },
+    {
+      "scenario": 193,
+      "cumulative_pct": 75.7
+    },
+    {
+      "scenario": 194,
+      "cumulative_pct": 76.1
+    },
+    {
+      "scenario": 195,
+      "cumulative_pct": 76.5
+    },
+    {
+      "scenario": 196,
+      "cumulative_pct": 76.9
+    },
+    {
+      "scenario": 197,
+      "cumulative_pct": 77.3
+    },
+    {
+      "scenario": 198,
+      "cumulative_pct": 77.6
+    },
+    {
+      "scenario": 199,
+      "cumulative_pct": 78.0
+    },
+    {
+      "scenario": 200,
+      "cumulative_pct": 78.4
+    },
+    {
+      "scenario": 201,
+      "cumulative_pct": 78.8
+    },
+    {
+      "scenario": 202,
+      "cumulative_pct": 79.2
+    },
+    {
+      "scenario": 203,
+      "cumulative_pct": 79.6
+    },
+    {
+      "scenario": 204,
+      "cumulative_pct": 80.0
+    },
+    {
+      "scenario": 205,
+      "cumulative_pct": 80.4
+    },
+    {
+      "scenario": 206,
+      "cumulative_pct": 80.8
+    },
+    {
+      "scenario": 207,
+      "cumulative_pct": 81.2
+    },
+    {
+      "scenario": 208,
+      "cumulative_pct": 81.6
+    },
+    {
+      "scenario": 209,
+      "cumulative_pct": 82.0
+    },
+    {
+      "scenario": 210,
+      "cumulative_pct": 82.4
+    },
+    {
+      "scenario": 211,
+      "cumulative_pct": 82.7
+    },
+    {
+      "scenario": 212,
+      "cumulative_pct": 83.1
+    },
+    {
+      "scenario": 213,
+      "cumulative_pct": 83.5
+    },
+    {
+      "scenario": 214,
+      "cumulative_pct": 83.9
+    },
+    {
+      "scenario": 215,
+      "cumulative_pct": 84.3
+    },
+    {
+      "scenario": 216,
+      "cumulative_pct": 84.7
+    },
+    {
+      "scenario": 217,
+      "cumulative_pct": 85.1
+    },
+    {
+      "scenario": 218,
+      "cumulative_pct": 85.5
+    },
+    {
+      "scenario": 219,
+      "cumulative_pct": 85.9
+    },
+    {
+      "scenario": 220,
+      "cumulative_pct": 86.3
+    },
+    {
+      "scenario": 221,
+      "cumulative_pct": 86.7
+    },
+    {
+      "scenario": 222,
+      "cumulative_pct": 87.1
+    },
+    {
+      "scenario": 223,
+      "cumulative_pct": 87.5
+    },
+    {
+      "scenario": 224,
+      "cumulative_pct": 87.8
+    },
+    {
+      "scenario": 225,
+      "cumulative_pct": 88.2
+    },
+    {
+      "scenario": 226,
+      "cumulative_pct": 88.6
+    },
+    {
+      "scenario": 227,
+      "cumulative_pct": 89.0
+    },
+    {
+      "scenario": 228,
+      "cumulative_pct": 89.4
+    },
+    {
+      "scenario": 229,
+      "cumulative_pct": 89.8
+    },
+    {
+      "scenario": 230,
+      "cumulative_pct": 90.2
+    },
+    {
+      "scenario": 231,
+      "cumulative_pct": 90.6
+    },
+    {
+      "scenario": 232,
+      "cumulative_pct": 91.0
+    },
+    {
+      "scenario": 233,
+      "cumulative_pct": 91.4
+    },
+    {
+      "scenario": 234,
+      "cumulative_pct": 91.8
+    },
+    {
+      "scenario": 235,
+      "cumulative_pct": 92.2
+    },
+    {
+      "scenario": 236,
+      "cumulative_pct": 92.5
+    },
+    {
+      "scenario": 237,
+      "cumulative_pct": 92.9
+    },
+    {
+      "scenario": 238,
+      "cumulative_pct": 93.3
+    },
+    {
+      "scenario": 239,
+      "cumulative_pct": 93.7
+    },
+    {
+      "scenario": 240,
+      "cumulative_pct": 94.1
+    },
+    {
+      "scenario": 241,
+      "cumulative_pct": 94.5
+    },
+    {
+      "scenario": 242,
+      "cumulative_pct": 94.9
+    },
+    {
+      "scenario": 243,
+      "cumulative_pct": 95.3
+    },
+    {
+      "scenario": 244,
+      "cumulative_pct": 95.7
+    },
+    {
+      "scenario": 245,
+      "cumulative_pct": 96.1
+    },
+    {
+      "scenario": 246,
+      "cumulative_pct": 96.5
+    },
+    {
+      "scenario": 247,
+      "cumulative_pct": 96.9
+    },
+    {
+      "scenario": 248,
+      "cumulative_pct": 97.3
+    },
+    {
+      "scenario": 249,
+      "cumulative_pct": 97.6
+    },
+    {
+      "scenario": 250,
+      "cumulative_pct": 98.0
+    },
+    {
+      "scenario": 251,
+      "cumulative_pct": 98.4
+    },
+    {
+      "scenario": 252,
+      "cumulative_pct": 98.8
+    },
+    {
+      "scenario": 253,
+      "cumulative_pct": 99.2
+    },
+    {
+      "scenario": 254,
+      "cumulative_pct": 99.6
+    },
+    {
+      "scenario": 255,
+      "cumulative_pct": 100.0
+    }
+  ],
+  "scenarios": [
+    {
+      "id": 1,
+      "values": {
+        "key": "string",
+        "value": "string",
+        "position": "top"
+      }
+    },
+    {
+      "id": 2,
+      "values": {
+        "key": "string",
+        "value": "string",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 3,
+      "values": {
+        "key": "string",
+        "value": "string",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 4,
+      "values": {
+        "key": "string",
+        "value": "symbol",
+        "position": "top"
+      }
+    },
+    {
+      "id": 5,
+      "values": {
+        "key": "string",
+        "value": "symbol",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 6,
+      "values": {
+        "key": "string",
+        "value": "symbol",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 7,
+      "values": {
+        "key": "string",
+        "value": "integer",
+        "position": "top"
+      }
+    },
+    {
+      "id": 8,
+      "values": {
+        "key": "string",
+        "value": "integer",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 9,
+      "values": {
+        "key": "string",
+        "value": "integer",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 10,
+      "values": {
+        "key": "string",
+        "value": "float",
+        "position": "top"
+      }
+    },
+    {
+      "id": 11,
+      "values": {
+        "key": "string",
+        "value": "float",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 12,
+      "values": {
+        "key": "string",
+        "value": "float",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 13,
+      "values": {
+        "key": "string",
+        "value": "boolean",
+        "position": "top"
+      }
+    },
+    {
+      "id": 14,
+      "values": {
+        "key": "string",
+        "value": "boolean",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 15,
+      "values": {
+        "key": "string",
+        "value": "boolean",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 16,
+      "values": {
+        "key": "string",
+        "value": "null",
+        "position": "top"
+      }
+    },
+    {
+      "id": 17,
+      "values": {
+        "key": "string",
+        "value": "null",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 18,
+      "values": {
+        "key": "string",
+        "value": "null",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 19,
+      "values": {
+        "key": "string",
+        "value": "indifferent_hash",
+        "position": "top"
+      }
+    },
+    {
+      "id": 20,
+      "values": {
+        "key": "string",
+        "value": "indifferent_hash",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 21,
+      "values": {
+        "key": "string",
+        "value": "indifferent_hash",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 22,
+      "values": {
+        "key": "string",
+        "value": "safe_buffer",
+        "position": "top"
+      }
+    },
+    {
+      "id": 23,
+      "values": {
+        "key": "string",
+        "value": "safe_buffer",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 24,
+      "values": {
+        "key": "string",
+        "value": "safe_buffer",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 25,
+      "values": {
+        "key": "string",
+        "value": "nan",
+        "position": "top"
+      }
+    },
+    {
+      "id": 26,
+      "values": {
+        "key": "string",
+        "value": "nan",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 27,
+      "values": {
+        "key": "string",
+        "value": "nan",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 28,
+      "values": {
+        "key": "string",
+        "value": "infinity",
+        "position": "top"
+      }
+    },
+    {
+      "id": 29,
+      "values": {
+        "key": "string",
+        "value": "infinity",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 30,
+      "values": {
+        "key": "string",
+        "value": "infinity",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 31,
+      "values": {
+        "key": "string",
+        "value": "date",
+        "position": "top"
+      }
+    },
+    {
+      "id": 32,
+      "values": {
+        "key": "string",
+        "value": "date",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 33,
+      "values": {
+        "key": "string",
+        "value": "date",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 34,
+      "values": {
+        "key": "string",
+        "value": "time",
+        "position": "top"
+      }
+    },
+    {
+      "id": 35,
+      "values": {
+        "key": "string",
+        "value": "time",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 36,
+      "values": {
+        "key": "string",
+        "value": "time",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 37,
+      "values": {
+        "key": "string",
+        "value": "big_decimal",
+        "position": "top"
+      }
+    },
+    {
+      "id": 38,
+      "values": {
+        "key": "string",
+        "value": "big_decimal",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 39,
+      "values": {
+        "key": "string",
+        "value": "big_decimal",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 40,
+      "values": {
+        "key": "string",
+        "value": "model",
+        "position": "top"
+      }
+    },
+    {
+      "id": 41,
+      "values": {
+        "key": "string",
+        "value": "model",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 42,
+      "values": {
+        "key": "string",
+        "value": "model",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 43,
+      "values": {
+        "key": "string",
+        "value": "set",
+        "position": "top"
+      }
+    },
+    {
+      "id": 44,
+      "values": {
+        "key": "string",
+        "value": "set",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 45,
+      "values": {
+        "key": "string",
+        "value": "set",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 46,
+      "values": {
+        "key": "string",
+        "value": "struct",
+        "position": "top"
+      }
+    },
+    {
+      "id": 47,
+      "values": {
+        "key": "string",
+        "value": "struct",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 48,
+      "values": {
+        "key": "string",
+        "value": "struct",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 49,
+      "values": {
+        "key": "string",
+        "value": "invalid_utf8",
+        "position": "top"
+      }
+    },
+    {
+      "id": 50,
+      "values": {
+        "key": "string",
+        "value": "invalid_utf8",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 51,
+      "values": {
+        "key": "string",
+        "value": "invalid_utf8",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 52,
+      "values": {
+        "key": "symbol",
+        "value": "string",
+        "position": "top"
+      }
+    },
+    {
+      "id": 53,
+      "values": {
+        "key": "symbol",
+        "value": "string",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 54,
+      "values": {
+        "key": "symbol",
+        "value": "string",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 55,
+      "values": {
+        "key": "symbol",
+        "value": "symbol",
+        "position": "top"
+      }
+    },
+    {
+      "id": 56,
+      "values": {
+        "key": "symbol",
+        "value": "symbol",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 57,
+      "values": {
+        "key": "symbol",
+        "value": "symbol",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 58,
+      "values": {
+        "key": "symbol",
+        "value": "integer",
+        "position": "top"
+      }
+    },
+    {
+      "id": 59,
+      "values": {
+        "key": "symbol",
+        "value": "integer",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 60,
+      "values": {
+        "key": "symbol",
+        "value": "integer",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 61,
+      "values": {
+        "key": "symbol",
+        "value": "float",
+        "position": "top"
+      }
+    },
+    {
+      "id": 62,
+      "values": {
+        "key": "symbol",
+        "value": "float",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 63,
+      "values": {
+        "key": "symbol",
+        "value": "float",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 64,
+      "values": {
+        "key": "symbol",
+        "value": "boolean",
+        "position": "top"
+      }
+    },
+    {
+      "id": 65,
+      "values": {
+        "key": "symbol",
+        "value": "boolean",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 66,
+      "values": {
+        "key": "symbol",
+        "value": "boolean",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 67,
+      "values": {
+        "key": "symbol",
+        "value": "null",
+        "position": "top"
+      }
+    },
+    {
+      "id": 68,
+      "values": {
+        "key": "symbol",
+        "value": "null",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 69,
+      "values": {
+        "key": "symbol",
+        "value": "null",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 70,
+      "values": {
+        "key": "symbol",
+        "value": "indifferent_hash",
+        "position": "top"
+      }
+    },
+    {
+      "id": 71,
+      "values": {
+        "key": "symbol",
+        "value": "indifferent_hash",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 72,
+      "values": {
+        "key": "symbol",
+        "value": "indifferent_hash",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 73,
+      "values": {
+        "key": "symbol",
+        "value": "safe_buffer",
+        "position": "top"
+      }
+    },
+    {
+      "id": 74,
+      "values": {
+        "key": "symbol",
+        "value": "safe_buffer",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 75,
+      "values": {
+        "key": "symbol",
+        "value": "safe_buffer",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 76,
+      "values": {
+        "key": "symbol",
+        "value": "nan",
+        "position": "top"
+      }
+    },
+    {
+      "id": 77,
+      "values": {
+        "key": "symbol",
+        "value": "nan",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 78,
+      "values": {
+        "key": "symbol",
+        "value": "nan",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 79,
+      "values": {
+        "key": "symbol",
+        "value": "infinity",
+        "position": "top"
+      }
+    },
+    {
+      "id": 80,
+      "values": {
+        "key": "symbol",
+        "value": "infinity",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 81,
+      "values": {
+        "key": "symbol",
+        "value": "infinity",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 82,
+      "values": {
+        "key": "symbol",
+        "value": "date",
+        "position": "top"
+      }
+    },
+    {
+      "id": 83,
+      "values": {
+        "key": "symbol",
+        "value": "date",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 84,
+      "values": {
+        "key": "symbol",
+        "value": "date",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 85,
+      "values": {
+        "key": "symbol",
+        "value": "time",
+        "position": "top"
+      }
+    },
+    {
+      "id": 86,
+      "values": {
+        "key": "symbol",
+        "value": "time",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 87,
+      "values": {
+        "key": "symbol",
+        "value": "time",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 88,
+      "values": {
+        "key": "symbol",
+        "value": "big_decimal",
+        "position": "top"
+      }
+    },
+    {
+      "id": 89,
+      "values": {
+        "key": "symbol",
+        "value": "big_decimal",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 90,
+      "values": {
+        "key": "symbol",
+        "value": "big_decimal",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 91,
+      "values": {
+        "key": "symbol",
+        "value": "model",
+        "position": "top"
+      }
+    },
+    {
+      "id": 92,
+      "values": {
+        "key": "symbol",
+        "value": "model",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 93,
+      "values": {
+        "key": "symbol",
+        "value": "model",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 94,
+      "values": {
+        "key": "symbol",
+        "value": "set",
+        "position": "top"
+      }
+    },
+    {
+      "id": 95,
+      "values": {
+        "key": "symbol",
+        "value": "set",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 96,
+      "values": {
+        "key": "symbol",
+        "value": "set",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 97,
+      "values": {
+        "key": "symbol",
+        "value": "struct",
+        "position": "top"
+      }
+    },
+    {
+      "id": 98,
+      "values": {
+        "key": "symbol",
+        "value": "struct",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 99,
+      "values": {
+        "key": "symbol",
+        "value": "struct",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 100,
+      "values": {
+        "key": "symbol",
+        "value": "invalid_utf8",
+        "position": "top"
+      }
+    },
+    {
+      "id": 101,
+      "values": {
+        "key": "symbol",
+        "value": "invalid_utf8",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 102,
+      "values": {
+        "key": "symbol",
+        "value": "invalid_utf8",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 103,
+      "values": {
+        "key": "integer",
+        "value": "string",
+        "position": "top"
+      }
+    },
+    {
+      "id": 104,
+      "values": {
+        "key": "integer",
+        "value": "string",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 105,
+      "values": {
+        "key": "integer",
+        "value": "string",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 106,
+      "values": {
+        "key": "integer",
+        "value": "symbol",
+        "position": "top"
+      }
+    },
+    {
+      "id": 107,
+      "values": {
+        "key": "integer",
+        "value": "symbol",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 108,
+      "values": {
+        "key": "integer",
+        "value": "symbol",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 109,
+      "values": {
+        "key": "integer",
+        "value": "integer",
+        "position": "top"
+      }
+    },
+    {
+      "id": 110,
+      "values": {
+        "key": "integer",
+        "value": "integer",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 111,
+      "values": {
+        "key": "integer",
+        "value": "integer",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 112,
+      "values": {
+        "key": "integer",
+        "value": "float",
+        "position": "top"
+      }
+    },
+    {
+      "id": 113,
+      "values": {
+        "key": "integer",
+        "value": "float",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 114,
+      "values": {
+        "key": "integer",
+        "value": "float",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 115,
+      "values": {
+        "key": "integer",
+        "value": "boolean",
+        "position": "top"
+      }
+    },
+    {
+      "id": 116,
+      "values": {
+        "key": "integer",
+        "value": "boolean",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 117,
+      "values": {
+        "key": "integer",
+        "value": "boolean",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 118,
+      "values": {
+        "key": "integer",
+        "value": "null",
+        "position": "top"
+      }
+    },
+    {
+      "id": 119,
+      "values": {
+        "key": "integer",
+        "value": "null",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 120,
+      "values": {
+        "key": "integer",
+        "value": "null",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 121,
+      "values": {
+        "key": "integer",
+        "value": "indifferent_hash",
+        "position": "top"
+      }
+    },
+    {
+      "id": 122,
+      "values": {
+        "key": "integer",
+        "value": "indifferent_hash",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 123,
+      "values": {
+        "key": "integer",
+        "value": "indifferent_hash",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 124,
+      "values": {
+        "key": "integer",
+        "value": "safe_buffer",
+        "position": "top"
+      }
+    },
+    {
+      "id": 125,
+      "values": {
+        "key": "integer",
+        "value": "safe_buffer",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 126,
+      "values": {
+        "key": "integer",
+        "value": "safe_buffer",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 127,
+      "values": {
+        "key": "integer",
+        "value": "nan",
+        "position": "top"
+      }
+    },
+    {
+      "id": 128,
+      "values": {
+        "key": "integer",
+        "value": "nan",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 129,
+      "values": {
+        "key": "integer",
+        "value": "nan",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 130,
+      "values": {
+        "key": "integer",
+        "value": "infinity",
+        "position": "top"
+      }
+    },
+    {
+      "id": 131,
+      "values": {
+        "key": "integer",
+        "value": "infinity",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 132,
+      "values": {
+        "key": "integer",
+        "value": "infinity",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 133,
+      "values": {
+        "key": "integer",
+        "value": "date",
+        "position": "top"
+      }
+    },
+    {
+      "id": 134,
+      "values": {
+        "key": "integer",
+        "value": "date",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 135,
+      "values": {
+        "key": "integer",
+        "value": "date",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 136,
+      "values": {
+        "key": "integer",
+        "value": "time",
+        "position": "top"
+      }
+    },
+    {
+      "id": 137,
+      "values": {
+        "key": "integer",
+        "value": "time",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 138,
+      "values": {
+        "key": "integer",
+        "value": "time",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 139,
+      "values": {
+        "key": "integer",
+        "value": "big_decimal",
+        "position": "top"
+      }
+    },
+    {
+      "id": 140,
+      "values": {
+        "key": "integer",
+        "value": "big_decimal",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 141,
+      "values": {
+        "key": "integer",
+        "value": "big_decimal",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 142,
+      "values": {
+        "key": "integer",
+        "value": "model",
+        "position": "top"
+      }
+    },
+    {
+      "id": 143,
+      "values": {
+        "key": "integer",
+        "value": "model",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 144,
+      "values": {
+        "key": "integer",
+        "value": "model",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 145,
+      "values": {
+        "key": "integer",
+        "value": "set",
+        "position": "top"
+      }
+    },
+    {
+      "id": 146,
+      "values": {
+        "key": "integer",
+        "value": "set",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 147,
+      "values": {
+        "key": "integer",
+        "value": "set",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 148,
+      "values": {
+        "key": "integer",
+        "value": "struct",
+        "position": "top"
+      }
+    },
+    {
+      "id": 149,
+      "values": {
+        "key": "integer",
+        "value": "struct",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 150,
+      "values": {
+        "key": "integer",
+        "value": "struct",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 151,
+      "values": {
+        "key": "integer",
+        "value": "invalid_utf8",
+        "position": "top"
+      }
+    },
+    {
+      "id": 152,
+      "values": {
+        "key": "integer",
+        "value": "invalid_utf8",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 153,
+      "values": {
+        "key": "integer",
+        "value": "invalid_utf8",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 154,
+      "values": {
+        "key": "nil",
+        "value": "string",
+        "position": "top"
+      }
+    },
+    {
+      "id": 155,
+      "values": {
+        "key": "nil",
+        "value": "string",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 156,
+      "values": {
+        "key": "nil",
+        "value": "string",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 157,
+      "values": {
+        "key": "nil",
+        "value": "symbol",
+        "position": "top"
+      }
+    },
+    {
+      "id": 158,
+      "values": {
+        "key": "nil",
+        "value": "symbol",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 159,
+      "values": {
+        "key": "nil",
+        "value": "symbol",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 160,
+      "values": {
+        "key": "nil",
+        "value": "integer",
+        "position": "top"
+      }
+    },
+    {
+      "id": 161,
+      "values": {
+        "key": "nil",
+        "value": "integer",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 162,
+      "values": {
+        "key": "nil",
+        "value": "integer",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 163,
+      "values": {
+        "key": "nil",
+        "value": "float",
+        "position": "top"
+      }
+    },
+    {
+      "id": 164,
+      "values": {
+        "key": "nil",
+        "value": "float",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 165,
+      "values": {
+        "key": "nil",
+        "value": "float",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 166,
+      "values": {
+        "key": "nil",
+        "value": "boolean",
+        "position": "top"
+      }
+    },
+    {
+      "id": 167,
+      "values": {
+        "key": "nil",
+        "value": "boolean",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 168,
+      "values": {
+        "key": "nil",
+        "value": "boolean",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 169,
+      "values": {
+        "key": "nil",
+        "value": "null",
+        "position": "top"
+      }
+    },
+    {
+      "id": 170,
+      "values": {
+        "key": "nil",
+        "value": "null",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 171,
+      "values": {
+        "key": "nil",
+        "value": "null",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 172,
+      "values": {
+        "key": "nil",
+        "value": "indifferent_hash",
+        "position": "top"
+      }
+    },
+    {
+      "id": 173,
+      "values": {
+        "key": "nil",
+        "value": "indifferent_hash",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 174,
+      "values": {
+        "key": "nil",
+        "value": "indifferent_hash",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 175,
+      "values": {
+        "key": "nil",
+        "value": "safe_buffer",
+        "position": "top"
+      }
+    },
+    {
+      "id": 176,
+      "values": {
+        "key": "nil",
+        "value": "safe_buffer",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 177,
+      "values": {
+        "key": "nil",
+        "value": "safe_buffer",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 178,
+      "values": {
+        "key": "nil",
+        "value": "nan",
+        "position": "top"
+      }
+    },
+    {
+      "id": 179,
+      "values": {
+        "key": "nil",
+        "value": "nan",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 180,
+      "values": {
+        "key": "nil",
+        "value": "nan",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 181,
+      "values": {
+        "key": "nil",
+        "value": "infinity",
+        "position": "top"
+      }
+    },
+    {
+      "id": 182,
+      "values": {
+        "key": "nil",
+        "value": "infinity",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 183,
+      "values": {
+        "key": "nil",
+        "value": "infinity",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 184,
+      "values": {
+        "key": "nil",
+        "value": "date",
+        "position": "top"
+      }
+    },
+    {
+      "id": 185,
+      "values": {
+        "key": "nil",
+        "value": "date",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 186,
+      "values": {
+        "key": "nil",
+        "value": "date",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 187,
+      "values": {
+        "key": "nil",
+        "value": "time",
+        "position": "top"
+      }
+    },
+    {
+      "id": 188,
+      "values": {
+        "key": "nil",
+        "value": "time",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 189,
+      "values": {
+        "key": "nil",
+        "value": "time",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 190,
+      "values": {
+        "key": "nil",
+        "value": "big_decimal",
+        "position": "top"
+      }
+    },
+    {
+      "id": 191,
+      "values": {
+        "key": "nil",
+        "value": "big_decimal",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 192,
+      "values": {
+        "key": "nil",
+        "value": "big_decimal",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 193,
+      "values": {
+        "key": "nil",
+        "value": "model",
+        "position": "top"
+      }
+    },
+    {
+      "id": 194,
+      "values": {
+        "key": "nil",
+        "value": "model",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 195,
+      "values": {
+        "key": "nil",
+        "value": "model",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 196,
+      "values": {
+        "key": "nil",
+        "value": "set",
+        "position": "top"
+      }
+    },
+    {
+      "id": 197,
+      "values": {
+        "key": "nil",
+        "value": "set",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 198,
+      "values": {
+        "key": "nil",
+        "value": "set",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 199,
+      "values": {
+        "key": "nil",
+        "value": "struct",
+        "position": "top"
+      }
+    },
+    {
+      "id": 200,
+      "values": {
+        "key": "nil",
+        "value": "struct",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 201,
+      "values": {
+        "key": "nil",
+        "value": "struct",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 202,
+      "values": {
+        "key": "nil",
+        "value": "invalid_utf8",
+        "position": "top"
+      }
+    },
+    {
+      "id": 203,
+      "values": {
+        "key": "nil",
+        "value": "invalid_utf8",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 204,
+      "values": {
+        "key": "nil",
+        "value": "invalid_utf8",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 205,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "string",
+        "position": "top"
+      }
+    },
+    {
+      "id": 206,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "string",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 207,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "string",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 208,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "symbol",
+        "position": "top"
+      }
+    },
+    {
+      "id": 209,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "symbol",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 210,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "symbol",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 211,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "integer",
+        "position": "top"
+      }
+    },
+    {
+      "id": 212,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "integer",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 213,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "integer",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 214,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "float",
+        "position": "top"
+      }
+    },
+    {
+      "id": 215,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "float",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 216,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "float",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 217,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "boolean",
+        "position": "top"
+      }
+    },
+    {
+      "id": 218,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "boolean",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 219,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "boolean",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 220,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "null",
+        "position": "top"
+      }
+    },
+    {
+      "id": 221,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "null",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 222,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "null",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 223,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "indifferent_hash",
+        "position": "top"
+      }
+    },
+    {
+      "id": 224,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "indifferent_hash",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 225,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "indifferent_hash",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 226,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "safe_buffer",
+        "position": "top"
+      }
+    },
+    {
+      "id": 227,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "safe_buffer",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 228,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "safe_buffer",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 229,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "nan",
+        "position": "top"
+      }
+    },
+    {
+      "id": 230,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "nan",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 231,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "nan",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 232,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "infinity",
+        "position": "top"
+      }
+    },
+    {
+      "id": 233,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "infinity",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 234,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "infinity",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 235,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "date",
+        "position": "top"
+      }
+    },
+    {
+      "id": 236,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "date",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 237,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "date",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 238,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "time",
+        "position": "top"
+      }
+    },
+    {
+      "id": 239,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "time",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 240,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "time",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 241,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "big_decimal",
+        "position": "top"
+      }
+    },
+    {
+      "id": 242,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "big_decimal",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 243,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "big_decimal",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 244,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "model",
+        "position": "top"
+      }
+    },
+    {
+      "id": 245,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "model",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 246,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "model",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 247,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "set",
+        "position": "top"
+      }
+    },
+    {
+      "id": 248,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "set",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 249,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "set",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 250,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "struct",
+        "position": "top"
+      }
+    },
+    {
+      "id": 251,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "struct",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 252,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "struct",
+        "position": "in_array"
+      }
+    },
+    {
+      "id": 253,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "invalid_utf8",
+        "position": "top"
+      }
+    },
+    {
+      "id": 254,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "invalid_utf8",
+        "position": "nested_object"
+      }
+    },
+    {
+      "id": 255,
+      "values": {
+        "key": "colliding_symbol",
+        "value": "invalid_utf8",
+        "position": "in_array"
+      }
+    }
+  ]
+}

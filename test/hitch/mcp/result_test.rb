@@ -140,13 +140,110 @@ class Hitch::MCP::ResultTest < ActiveSupport::TestCase
     refute_match(/impostor-canary|exception-result-canary|model-result-canary|sdk-result-canary/, report_log)
   end
 
+  # Rows: test/lattice/mcp_structured_values.json (strength 3, seed 42, every
+  # combination). Expectations come from the intent notes there (#57).
+  STRUCTURED_VALUE_SCENARIOS = JSON.parse(
+    File.read(File.expand_path("../../lattice/mcp_structured_values_scenarios.json", __dir__))
+  ).fetch("scenarios").freeze
+  CANARY = "structured-lattice-canary"
+  JSON_VALUES = {
+    "string" => [ -> { "plain" }, "plain" ],
+    "symbol" => [ -> { :open }, "open" ],
+    "integer" => [ -> { 42 }, 42 ],
+    "float" => [ -> { 1.5 }, 1.5 ],
+    "boolean" => [ -> { false }, false ],
+    "null" => [ -> { nil }, nil ],
+    "indifferent_hash" => [ -> { { "status" => :open }.with_indifferent_access }, { "status" => "open" } ],
+    "safe_buffer" => [ -> { "<b>open</b>".html_safe }, "<b>open</b>" ]
+  }.freeze
+  REFUSED_VALUES = {
+    "nan" => -> { Float::NAN },
+    "infinity" => -> { -Float::INFINITY },
+    "date" => -> { Date.new(2026, 11, 7) },
+    "time" => -> { Time.utc(2026, 11, 7) },
+    "big_decimal" => -> { BigDecimal("1.10") },
+    "model" => -> { User.new(email: "#{CANARY}@example.test") },
+    "set" => -> { Set[CANARY] },
+    "struct" => -> { Struct.new(:secret).new(CANARY) },
+    "invalid_utf8" => -> { "#{CANARY}\xFF".dup.force_encoding(Encoding::UTF_8) }
+  }.freeze
+  ACCEPTED_KEYS = %w[string symbol].freeze
+
+  test "every structured key, value, and position reaches the client as JSON or is refused" do
+    assert_equal 255, STRUCTURED_VALUE_SCENARIOS.length
+    STRUCTURED_VALUE_SCENARIOS.each do |scenario|
+      values = scenario.fetch("values")
+      label = "scenario #{scenario.fetch("id")}: #{values}"
+      key, value, position = values.values_at("key", "value", "position")
+      built = JSON_VALUES.key?(value) ? JSON_VALUES.fetch(value).first.call : REFUSED_VALUES.fetch(value).call
+
+      member = case key
+      when "string" then { "k" => built }
+      when "symbol" then { k: built }
+      when "integer" then { 1 => built }
+      when "nil" then { nil => built }
+      when "colliding_symbol" then { k: built, "k" => "other" }
+      end
+      wrap = ->(object) do
+        case position
+        when "top" then object
+        when "nested_object" then { "outer" => object }
+        when "in_array" then { "items" => [ object ] }
+        end
+      end
+
+      response, reports, log = capture_reports do
+        call_result(output_schema: JSON_TYPES_SCHEMA, perform: -> { Hitch::MCP::Result.structured(wrap.call(member)) })
+      end
+
+      if ACCEPTED_KEYS.include?(key) && JSON_VALUES.key?(value)
+        assert_nil response[:error], label
+        refute response.dig(:result, :isError), label
+        assert_equal wrap.call({ "k" => JSON_VALUES.fetch(value).last }), response.dig(:result, :structuredContent), label
+        assert_empty reports, label
+      else
+        assert_generic_tool_error response
+        assert_nil response.dig(:result, :structuredContent), label
+        refute_includes JSON.generate(response), CANARY, label
+        refute_includes log, CANARY, label
+        assert_equal 1, reports.length, label
+      end
+    end
+  end
+
+  # MCP 2026-07-28 tools, Structured Content: "a tool that returns structured
+  # content SHOULD also return the serialized JSON in a TextContent block."
+  test "structured content without text also arrives as its serialized JSON" do
+    [ { "spots" => [ { "name" => "Shell Beach" } ] }, [ 1, "two" ], "open", nil ].each do |value|
+      response = call_result(output_schema: JSON_TYPES_SCHEMA, perform: -> { Hitch::MCP::Result.structured(value) })
+
+      assert_equal [ { type: "text", text: JSON.generate(value) } ], response.dig(:result, :content), value.inspect
+    end
+  end
+
+  # #57: a Ruby hash literal is how a tool author writes a result, so symbol
+  # keys and values reach the client as the strings JSON gives them.
+  test "symbol keys and values become the structured result the author wrote" do
+    response = call_result(
+      output_schema: JSON_TYPES_SCHEMA,
+      perform: -> { Hitch::MCP::Result.structured({ spots: [ { name: "Shell Beach", status: :open } ] }, text: "1 spot") }
+    )
+
+    assert_nil response[:error]
+    refute response.dig(:result, :isError)
+    assert_equal({ "spots" => [ { "name" => "Shell Beach", "status" => "open" } ] },
+      response.dig(:result, :structuredContent))
+  end
+
   test "invalid constructor values become generic reported failures" do
     recursive = []
     recursive << recursive
     invalid_builders = [
       -> { Hitch::MCP::Result.text(:symbol) },
       -> { Hitch::MCP::Result.error(Object.new) },
-      -> { Hitch::MCP::Result.structured({ symbol: "value" }) },
+      -> { Hitch::MCP::Result.structured({ key: 1, "key" => 2 }) },
+      -> { Hitch::MCP::Result.structured({ "user" => User.new(email: "model-result-canary@example.test") }) },
+      -> { Hitch::MCP::Result.structured({ "on" => Date.new(2026, 11, 7) }) },
       -> { Hitch::MCP::Result.structured(Float::INFINITY) },
       -> { Hitch::MCP::Result.structured(Object.new) },
       -> { Hitch::MCP::Result.structured(recursive) }

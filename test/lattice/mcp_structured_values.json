@@ -1,0 +1,22 @@
+{
+  "model_name": "hitch_mcp_structured_values",
+  "_intent_notes": [
+    "#57: what a tool author may put in Result.structured, and what the client receives.",
+    "A structured result is a JSON value (MCP 2026-07-28 tools, Structured Content; RFC 8259). Symbols are Ruby's spelling of a JSON string, so symbol keys and values arrive as strings.",
+    "Hash and String subclasses (HashWithIndifferentAccess, SafeBuffer) are JSON objects and strings and arrive as plain ones.",
+    "Anything else is refused, never as_json'd: a model would publish every column. NaN and Infinity have no JSON form, and JSON text is UTF-8 (RFC 8259 section 8.1).",
+    "Keys must be strings or symbols, and two keys that become the same string are a duplicate member (RFC 8259 section 4), refused rather than one silently winning.",
+    "A refusal reaches the client as the generic tool error and never echoes the value.",
+    "position is where the pair sits: the top-level object, an object nested in an object, or an object inside an array."
+  ],
+  "parameters": [
+    { "name": "key", "values": ["string", "symbol", "integer", "nil", "colliding_symbol"] },
+    { "name": "value", "values": [
+      "string", "symbol", "integer", "float", "boolean", "null", "indifferent_hash", "safe_buffer",
+      "nan", "infinity", "date", "time", "big_decimal", "model", "set", "struct", "invalid_utf8"
+    ] },
+    { "name": "position", "values": ["top", "nested_object", "in_array"] }
+  ],
+  "constraints": [],
+  "strength": 3
+}

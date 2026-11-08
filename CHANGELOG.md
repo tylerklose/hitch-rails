@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/mcp` now refuses a request whose `id` has a decimal part, like `1.5`.
   MCP only allows a string or a whole number. Before, the tool ran anyway.
   ([#59](https://github.com/tylerklose/hitch-rails/issues/59))
+- `Result.structured` accepts symbol keys and values, like
+  `{ status: :open }`, and sends them as strings. Dates, models, and other
+  values that aren't JSON are still refused.
+  ([#57](https://github.com/tylerklose/hitch-rails/issues/57))
+- A structured result without `text:` now also sends its JSON as text,
+  so clients that only read `content` still see it.
+  ([#60](https://github.com/tylerklose/hitch-rails/issues/60))
 
 ## [0.5.0] - 2026-09-05
 

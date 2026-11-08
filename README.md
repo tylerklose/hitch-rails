@@ -258,8 +258,12 @@ token carries a registered OAuth scope. Arguments arrive as one recursively
 frozen, string-keyed Hash after SDK schema validation and `authorize!`.
 Results go through the closed `Hitch::MCP::Result` channel — `.text`,
 `.structured` (validated against the registered output schema), or `.error` —
-and are size-capped after serialization. Host exception messages are never
-exposed to clients.
+and are size-capped after serialization. A structured value holds only JSON
+types; symbol keys and values become strings, and anything else (a `Date`, a
+model) is refused rather than serialized, so format it yourself
+(`date.iso8601`, `record.slice("id", "name")`). Host exception messages are
+never exposed to clients; a refused result reaches the client as a generic
+tool error and the reason goes to your log.
 
 ### Untrusted text
 

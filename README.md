@@ -90,8 +90,12 @@ easy to miss, so start from this and change one thing at a time. In
 development and test, the reason for any refusal is written to your Rails
 log — that is the fastest way to find which piece is wrong:
 
+The token task never prints the token to stdout, so piping it gets you
+nothing. Write it to a file and read that:
+
 ```bash
-TOKEN=$(cat agent.token)   # see Headless agents, below
+bin/rails hitch:tokens:issue PRINCIPAL=User:1 OUTPUT_FILE=agent.token   # see Headless agents, below
+TOKEN=$(cat agent.token)
 
 curl -sS -X POST https://your-app.example.com/mcp \
   -H "Authorization: Bearer $TOKEN" \

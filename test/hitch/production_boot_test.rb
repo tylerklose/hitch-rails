@@ -30,6 +30,16 @@ class Hitch::ProductionBootTest < ActiveSupport::TestCase
     assert_includes stderr, "cannot count one caller's"
   end
 
+  # A host's acronyms reach the engine's files too: with "OAuth" declared,
+  # Zeitwerk expects oauth_parameter_validation.rb to define
+  # OAuthParameterValidation, and eager loading fails the boot.
+  test "boots when the host declares common acronyms" do
+    stdout, stderr, status = boot("shared", "HITCH_HOST_ACRONYMS" => "OAuth,ID,URI,URL,JSON,HTTP,API,SDK,CORS,PKCE")
+
+    assert_predicate status, :success?, "production boot failed:\n#{stdout}\n#{stderr}"
+    assert_includes stdout, "BOOTED"
+  end
+
   test "production doctor drives the configured DCR store in a real task process" do
     assert_broken_feature_store("dcr", "config.dynamic_client_registration_rate_store")
   end
@@ -60,13 +70,13 @@ class Hitch::ProductionBootTest < ActiveSupport::TestCase
 
   private
 
-  def boot(probe)
+  def boot(probe, environment = {})
     Open3.capture3(
       {
         "RAILS_ENV" => "production",
         "SECRET_KEY_BASE" => "hitch-production-boot-probe",
         "HITCH_BOOT_PROBE" => probe
-      },
+      }.merge(environment),
       File.join(repository_root, "bin/rails"), "runner", "puts 'BOOTED'",
       chdir: repository_root
     )

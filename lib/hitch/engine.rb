@@ -12,10 +12,26 @@ module Hitch
       end
     end
 
+    # A host's acronyms apply to the engine's files too: an app that declares
+    # "OAuth" would otherwise expect oauth_request_parameters.rb to define
+    # OAuthRequestParameters, and eager loading fails the boot. Overrides are
+    # keyed by file name across the whole app, so one also names a host file
+    # of the same name — which matters only to a host that both declares the
+    # acronym and has such a file.
     initializer "hitch.zeitwerk_inflections", before: :set_autoloaders do
       Rails.autoloaders.main.inflector.inflect(
         "mcp" => "MCP",
-        "sdk_adapter" => "SDKAdapter"
+        "sdk_adapter" => "SDKAdapter",
+        "client_id_metadata" => "ClientIdMetadata",
+        "client_redirect_uri" => "ClientRedirectUri",
+        "cors_policy" => "CorsPolicy",
+        "cors_support" => "CorsSupport",
+        "issuer_url" => "IssuerUrl",
+        "json_values" => "JsonValues",
+        "oauth_form_admission" => "OauthFormAdmission",
+        "oauth_parameter_validation" => "OauthParameterValidation",
+        "oauth_request_parameters" => "OauthRequestParameters",
+        "uri_validation" => "UriValidation"
       )
     end
 

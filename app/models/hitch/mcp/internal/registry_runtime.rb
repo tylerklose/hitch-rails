@@ -81,7 +81,7 @@ module Hitch
 
             snapshot.entries.filter_map do |entry|
               runtime_tool = available_runtime_tool(entry, context)
-              runtime_tool if runtime_tool && scopes_granted?(entry.scopes, context)
+              listed_runtime_tool(runtime_tool, context) if runtime_tool && scopes_granted?(entry.scopes, context)
             end.freeze
           end
 
@@ -128,6 +128,31 @@ module Hitch
             RuntimeTool.new(entry:, tool_class:)
           rescue NameError
             raise ArgumentError, "MCP registry is unavailable: #{entry.class_name} could not be resolved"
+          end
+
+          # A tool that keeps the default description lists the wrapper built
+          # at prepare time. One that overrides it gets a wrapper for this
+          # request only, differing from the entry in its description alone.
+          def listed_runtime_tool(runtime_tool, context)
+            tool_class = runtime_tool.tool_class
+            return runtime_tool if tool_class.method(:description_for).owner == Tool.singleton_class
+
+            entry = runtime_tool.entry
+            description = tool_class.description_for(context)
+            unless description.is_a?(String) && description.match?(/\S/)
+              raise ArgumentError, "#{entry.class_name}.description_for must return a nonblank String"
+            end
+            return runtime_tool if description == entry.description
+
+            description = description.dup.freeze
+            sdk_tool = SDKAdapter.build_sdk_tool(
+              name: entry.name,
+              description:,
+              input_schema: entry.input_schema,
+              output_schema: entry.output_schema,
+              annotations: entry.annotations
+            )
+            runtime_tool.with(entry: entry.with(description:, sdk_tool:))
           end
 
           def scopes_granted?(required_scopes, context)

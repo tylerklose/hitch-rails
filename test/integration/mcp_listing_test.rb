@@ -99,6 +99,80 @@ module HitchMcpListingFixtures
     end
   end
 
+  # Same tool, wider reach for alpha: the text says so for alpha only.
+  class Described < Hitch::MCP::Tool
+    tool_name "described.tool"
+    description "Search your own records"
+    input_schema INPUT_SCHEMA
+
+    class << self
+      attr_accessor :description_calls
+
+      def available_to?(_context) = true
+      def authorize!(_context, arguments:) = nil
+      def perform(_context, arguments:) = Hitch::MCP::Result.text("ok")
+
+      def description_for(context)
+        self.description_calls = description_calls.to_i + 1
+        context.scope == "alpha@example.test" ? "Search every account's records" : super
+      end
+    end
+  end
+
+  class HiddenDescribed < Hitch::MCP::Tool
+    tool_name "hidden.described"
+    description "Unavailable tool whose description must never be computed"
+    input_schema INPUT_SCHEMA
+
+    def self.available_to?(_context) = false
+    def self.description_for(_context) = raise("hidden-description-secret")
+  end
+
+  class RaisingDescription < Hitch::MCP::Tool
+    tool_name "raising.description"
+    description "Tool with a failing description"
+    input_schema INPUT_SCHEMA
+
+    def self.available_to?(_context) = true
+    def self.description_for(_context) = raise("description-secret")
+  end
+
+  class BlankDescription < Hitch::MCP::Tool
+    tool_name "blank.description"
+    description "Tool whose description_for returns blank text"
+    input_schema INPUT_SCHEMA
+
+    def self.available_to?(_context) = true
+    def self.description_for(_context) = "   "
+  end
+
+  class NonStringDescription < Hitch::MCP::Tool
+    tool_name "nonstring.description"
+    description "Tool whose description_for returns a non-String"
+    input_schema INPUT_SCHEMA
+
+    def self.available_to?(_context) = true
+    def self.description_for(_context) = :nonstring_description
+  end
+
+  class DescribedRegistry < Hitch::MCP::Registry
+    register Described, scopes: [ "mcp" ]
+    register HiddenDescribed, scopes: [ "mcp" ]
+    register Alpha, scopes: [ "mcp" ]
+  end
+
+  class RaisingDescriptionRegistry < Hitch::MCP::Registry
+    register RaisingDescription, scopes: [ "mcp" ]
+  end
+
+  class BlankDescriptionRegistry < Hitch::MCP::Registry
+    register BlankDescription, scopes: [ "mcp" ]
+  end
+
+  class NonStringDescriptionRegistry < Hitch::MCP::Registry
+    register NonStringDescription, scopes: [ "mcp" ]
+  end
+
   class MainRegistry < Hitch::MCP::Registry
     register Zeta, scopes: [ "mcp" ]
     register HiddenAdmin, scopes: %w[mcp admin]
@@ -294,6 +368,53 @@ class MCPListingTest < ActionDispatch::IntegrationTest
       assert_equal(-32603, JSON.parse(response.body).dig("error", "code"))
       refute_includes response.body, canary
       assert_equal 1, McpController.wire_metrics.fetch(:registry, 0)
+      assert_equal 0, McpController.wire_metrics.fetch(:sdk, 0)
+    end
+  end
+
+  test "description_for changes only the listed text, per caller" do
+    configure_runtime("HitchMcpListingFixtures::DescribedRegistry")
+    HitchMcpListingFixtures::Described.description_calls = 0
+
+    post_mcp(method: "tools/list", token: @alpha_mcp)
+    alpha_tools = JSON.parse(response.body).dig("result", "tools").index_by { |tool| tool.fetch("name") }
+    post_mcp(method: "tools/list", token: @beta_mcp)
+    beta_tools = JSON.parse(response.body).dig("result", "tools").index_by { |tool| tool.fetch("name") }
+
+    assert_equal %w[alpha.tool described.tool], alpha_tools.keys
+    assert_equal alpha_tools.keys, beta_tools.keys
+    assert_equal "Search every account's records", alpha_tools.dig("described.tool", "description")
+    assert_equal "Search your own records", beta_tools.dig("described.tool", "description")
+    assert_equal alpha_tools.dig("described.tool", "inputSchema"), beta_tools.dig("described.tool", "inputSchema")
+    assert_equal alpha_tools.fetch("alpha.tool"), beta_tools.fetch("alpha.tool")
+    refute_includes response.body, "hidden-description-secret"
+    assert_equal 2, HitchMcpListingFixtures::Described.description_calls
+  end
+
+  test "tools/call never computes a description" do
+    configure_runtime("HitchMcpListingFixtures::DescribedRegistry")
+    HitchMcpListingFixtures::Described.description_calls = 0
+
+    post_mcp(method: "tools/call", token: @alpha_mcp, params: { name: "described.tool", arguments: {} })
+
+    assert_nil JSON.parse(response.body)["error"]
+    assert_equal 0, HitchMcpListingFixtures::Described.description_calls
+  end
+
+  test "a raising, blank, or non-String description fails the listing closed without details" do
+    {
+      "HitchMcpListingFixtures::RaisingDescriptionRegistry" => "description-secret",
+      "HitchMcpListingFixtures::BlankDescriptionRegistry" => "blank.description",
+      "HitchMcpListingFixtures::NonStringDescriptionRegistry" => "nonstring_description"
+    }.each do |registry, canary|
+      configure_runtime(registry)
+      McpController.reset_wire_metrics!
+
+      post_mcp(method: "tools/list", token: @alpha_mcp)
+
+      assert_response :ok
+      assert_equal(-32603, JSON.parse(response.body).dig("error", "code"), registry)
+      refute_includes response.body, canary
       assert_equal 0, McpController.wire_metrics.fetch(:sdk, 0)
     end
   end

@@ -269,6 +269,18 @@ model) is refused rather than serialized, so format it yourself
 never exposed to clients; a refused result reaches the client as a generic
 tool error and the reason goes to your log.
 
+A tool that does more for some callers than others can say so. Override
+`description_for(context)` and each caller sees their own text in
+`tools/list`; it defaults to `description`. Only the text varies — the name,
+schemas, and scopes are fixed at boot — and it is never called on
+`tools/call` or for a tool the caller can't see:
+
+```ruby
+def self.description_for(context)
+  context.principal.admin? ? "Describe any account" : description
+end
+```
+
 ### Untrusted text
 
 Hitch does not wrap tool output for you. When a field is attacker-influenced —

@@ -7,7 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `description_for(context)` on a tool sets the description each caller
+  sees in `tools/list`, for a tool that reaches further for some callers
+  than others. It defaults to `description`; the name, schemas, and scopes
+  can't vary. ([#73](https://github.com/tylerklose/hitch-rails/issues/73))
+
 ### Fixed
+
+- An app that declares inflection acronyms like `OAuth`, `ID`, or `URI`
+  now boots with Hitch installed. Before, Rails expected Hitch's files to
+  define differently named constants and eager loading failed.
+  ([#74](https://github.com/tylerklose/hitch-rails/issues/74))
+- `hitch:doctor` says the engine isn't mounted, instead of reporting a
+  JSON parse error from the discovery check.
+  ([#75](https://github.com/tylerklose/hitch-rails/issues/75))
 
 - `/mcp` now refuses a request whose `id` has a decimal part, like `1.5`.
   MCP only allows a string or a whole number. Before, the tool ran anyway.

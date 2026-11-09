@@ -103,6 +103,9 @@ module Hitch
     # one blocked host, two alarms, and the louder one naming a bug that does
     # not exist. The middleware records the rejection on the env it was handed.
     HostBlocked = Class.new(StandardError)
+    # Without the engine, the host answers the discovery paths itself (or with
+    # an HTML 404), and the parse error that follows hides the cause.
+    EngineUnmounted = Class.new(StandardError)
 
     class System
       REQUIRED_TABLES = %w[
@@ -183,6 +186,8 @@ module Hitch
       end
 
       def discovery_facts
+        raise EngineUnmounted unless Rails.application.routes.routes.any? { |route| hitch_engine_route?(route) }
+
         resource = URI.parse(Hitch.configuration.resource_uri.to_s)
         issuer = Hitch::ResourceUri.origin(resource)
         resource_metadata_uri = Hitch::ResourceUri.protected_resource_metadata_url(resource)
@@ -564,6 +569,12 @@ module Hitch
         "host_blocked",
         "Discovery probe cannot run while Rails host authorization blocks the canonical host"
       )
+    rescue EngineUnmounted
+      fail_check(
+        "resource_discovery",
+        "invalid_engine_mount",
+        "Hitch::Engine is not mounted, so nothing serves Hitch's discovery documents"
+      )
     rescue StandardError => error
       probe_failure("resource_discovery", error)
     end
@@ -711,6 +722,6 @@ module Hitch
       fail_check(id, "probe_error", "The #{id.tr('_', ' ')} diagnostic could not complete", "error_class" => error.class.name)
     end
 
-    private_constant :Check, :Report, :System, :HostBlocked
+    private_constant :Check, :Report, :System, :HostBlocked, :EngineUnmounted
   end
 end

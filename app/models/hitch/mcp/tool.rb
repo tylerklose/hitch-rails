@@ -63,6 +63,15 @@ module Hitch
           false
         end
 
+        # The description this caller sees in tools/list. Override it when one
+        # tool reaches further for some callers than others, so the text says
+        # what it can actually do for them. Only the text varies: the name,
+        # schemas, and scopes are fixed when the registry is prepared. Called
+        # only for tools the caller can see, and never on tools/call.
+        def description_for(_context)
+          description
+        end
+
         # Argument-aware host policy is deny-default. Its return value is not an
         # authority signal: allowing means returning without raising.
         def authorize!(_context, arguments:)

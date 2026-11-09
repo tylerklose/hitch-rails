@@ -627,6 +627,22 @@ class Hitch::DoctorTest < ActiveSupport::TestCase
     Rails.application.config.hosts = original_hosts
   end
 
+  test "an unmounted engine is named as the cause, not reported as a parse error" do
+    routes = Rails.application.routes
+    unmounted = routes.routes.reject { |route| route.app.app == Hitch::Engine }
+    routes.define_singleton_method(:routes) { unmounted }
+
+    report = Doctor.call
+    human = Doctor.render(report, format: "human")
+    discovery = report.checks.find { |check| check.id == "resource_discovery" }
+
+    assert_equal [ "fail", "invalid_engine_mount" ], [ discovery.status, discovery.code ]
+    assert_includes human, Doctor::REMEDIES.fetch("invalid_engine_mount")
+    refute_includes human, "JSON::ParserError"
+  ensure
+    routes.singleton_class.remove_method(:routes)
+  end
+
   private
 
   def expected_overall(report)

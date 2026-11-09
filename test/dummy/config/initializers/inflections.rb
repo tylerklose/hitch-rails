@@ -14,3 +14,11 @@
 # ActiveSupport::Inflector.inflections(:en) do |inflect|
 #   inflect.acronym "RESTful"
 # end
+
+# Host apps commonly declare these. Each one changes the constant Zeitwerk
+# expects from a Hitch file name, so the boot test declares them all.
+if ENV["HITCH_HOST_ACRONYMS"]
+  ActiveSupport::Inflector.inflections(:en) do |inflect|
+    ENV["HITCH_HOST_ACRONYMS"].split(",").each { |acronym| inflect.acronym acronym }
+  end
+end

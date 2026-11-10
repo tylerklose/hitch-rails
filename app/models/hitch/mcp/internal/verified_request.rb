@@ -38,6 +38,7 @@ module Hitch
           parsed = parse
           validate_json_values!(parsed)
           request_id = validate_envelope!(parsed)
+          validate_protocol_version!(request_id)
           validate_metadata!(parsed, request_id)
           validate_protocol_and_method_headers!(parsed, request_id)
           validate_method!(parsed, request_id)
@@ -136,20 +137,19 @@ module Hitch
           end
         end
 
-        def validate_protocol_and_method_headers!(request, request_id)
-          metadata = request.fetch("params").fetch("_meta")
+        # Before the _meta checks: a client still on an older protocol names it
+        # in this header but sends no _meta, and "Invalid params" would hide the
+        # real cause. Clients show this message to the person, so it says what
+        # fixes it. A missing header stays a HeaderMismatch, checked later.
+        def validate_protocol_version!(request_id)
           protocol_version = HeaderField.single(headers.fetch(:protocol_version, nil))
-          method = HeaderField.single(headers.fetch(:method, nil))
-
-          header_mismatch!(request_id) unless protocol_version == metadata.fetch("io.modelcontextprotocol/protocolVersion")
-          header_mismatch!(request_id) unless method == request.fetch("method")
-
-          return if protocol_version == Protocol::VERSION
+          return if protocol_version.nil? || protocol_version == Protocol::VERSION
 
           failure!(
             400,
             -32022,
-            "Unsupported protocol version",
+            "Unsupported protocol version. This server speaks MCP #{Protocol::VERSION}; " \
+              "disconnect and reconnect it to continue.",
             request_id: request_id,
             data: {
               "supportedVersions" => [ Protocol::VERSION ],
@@ -157,6 +157,15 @@ module Hitch
               "requested" => protocol_version
             }
           )
+        end
+
+        def validate_protocol_and_method_headers!(request, request_id)
+          metadata = request.fetch("params").fetch("_meta")
+          protocol_version = HeaderField.single(headers.fetch(:protocol_version, nil))
+          method = HeaderField.single(headers.fetch(:method, nil))
+
+          header_mismatch!(request_id) unless protocol_version == metadata.fetch("io.modelcontextprotocol/protocolVersion")
+          header_mismatch!(request_id) unless method == request.fetch("method")
         end
 
         def validate_method!(request, request_id)

@@ -67,6 +67,8 @@ def app_gemfile(local_repository, specification, profile)
     gem "rails", "#{profile.fetch(:rails)}"
     #{profile.fetch(:adapter_gem)}
     gem "puma", "=#{PACKAGE_APP_SERVER_VERSION}"
+    # Rails 8.0 ActiveSupport cannot decode json 3 (quirks_mode removed).
+    gem "json", ">= 2.13", "< 3"
 
     source "file://#{local_repository}" do
       gem "#{specification.name}", "=#{specification.version}"

@@ -117,6 +117,23 @@ class MCPWireContractTest < ActionDispatch::IntegrationTest
     end
   end
 
+  # What a client connected before an upgrade sends: its old version in the
+  # header and no _meta. It has to learn the version is the problem, and the
+  # person seeing the error has to learn what to do about it.
+  test "a client on an older protocol is told to reconnect" do
+    body = base_body("legacy", "tools/call")
+    body.fetch("params").delete("_meta")
+    headers = base_headers("tools/call").merge("MCP-Protocol-Version" => LEGACY_PROTOCOL_VERSION)
+
+    post "/mcp", params: JSON.generate(body), headers: headers
+
+    assert_response :bad_request
+    error = JSON.parse(response.body).fetch("error")
+    assert_equal -32022, error.fetch("code")
+    assert_match "reconnect", error.fetch("message")
+    assert_equal LEGACY_PROTOCOL_VERSION, error.dig("data", "requested")
+  end
+
   test "fixture and runtime groups name every invariant test without skips" do
     assert_equal VECTOR_IDS.uniq, VECTOR_IDS
     assert_equal %w[2026-07-28], [ VECTOR_DOCUMENT.fetch("protocol_version") ]

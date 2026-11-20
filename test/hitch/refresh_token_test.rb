@@ -267,6 +267,61 @@ class Hitch::RefreshTokenTest < ActiveSupport::TestCase
     assert_family_live(first)
   end
 
+  # The interleaving the test above can't reach: both requests load the row
+  # while it is unspent, the other request's UPDATE commits first, and this
+  # one's conditional UPDATE matches nothing. That loser is an honest client
+  # (its sibling holds the winning pair) and must get a pair of its own, not
+  # invalid_grant — which a hosted client reads as "make the user reconnect".
+  test "the request that loses a concurrent refresh still gets a fresh pair" do
+    first = grant
+    raw = first.fetch(:raw_refresh_token)
+    row_id = row_for(raw).id
+
+    # narrowed_scopes runs after the row is loaded and before the
+    # conditional UPDATE, so spending the row there lands the winner's
+    # commit exactly between this request's read and its write.
+    original = Hitch::AccessToken.instance_method(:narrowed_scopes)
+    Hitch::AccessToken.define_method(:narrowed_scopes) do |requested|
+      if id == row_id
+        Hitch::AccessToken.where(id: row_id, refresh_consumed_at: nil)
+          .update_all(refresh_consumed_at: Time.current, updated_at: Time.current)
+      end
+      original.bind_call(self, requested)
+    end
+
+    begin
+      loser = refresh(raw)
+    ensure
+      Hitch::AccessToken.define_method(:narrowed_scopes, original)
+    end
+
+    assert_not_nil loser, "the race loser got invalid_grant"
+    assert loser.fetch(:raw_refresh_token).present?
+    assert_family_live(first)
+  end
+
+  test "strict one-time-use still refuses the race loser" do
+    Hitch.configuration.refresh_token_replay_grace_seconds = 0
+    first = grant
+    raw = first.fetch(:raw_refresh_token)
+    row_id = row_for(raw).id
+
+    original = Hitch::AccessToken.instance_method(:narrowed_scopes)
+    Hitch::AccessToken.define_method(:narrowed_scopes) do |requested|
+      if id == row_id
+        Hitch::AccessToken.where(id: row_id, refresh_consumed_at: nil)
+          .update_all(refresh_consumed_at: 1.second.ago, updated_at: Time.current)
+      end
+      original.bind_call(self, requested)
+    end
+
+    begin
+      assert_nil refresh(raw)
+    ensure
+      Hitch::AccessToken.define_method(:narrowed_scopes, original)
+    end
+  end
+
   test "a configured family ceiling stops a chain that is still being rotated" do
     first = grant
     row = row_for(first.fetch(:raw_refresh_token))

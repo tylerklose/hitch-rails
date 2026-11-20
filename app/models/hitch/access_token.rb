@@ -295,8 +295,16 @@ module Hitch
       consumed = where(id: record.id, refresh_consumed_at: nil)
         .update_all(refresh_consumed_at: now, updated_at: now)
       # Lost the race to a concurrent refresh microseconds ago. That is the
-      # honest-retry case arriving by a different door, not a replay.
-      return nil unless consumed == 1
+      # honest-retry case arriving by a different door, not a replay, so it
+      # gets the same answer: a fresh pair off the same parent. Reload to see
+      # the winner's consumed_at; anything else (revoked meanwhile, outside
+      # the window) is refused as before.
+      unless consumed == 1
+        record.reload
+        return nil if record.revoked? || !record.honest_retry?(Time.current)
+
+        return record.send(:issue_successor!, granted: granted, now: Time.current)
+      end
 
       record.send(:issue_successor!, granted: granted, now: now)
     end

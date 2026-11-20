@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- When two requests refresh the same token at the same moment, the one
+  that loses the race now gets a fresh pair, as a retry inside the grace
+  window does. Before, it got `invalid_grant`, which a hosted client reads
+  as "ask the user to reconnect". With the grace window at 0 it is still
+  refused. ([#83](https://github.com/tylerklose/hitch-rails/issues/83))
 - An app that declares inflection acronyms like `OAuth`, `ID`, or `URI`
   now boots with Hitch installed. Before, Rails expected Hitch's files to
   define differently named constants and eager loading failed.

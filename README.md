@@ -83,6 +83,15 @@ the generators — tools first, because removing the initializer stops the app
 booting and `destroy` cannot run after that. See
 [docs/removing.md](docs/removing.md) for the full order.
 
+### Moving an existing MCP server onto Hitch
+
+Hitch speaks MCP 2026-07-28 only. A client that connected to your old
+server on an earlier version keeps using that version until it reconnects,
+so after you switch, each connected client fails until its user
+disconnects and reconnects it. Hitch's error tells them to. Copying your
+old tokens into `hitch_access_tokens` keeps them signed in; it doesn't
+spare them the reconnect.
+
 ## Calling it
 
 Everything below is required. Two of the headers and the `_meta` block are

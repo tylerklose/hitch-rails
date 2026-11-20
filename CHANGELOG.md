@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `hitch:doctor` says the engine isn't mounted, instead of reporting a
   JSON parse error from the discovery check.
   ([#75](https://github.com/tylerklose/hitch-rails/issues/75))
+- A client still on an older MCP version now gets "Unsupported protocol
+  version", with a message telling the person to reconnect, instead of
+  "Invalid params". ([#81](https://github.com/tylerklose/hitch-rails/issues/81))
 
 - `/mcp` now refuses a request whose `id` has a decimal part, like `1.5`.
   MCP only allows a string or a whole number. Before, the tool ran anyway.

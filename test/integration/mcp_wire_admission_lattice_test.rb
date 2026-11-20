@@ -16,14 +16,14 @@ class MCPWireAdmissionLatticeTest < ActionDispatch::IntegrationTest
   TOOL_NAME = "hitch.echo"
   SCENARIOS = JSON.parse(Rails.root.join("../lattice/mcp_wire_admission_scenarios.json").read).fetch("scenarios").freeze
 
-  PHASES = %i[parse envelope meta headers method dispatch].freeze
+  PHASES = %i[parse envelope version meta headers method dispatch].freeze
   FAULT_PHASES = {
     "malformed_utf8" => :parse, "truncated_json" => :parse,
     "id_null" => :envelope, "id_absent" => :envelope, "id_fractional" => :envelope,
     "id_object" => :envelope, "jsonrpc_wrong" => :envelope,
     "meta_string" => :meta, "meta_array" => :meta, "meta_missing_protocol" => :meta,
     "method_header_mismatched" => :headers, "name_header_mismatched" => :headers,
-    "name_header_invalid_bytes" => :headers, "protocol_unsupported" => :headers
+    "name_header_invalid_bytes" => :headers, "protocol_unsupported" => :version
   }.freeze
   RPC_METHODS = {
     "tools_call" => "tools/call", "tools_list" => "tools/list", "server_discover" => "server/discover",
@@ -88,9 +88,7 @@ class MCPWireAdmissionLatticeTest < ActionDispatch::IntegrationTest
     phases = faults.map { |fault| FAULT_PHASES.fetch(fault) }
     phases << :method if UNDECLARED_METHODS.include?(values.fetch("method"))
     phase = phases.min_by { |candidate| PHASES.index(candidate) } || :dispatch
-    header_codes = faults.select { |fault| FAULT_PHASES[fault] == :headers }
-      .map { |fault| fault == "protocol_unsupported" ? -32022 : -32020 }
-    [ phase, phase == :headers ? header_codes.uniq : nil ]
+    [ phase, phase == :headers ? [ -32020 ] : nil ]
   end
 
   def assert_response_for(phase, header_codes, values, id, label)
@@ -100,6 +98,7 @@ class MCPWireAdmissionLatticeTest < ActionDispatch::IntegrationTest
     case phase
     when :parse then assert_error(body, 400, [ -32700 ], nil, label)
     when :envelope then assert_error(body, 400, [ -32600 ], nil, label)
+    when :version then assert_error(body, 400, [ -32022 ], id, label)
     when :meta then assert_error(body, 400, [ -32602 ], id, label)
     when :headers then assert_error(body, 400, header_codes, id, label)
     when :method then assert_error(body, 404, [ -32601 ], id, label)
